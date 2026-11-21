@@ -35,9 +35,11 @@ function readSchemaVersion(db: DatabaseSync): number {
   return version
 }
 
-function supportsReadOnlyDatabaseSync(): boolean {
-  const [major = 0, minor = 0] = process.versions.node.split('.').map(Number)
-  return major > 22 || (major === 22 && minor >= 12)
+export function supportsReadOnlyDatabaseSync(version = process.versions.node): boolean {
+  const [major = 0, minor = 0] = version.split('.').map(Number)
+  return major > 23 ||
+    (major === 23 && minor >= 2) ||
+    (major === 22 && minor >= 12)
 }
 
 export class Store {
@@ -57,7 +59,7 @@ export class Store {
     this.readOnly = options.readOnly === true
     if (this.readOnly) {
       if (!supportsReadOnlyDatabaseSync()) {
-        throw new Error('read-only SQLite access requires Node.js 22.12 or newer')
+        throw new Error('read-only SQLite access requires Node.js 22.12+ or 23.2+')
       }
       if (!fs.existsSync(this.path)) throw new Error('local state database does not exist')
       this.db = new DatabaseSync(this.path, { readOnly: true })
