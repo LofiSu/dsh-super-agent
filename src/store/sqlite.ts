@@ -98,6 +98,10 @@ export class Store {
     return !this.closed
   }
 
+  private assertWritable(): void {
+    if (this.readOnly) throw new Error('store is open read-only')
+  }
+
   close(): void {
     if (this.closed) return
     if (!this.readOnly) this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
@@ -112,6 +116,7 @@ export class Store {
   }
 
   atomic<T>(work: () => T): T {
+    this.assertWritable()
     if (this.depth > 0) return work()
     this.depth += 1
     try {
@@ -132,6 +137,7 @@ export class Store {
   }
 
   nextId(prefix: string): string {
+    this.assertWritable()
     const row = this.db.prepare(
       `INSERT INTO id_seq(prefix, n) VALUES(?, 1)
        ON CONFLICT(prefix) DO UPDATE SET n = n + 1
@@ -141,6 +147,7 @@ export class Store {
   }
 
   putDoc(kind: string, id: string, value: unknown): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO documents(kind, id, payload) VALUES(?, ?, ?)
        ON CONFLICT(kind, id) DO UPDATE SET payload = excluded.payload`,
@@ -183,10 +190,12 @@ export class Store {
   }
 
   deleteDoc(kind: string, id: string): void {
+    this.assertWritable()
     this.db.prepare('DELETE FROM documents WHERE kind = ? AND id = ?').run(kind, id)
   }
 
   addEvent(type: DomainEventName, payload: unknown): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO events(type, payload, created_at) VALUES(?, ?, ?)',
     ).run(type, JSON.stringify(payload), new Date().toISOString())
@@ -210,6 +219,7 @@ export class Store {
    * read model returned by `recentLifecycleEvents`.
    */
   appendLifecycleEvent(event: LifecycleEvent, keep?: number): void {
+    this.assertWritable()
     this.atomic(() => {
       this.db.prepare(
         'INSERT INTO lifecycle_events(at, kind, payload) VALUES(?, ?, ?)',
@@ -232,6 +242,7 @@ export class Store {
 
   /** Keep only the newest `keep` lifecycle rows; older rows are deleted. */
   pruneLifecycleEvents(keep: number): void {
+    this.assertWritable()
     if (!Number.isSafeInteger(keep) || keep < 1) {
       throw new Error('lifecycle retention must be a positive integer')
     }
@@ -242,6 +253,7 @@ export class Store {
   }
 
   addReply(row: ReplyRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO replies(id, ticket_id, channel, purpose, text, status, created_at)
        VALUES(?, ?, ?, ?, ?, ?, ?)`,
@@ -249,6 +261,7 @@ export class Store {
   }
 
   markReplySent(id: string): void {
+    this.assertWritable()
     this.db.prepare(`UPDATE replies SET status = 'sent' WHERE id = ?`).run(id)
   }
 
@@ -281,6 +294,7 @@ export class Store {
   }
 
   enqueueOutbox(row: OutboxRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO outbox(
          id, reply_id, ticket_id, channel, thread, target, text, status,
@@ -345,6 +359,7 @@ export class Store {
 
   /** Atomically claim a row so two flushers cannot send it twice. */
   claimOutbox(id: string): boolean {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'sending' WHERE id = ? AND status = 'pending'`,
     ).run(id)
@@ -352,18 +367,21 @@ export class Store {
   }
 
   markOutboxSent(id: string, externalId?: string): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'sent', external_id = ?, sent_at = ?, next_attempt_at = NULL WHERE id = ?`,
     ).run(externalId ?? null, new Date().toISOString(), id)
   }
 
   markOutboxRetry(id: string, error: string, nextAttemptAt: string, attempts: number): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'pending', error = ?, next_attempt_at = ?, attempts = ? WHERE id = ?`,
     ).run(error, nextAttemptAt, attempts, id)
   }
 
   markOutboxFailed(id: string, error: string): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'failed', error = ?, next_attempt_at = NULL WHERE id = ?`,
     ).run(error, id)
@@ -371,6 +389,7 @@ export class Store {
 
   /** Mid-send rows after a crash: unknown outcome until the owner releases retry. */
   markSendingOutboxUnknownOutcome(): number {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'unknown_outcome', error = COALESCE(error, 'interrupted while sending') WHERE status = 'sending'`,
     ).run()
@@ -379,6 +398,7 @@ export class Store {
 
   /** After UNKNOWN-OUTCOME approval: return rows to pending for idempotent drain. */
   requeueUnknownOutcomeOutbox(ticketId: string): number {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'pending', next_attempt_at = NULL WHERE status = 'unknown_outcome' AND ticket_id = ?`,
     ).run(ticketId)
@@ -387,6 +407,7 @@ export class Store {
 
   /** Release only the named uncertain rows after an effect-scoped decision. */
   requeueUnknownOutcomeOutboxIds(ticketId: string, ids: readonly string[]): number {
+    this.assertWritable()
     if (ids.length === 0) return 0
     const placeholders = ids.map(() => '?').join(', ')
     const result = this.db.prepare(
@@ -399,6 +420,7 @@ export class Store {
 
   /** Record an operator's decision that an uncertain delivery already happened. */
   acknowledgeUnknownOutcomeOutboxIds(ticketId: string, ids: readonly string[]): number {
+    this.assertWritable()
     if (ids.length === 0) return 0
     const placeholders = ids.map(() => '?').join(', ')
     const result = this.db.prepare(
@@ -413,10 +435,12 @@ export class Store {
    * @deprecated Uncertain sends use `unknown_outcome`; operator must approve before requeue.
    */
   requeueSending(): number {
+    this.assertWritable()
     return this.markSendingOutboxUnknownOutcome()
   }
 
   addSubscription(threadKey: string, ticketId: string, at: string): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO subscriptions(thread_key, ticket_id, created_at) VALUES(?, ?, ?)
        ON CONFLICT(thread_key, ticket_id) DO NOTHING`,
@@ -431,6 +455,7 @@ export class Store {
   }
 
   putSpill(body: string, refs: readonly ObjectRef[] = []): string {
+    this.assertWritable()
     const id = this.nextId('spill')
     this.db.prepare('INSERT INTO spills(id, body, refs, created_at) VALUES(?, ?, ?, ?)')
       .run(id, body, JSON.stringify(refs), new Date().toISOString())
@@ -456,6 +481,7 @@ export class Store {
 
   /** Upsert a spill by id. Used by long-term memory so a ticket keeps one stable body. */
   replaceSpill(id: string, body: string, refs?: readonly ObjectRef[]): void {
+    this.assertWritable()
     if (refs === undefined) {
       this.db.prepare(
         `INSERT INTO spills(id, body, refs, created_at) VALUES(?, ?, '[]', ?)
@@ -471,6 +497,7 @@ export class Store {
 
   /** Delete a spill body and every grant that pointed at it, in one transaction. */
   deleteSpill(id: string): void {
+    this.assertWritable()
     this.atomic(() => {
       this.db.prepare('DELETE FROM spill_grants WHERE spill_id = ?').run(id)
       this.db.prepare('DELETE FROM spills WHERE id = ?').run(id)
@@ -478,6 +505,7 @@ export class Store {
   }
 
   grantSpill(spillId: string, grantee: string): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO spill_grants(spill_id, grantee) VALUES(?, ?) ON CONFLICT(spill_id, grantee) DO NOTHING',
     ).run(spillId, grantee)
@@ -491,6 +519,7 @@ export class Store {
   }
 
   createJob(input: { sessionId: string; ticketId: string; name: string }): JobRow {
+    this.assertWritable()
     const row: JobRow = {
       id: this.nextId('job'),
       sessionId: input.sessionId,
@@ -507,6 +536,7 @@ export class Store {
   }
 
   completeJob(id: string, status: JobRow['status'] = 'succeeded'): void {
+    this.assertWritable()
     this.db.prepare(
       "UPDATE jobs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'",
     ).run(status, new Date().toISOString(), id)
@@ -544,6 +574,7 @@ export class Store {
   }
 
   upsertSession(row: SessionRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO sessions(id, role, ticket_id, status, heartbeat, created_at)
        VALUES(?, ?, ?, ?, ?, ?)
@@ -570,6 +601,7 @@ export class Store {
   }
 
   appendMessage(sessionId: string, role: string, body: string): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO messages(session_id, role, body, created_at) VALUES(?, ?, ?, ?)',
     ).run(sessionId, role, body, new Date().toISOString())
@@ -587,6 +619,7 @@ export class Store {
   }
 
   addArtifact(ticketId: string, filePath: string): string {
+    this.assertWritable()
     const id = this.nextId('art')
     this.db.prepare(
       'INSERT INTO artifacts(id, ticket_id, path, created_at) VALUES(?, ?, ?, ?)',
