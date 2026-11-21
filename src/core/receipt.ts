@@ -1,7 +1,5 @@
-import type { ExternalOperationRecord } from './external-effects.ts'
-import { EXTERNAL_OP_KIND } from './external-effects.ts'
-import type { ReplyRow, Ticket } from '../shared/types.ts'
-import type { Store } from '../store/sqlite.ts'
+import type { ReplyRow } from '../shared/types.ts'
+import type { ReceiptTicket, Store } from '../store/sqlite.ts'
 
 export type ReceiptStatus = 'success' | 'failed' | 'unknown'
 export type ReceiptDeliveryStatus = ReceiptStatus | 'none'
@@ -62,11 +60,11 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/
  * destinations, raw errors, operation details, and external ids are deliberately
  * omitted: this view is for evidence, not replay or model context.
  */
-export function executionReceipt(store: Store, ticket: Ticket): ExecutionReceipt {
+export function executionReceipt(store: Store, ticket: ReceiptTicket): ExecutionReceipt {
   const ticketId = safeId(ticket.id)
   const replies = store.listReceiptReplies(ticket.id)
   const outbox = store.listReceiptOutbox(ticket.id)
-  const operations = store.listDocsForTicket<ExternalOperationRecord>(EXTERNAL_OP_KIND, ticket.id)
+  const operations = store.listReceiptExternalOperations(ticket.id)
     .filter(record => record.kind !== 'outbox_send')
 
   const deliveryItems: ExecutionReceipt['delivery']['items'] = [
@@ -106,12 +104,14 @@ export function executionReceipt(store: Store, ticket: Ticket): ExecutionReceipt
     channels: [...new Set(ticket.channels.map(channel => safeChannel(channel.source)))].sort(),
     inputs: ticket.inputs.map(input => ({
       id: safeId(input.id),
-      kind: INPUT_KINDS.has(input.kind) ? input.kind : 'other',
+      kind: INPUT_KINDS.has(input.kind) ? input.kind as ExecutionReceipt['inputs'][number]['kind'] : 'other',
       ...(safeTimestamp(input.at) ? { at: safeTimestamp(input.at) } : {}),
     })),
     assignments: ticket.assignments.map(assignment => ({
       id: safeId(assignment.id),
-      state: ASSIGNMENT_STATES.has(assignment.state) ? assignment.state : 'other',
+      state: ASSIGNMENT_STATES.has(assignment.state)
+        ? assignment.state as ExecutionReceipt['assignments'][number]['state']
+        : 'other',
       ...(safeTimestamp(assignment.startedAt) ? { startedAt: safeTimestamp(assignment.startedAt) } : {}),
       ...(safeTimestamp(assignment.endedAt) ? { endedAt: safeTimestamp(assignment.endedAt) } : {}),
       ...(assignment.report ? { reportKind: safeReportKind(assignment.report.kind) } : {}),
@@ -172,7 +172,7 @@ export function formatExecutionReceipt(receipt: ExecutionReceipt): string {
   return lines.join('\n')
 }
 
-function statusForTicket(ticket: Ticket): ReceiptStatus {
+function statusForTicket(ticket: ReceiptTicket): ReceiptStatus {
   const latest = ticket.assignments.at(-1)
   if (latest?.report?.kind === 'failed' || ticket.ended?.outcome === 'failed') return 'failed'
   if (

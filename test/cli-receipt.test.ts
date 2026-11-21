@@ -137,7 +137,45 @@ describe('ds-agent receipt', () => {
       detail: 'private-operation-detail',
     }
     store.putDoc(EXTERNAL_OP_KIND, operation.id, operation)
+
+    // Ordinary writable document reads retain the complete Ticket contract.
+    expect(store.getDoc<Ticket>('ticket', ticket.id)).toMatchObject({
+      title: 'private-ticket-title',
+      brief: 'private-ticket-brief',
+      inputs: [{ text: 'private-input-body', triggerId: 'private-trigger-id' }],
+    })
     store.close()
+
+    // Receipt readers expose only the fields needed to build the receipt.
+    const receiptStore = Store.openReadOnly(home)
+    const receiptTicket = receiptStore.getReceiptTicket(ticket.id)
+    const receiptOperations = receiptStore.listReceiptExternalOperations(ticket.id)
+    receiptStore.close()
+    const serializedLoaders = JSON.stringify({ receiptTicket, receiptOperations })
+    for (const privateValue of [
+      'private-ticket-title', 'private-ticket-brief', 'private-mandate-scope', 'private-thread',
+      'private-destination', 'private-input-body', 'private-origin-trigger', 'private-trigger-id',
+      'private-report-body', 'private-outbound-body', 'private-external-id',
+      'private-idempotency-secret', 'private-operation-key', 'private-operation-detail',
+      'ticket_2',
+    ]) {
+      expect(serializedLoaders).not.toContain(privateValue)
+    }
+    expect(receiptTicket).toMatchObject({
+      id: 'ticket_1',
+      createdAt: '2026-11-19T12:00:00.000Z',
+      ended: { at: '2026-11-19T12:01:00.000Z', outcome: 'ready', by: 'executor' },
+      channels: [{ source: 'private-channel-token' }],
+      inputs: [{ id: 'ticket_1_input_1', kind: 'trigger', at: '2026-11-19T12:00:00.000Z' }],
+      assignments: [{
+        id: 'ticket_1_asg_1', state: 'ended', startedAt: '2026-11-19T12:00:00.000Z',
+        endedAt: '2026-11-19T12:01:00.000Z', report: { kind: 'ready', at: '2026-11-19T12:01:00.000Z' },
+      }],
+    })
+    expect(receiptOperations).toMatchObject([{
+      id: 'extop_1', kind: 'delegate_agent', phase: 'completed', assignmentId: 'ticket_1_asg_1',
+      updatedAt: '2026-11-19T12:01:00.000Z',
+    }])
 
     const result = runReceipt(home, ticket.id)
     expect(result.status, result.stderr).toBe(0)
@@ -165,6 +203,7 @@ describe('ds-agent receipt', () => {
       'receipt-must-not-show-this-api-key', 'ticket_2',
     ]) {
       expect(result.stdout).not.toContain(privateValue)
+      expect(result.stderr).not.toContain(privateValue)
     }
   })
 

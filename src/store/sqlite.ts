@@ -42,6 +42,29 @@ export function supportsReadOnlyDatabaseSync(version = process.versions.node): b
     (major === 22 && minor >= 12)
 }
 
+export interface ReceiptTicket {
+  id: string
+  createdAt?: string
+  ended?: { at?: string; outcome: string; by?: string }
+  channels: Array<{ source: string }>
+  inputs: Array<{ id: string; kind: string; at?: string }>
+  assignments: Array<{
+    id: string
+    state: string
+    startedAt?: string
+    endedAt?: string
+    report?: { kind: string; at?: string }
+  }>
+}
+
+export interface ReceiptExternalOperation {
+  id: string
+  kind: string
+  phase: string
+  assignmentId?: string
+  updatedAt?: string
+}
+
 export class Store {
   readonly path: string
   private readonly db: DatabaseSync
@@ -159,6 +182,76 @@ export class Store {
       'SELECT payload FROM documents WHERE kind = ? AND id = ?',
     ).get(kind, id) as { payload: string } | undefined
     return row ? JSON.parse(row.payload) as T : undefined
+  }
+
+  /** Read only allowlisted Ticket fields used by the execution receipt. */
+  getReceiptTicket(id: string): ReceiptTicket | undefined {
+    const row = this.db.prepare(
+      'SELECT json_valid(payload) AS is_valid FROM documents WHERE kind = ? AND id = ?',
+    ).get('ticket', id) as { is_valid: number } | undefined
+    if (!row) return undefined
+    if (row.is_valid !== 1) throw new SyntaxError('ticket payload is malformed JSON')
+
+    const projected = this.db.prepare(`
+      SELECT json_object(
+        'id', json_extract(payload, '$.id'),
+        'createdAt', json_extract(payload, '$.createdAt'),
+        'ended', CASE WHEN json_type(payload, '$.ended') = 'object' THEN
+          json_object('at', json_extract(payload, '$.ended.at'),
+                      'outcome', json_extract(payload, '$.ended.outcome'),
+                      'by', json_extract(payload, '$.ended.by'))
+          ELSE NULL END,
+        'channels', json(COALESCE((
+          SELECT json_group_array(json_object('source', json_extract(channel.value, '$.source')))
+          FROM json_each(payload, '$.channels') AS channel
+        ), '[]')),
+        'inputs', json(COALESCE((
+          SELECT json_group_array(json_object(
+            'id', json_extract(input.value, '$.id'),
+            'kind', json_extract(input.value, '$.kind'),
+            'at', json_extract(input.value, '$.at')))
+          FROM json_each(payload, '$.inputs') AS input
+        ), '[]')),
+        'assignments', json(COALESCE((
+          SELECT json_group_array(json_object(
+            'id', json_extract(assignment.value, '$.id'),
+            'state', json_extract(assignment.value, '$.state'),
+            'startedAt', json_extract(assignment.value, '$.startedAt'),
+            'endedAt', json_extract(assignment.value, '$.endedAt'),
+            'report', CASE WHEN json_type(assignment.value, '$.report') = 'object' THEN
+              json_object('kind', json_extract(assignment.value, '$.report.kind'),
+                          'at', json_extract(assignment.value, '$.report.at'))
+              ELSE NULL END))
+          FROM json_each(payload, '$.assignments') AS assignment
+        ), '[]'))
+      ) AS payload
+      FROM documents WHERE kind = ? AND id = ?
+    `).get('ticket', id) as { payload: string }
+    return JSON.parse(projected.payload) as ReceiptTicket
+  }
+
+  /** Read external-operation receipt metadata without loading private details. */
+  listReceiptExternalOperations(ticketId: string): ReceiptExternalOperation[] {
+    const rows = this.db.prepare(`
+      SELECT id,
+             json_extract(payload, '$.kind') AS kind,
+             json_extract(payload, '$.phase') AS phase,
+             json_extract(payload, '$.assignmentId') AS assignment_id,
+             json_extract(payload, '$.updatedAt') AS updated_at
+      FROM documents
+      WHERE kind = ? AND CASE WHEN json_valid(payload)
+        THEN json_extract(payload, '$.ticketId') END = ?
+      ORDER BY rowid
+    `).all('external_op', ticketId) as {
+      id: string; kind: string; phase: string; assignment_id: string | null; updated_at: string | null
+    }[]
+    return rows.map(row => ({
+      id: row.id,
+      kind: row.kind,
+      phase: row.phase,
+      ...(row.assignment_id !== null ? { assignmentId: row.assignment_id } : {}),
+      ...(row.updated_at !== null ? { updatedAt: row.updated_at } : {}),
+    }))
   }
 
   /** Return at most two matching keys to resolve an exact or unique prefix. */

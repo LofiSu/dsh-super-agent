@@ -25,7 +25,7 @@ import type { LongTermMemoryEntry } from '../memory/long-term.ts'
 import { Runtime } from '../runtime.ts'
 import { visibleTickets } from '../speculate/index.ts'
 import type { JobRow, Role, SessionRow, Ticket } from '../shared/types.ts'
-import { Store } from '../store/sqlite.ts'
+import { Store, type ReceiptTicket } from '../store/sqlite.ts'
 import { healthProbe } from '../watchdog/health.ts'
 import { startEmbeddedGateway } from '../gateway/embedded.ts'
 import { defaultHome, runDemo } from './demo.ts'
@@ -447,9 +447,9 @@ async function serve(home: string): Promise<void> {
   await new Promise<void>(() => undefined)
 }
 
-function getReceiptTicket(store: Store, id: string): Ticket | undefined {
+function getReceiptTicket(store: Store, id: string): ReceiptTicket | undefined {
   try {
-    return store.getDoc<Ticket>('ticket', id)
+    return store.getReceiptTicket(id)
   } catch (error) {
     if (error instanceof SyntaxError) throw new Error('ticket payload is malformed JSON')
     throw error
