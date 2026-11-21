@@ -447,6 +447,15 @@ async function serve(home: string): Promise<void> {
   await new Promise<void>(() => undefined)
 }
 
+function getReceiptTicket(store: Store, id: string): Ticket | undefined {
+  try {
+    return store.getDoc<Ticket>('ticket', id)
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error('ticket payload is malformed JSON')
+    throw error
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, sub] = process.argv.slice(2)
   const home = defaultHome()
@@ -495,10 +504,10 @@ async function main(): Promise<void> {
     const ticketRef = refs[0]!
     const store = Store.openReadOnly(home)
     try {
-      const exact = store.getDoc<Ticket>('ticket', ticketRef)
+      const exact = getReceiptTicket(store, ticketRef)
       const matches = exact ? [] : store.listDocIdsByPrefix('ticket', ticketRef)
       if (!exact && matches.length > 1) throw new Error('ambiguous ticket id prefix')
-      const ticket = exact ?? (matches[0] ? store.getDoc<Ticket>('ticket', matches[0]) : undefined)
+      const ticket = exact ?? (matches[0] ? getReceiptTicket(store, matches[0]) : undefined)
       if (!ticket) throw new Error('unknown ticket id')
       const receipt = executionReceipt(store, ticket)
       if (process.argv.includes('--json')) {

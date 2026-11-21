@@ -223,6 +223,20 @@ describe('store schema migrations', () => {
     expect(tableNames(home)).toContain('schema_migrations')
   })
 
+  it('migrates an existing but empty schema ledger from version zero', () => {
+    const home = tempHome()
+    const db = new DatabaseSync(dbPath(home))
+    db.exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`)
+    db.close()
+
+    const store = new Store(home)
+    expect(store.schemaVersion).toBe(LATEST_SCHEMA_VERSION)
+    store.close()
+    expect(migrationRows(home).map(row => row.version)).toEqual(
+      Array.from({ length: LATEST_SCHEMA_VERSION }, (_, index) => index + 1),
+    )
+  })
+
   it('completes a partial legacy database without rewriting its tables or data', () => {
     const home = tempHome()
     const db = new DatabaseSync(dbPath(home))

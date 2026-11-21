@@ -248,6 +248,54 @@ describe('ds-agent receipt', () => {
     expect(malformed.stderr).not.toContain('unknown ticket id')
   })
 
+  it('does not expose malformed Ticket JSON for exact ids or unique prefixes', () => {
+    for (const [id, ref] of [['ticket_exact_bad', 'ticket_exact_bad'], ['ticket_prefix_bad', 'ticket_prefix']] as const) {
+      const home = tempHome()
+      const store = new Store(home)
+      store.close()
+      const sentinel = 'receipt-json-private-sentinel-7f31'
+      const raw = new DatabaseSync(path.join(home, 'ds-agent.db'))
+      raw.prepare('INSERT INTO documents(kind, id, payload) VALUES(?, ?, ?)')
+        .run('ticket', id, '{"body":"' + sentinel + '", broken')
+      raw.close()
+
+      const result = runReceipt(home, ref)
+      expect(result.status).not.toBe(0)
+      expect(result.stdout).toBe('')
+      expect(result.stderr).toContain('ticket payload is malformed JSON')
+      expect(result.stderr).not.toContain(sentinel)
+      expect(result.stdout).not.toContain(sentinel)
+    }
+  })
+
+  it('rejects a mixed valid and invalid schema ledger without mutating the database', () => {
+    const home = tempHome()
+    const store = new Store(home)
+    store.close()
+    const db = new DatabaseSync(path.join(home, 'ds-agent.db'))
+    db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
+      .run(0, '2026-11-19T12:00:00.000Z')
+    db.close()
+
+    const dbPath = path.join(home, 'ds-agent.db')
+    const databaseBefore = fs.readFileSync(dbPath)
+    const receipt = runReceipt(home, 'ticket_1')
+    expect(receipt.status).not.toBe(0)
+    expect(receipt.stdout).toBe('')
+    expect(receipt.stderr).toContain('database schema ledger contains an invalid version')
+    expect(fs.readFileSync(dbPath)).toEqual(databaseBefore)
+
+    let storeError: unknown
+    try {
+      new Store(home)
+    } catch (error) {
+      storeError = error
+    }
+    expect(storeError).toBeInstanceOf(Error)
+    expect((storeError as Error).message).toBe('database schema ledger contains an invalid version')
+    expect(fs.readFileSync(dbPath)).toEqual(databaseBefore)
+  })
+
   it('does not create missing state or mutate the durable database while reading a receipt', () => {
     const parent = tempHome()
     const missingHome = path.join(parent, 'not-created')

@@ -172,6 +172,19 @@ function tableExists(db: DatabaseSync, name: string): boolean {
   return row !== undefined
 }
 
+function readSchemaLedgerVersion(db: DatabaseSync): number {
+  if (!tableExists(db, 'schema_migrations')) return 0
+  const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: unknown }[]
+  let current = 0
+  for (const row of rows) {
+    if (typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 1) {
+      throw new UserError('database schema ledger contains an invalid version')
+    }
+    current = Math.max(current, row.version)
+  }
+  return current
+}
+
 /**
  * Bring `db` to `latest` inside one serialized transaction.
  *
@@ -213,10 +226,7 @@ export function migrate(
   // before taking a write lock so a newer database is untouched.
   db.exec('PRAGMA busy_timeout = 5000')
   if (tableExists(db, 'schema_migrations')) {
-    const row = db.prepare(
-      'SELECT MAX(version) AS version FROM schema_migrations',
-    ).get() as { version: number | null }
-    const known = row.version == null ? 0 : Number(row.version)
+    const known = readSchemaLedgerVersion(db)
     if (known > latest) throw newerVersionError(known, latest)
     if (known >= latest) return known
   }
@@ -226,10 +236,7 @@ export function migrate(
     // Re-read inside the write transaction: another opener may have applied
     // migrations while this connection waited for the lock.
     db.exec(SCHEMA_MIGRATIONS_DDL)
-    const row = db.prepare(
-      'SELECT MAX(version) AS version FROM schema_migrations',
-    ).get() as { version: number | null }
-    const current = row.version == null ? 0 : Number(row.version)
+    const current = readSchemaLedgerVersion(db)
     if (current > latest) throw newerVersionError(current, latest)
 
     const pending = ordered.filter(migration => migration.version > current)

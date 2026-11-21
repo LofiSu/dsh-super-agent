@@ -13,12 +13,18 @@ function readSchemaVersion(db: DatabaseSync): number {
   ).get()
   if (!ledger) return 0
 
-  const row = db.prepare(
-    'SELECT MAX(version) AS version FROM schema_migrations',
-  ).get() as { version: number | null }
-  const version = row.version == null ? Number.NaN : Number(row.version)
-  if (!Number.isSafeInteger(version) || version < 1) {
+  const rows = db.prepare(
+    'SELECT version FROM schema_migrations',
+  ).all() as { version: unknown }[]
+  if (rows.length === 0) {
     throw new UserError('database schema ledger contains an invalid version')
+  }
+  let version = 0
+  for (const row of rows) {
+    if (typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 1) {
+      throw new UserError('database schema ledger contains an invalid version')
+    }
+    version = Math.max(version, row.version)
   }
   if (version > LATEST_SCHEMA_VERSION) {
     throw new UserError(
