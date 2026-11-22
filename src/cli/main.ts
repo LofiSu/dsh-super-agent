@@ -64,6 +64,10 @@ function meshCapacity(): number {
   return Number.isSafeInteger(n) && n > 0 ? n : 4
 }
 
+function openInspectStore(home: string): Store {
+  return Store.openReadOnly(home)
+}
+
 function resolveTicket(store: Store, raw: string | undefined): Ticket {
   const all = store.listDocs<Ticket>('ticket')
   const live = all.filter(ticket => !ticket.ended)
@@ -480,7 +484,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'tasks') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const tickets = visibleTickets(store.listDocs<Ticket>('ticket'))
     if (tickets.length === 0) console.log('no tickets')
     for (const ticket of tickets) console.log(`${ticket.id}\t${ticketStage(ticket)}\t${ticket.title}`)
@@ -488,7 +492,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'panel' || cmd === 'execution') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(formatExecution(executionView(store, home)))
     } finally {
@@ -541,7 +545,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'health') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(JSON.stringify(healthProbe(store, home)))
     } finally {
@@ -570,7 +574,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'memory' || cmd === 'a2a') {
     const limit = Math.max(1, Number(option('limit') ?? 10) || 10)
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const instance = process.env.DS_AGENT_INSTANCE_ID ?? 'local'
       if (cmd === 'memory') {
@@ -606,7 +610,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'status') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const sessions = store.listSessions()
     const jobs = store.listJobs()
     console.log(`db ${store.path}`)
@@ -620,7 +624,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'team') {
     const ref = bare(3)[0]
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const teams = store.listDocs<TeamRecord>('team')
       if (!ref) {
@@ -648,7 +652,7 @@ async function main(): Promise<void> {
   if (cmd === 'teams') {
     const ticket = option('ticket')
     const session = option('session')
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       let teams = store.listDocs<TeamRecord>('team')
       if (ticket) teams = teams.filter(team => team.ticketId === ticket)
