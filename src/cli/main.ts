@@ -171,8 +171,8 @@ function help(): void {
   pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
   pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
   pnpm ds-agent ui [--host 127.0.0.1] [--port <n>] [--token <token>]
-                            # read-only loopback dashboard over persisted state; requires
-                            # DS_AGENT_UI_TOKEN or --token (at least 16 characters)
+                            # read-only loopback dashboard over existing state; does not
+                            # create state; requires DS_AGENT_UI_TOKEN or --token (16+ chars)
   pnpm ds-agent backup --out <file.db>  # WAL-safe snapshot of the SQLite store
   pnpm ds-agent restore <file.db> [--force]
                             # replace the store from a snapshot; --force is required
