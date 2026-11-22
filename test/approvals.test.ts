@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -472,11 +473,21 @@ describe('approval CLI', () => {
     return { status: result.status, stdout: result.stdout, stderr: result.stderr }
   }
 
+  function databaseHash(home: string): string {
+    return createHash('sha256').update(fs.readFileSync(path.join(home, 'ds-agent.db'))).digest('hex')
+  }
+
   function seed(home: string): string {
     const store = new Store(home)
     const ticket = fabricate({
       collab: {
-        guidance: [],
+        paused: { at: '2026-01-01T00:00:30.000Z', by: 'human', reason: 'reviewing' },
+        guidance: [{
+          id: 'guide_1',
+          at: '2026-01-01T00:00:45.000Z',
+          actor: 'human',
+          text: 'hold for review',
+        }],
         resumes: [],
         approvals: [{
           id: 'appr_1',
@@ -496,11 +507,20 @@ describe('approval CLI', () => {
     const home = tempHome()
     dirs.push(home)
     seed(home)
+    const before = databaseHash(home)
     const result = runCli(home, ['approvals'])
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('ticket_1')
     expect(result.stdout).toContain('appr_1')
     expect(result.stdout).toContain('publish the release notes')
+    expect(databaseHash(home)).toBe(before)
+
+    const collaboration = runCli(home, ['collab', 'ticket_1'])
+    expect(collaboration.status, collaboration.stderr).toBe(0)
+    expect(collaboration.stdout).toContain('paused: 2026-01-01T00:00:30.000Z by human — reviewing')
+    expect(collaboration.stdout).toContain('pending  appr_1  publish the release notes')
+    expect(collaboration.stdout).toContain('guide_1 [pending] hold for review')
+    expect(databaseHash(home)).toBe(before)
   })
 
   it('skips pending approvals on an ended ticket', () => {
@@ -540,9 +560,11 @@ describe('approval CLI', () => {
       store.close()
     }
 
+    const beforeListing = databaseHash(home)
     const listed = runCli(home, ['recovery-effects', 'ticket_ended'])
     expect(listed.status, listed.stderr).toBe(0)
     expect(listed.stdout).toContain('extop_ended')
+    expect(databaseHash(home)).toBe(beforeListing)
 
     const acknowledged = runCli(home, ['recovery-effects', 'ticket_ended', 'acknowledge', 'extop_ended'])
     expect(acknowledged.status, acknowledged.stderr).toBe(0)

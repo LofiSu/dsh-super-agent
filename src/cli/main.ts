@@ -1,7 +1,10 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { githubTrigger } from '../channels/github.ts'
 import { cliTrigger } from '../channels/cli.ts'
 import { imTrigger } from '../channels/im.ts'
 import { Engine } from '../core/engine.ts'
+import { ensureCollaboration } from '../core/collab.ts'
 import {
   resolveUnknownOutcomeEffects,
   retryableUnknownEffectIds,
@@ -665,7 +668,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'approvals') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const pending: {
       ticketId: string
       title: string
@@ -714,7 +717,11 @@ async function main(): Promise<void> {
     if (!ticketRef) {
       throw new Error('usage: ds-agent recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]')
     }
-    const store = new Store(home)
+    const resolving = resolution === 'retry' || resolution === 'acknowledge'
+    if (resolving && !fs.existsSync(path.join(home, 'ds-agent.db'))) {
+      throw new Error('local state database does not exist')
+    }
+    const store = resolving ? new Store(home) : openInspectStore(home)
     try {
       const ticket = resolveTicket(store, ticketRef)
       if (!ticket.ended) {
@@ -848,9 +855,10 @@ async function main(): Promise<void> {
   }
   if (cmd === 'collab') {
     const ticketRef = bare(3)[0]
-    withEngine((engine, store) => {
+    const store = openInspectStore(home)
+    try {
       const ticket = resolveTicket(store, ticketRef)
-      const { collaboration } = engine.collaboration(ticket.id)
+      const collaboration = ensureCollaboration(ticket)
       console.log(`ticket ${ticket.id} [${ticketStage(ticket)}] ${ticket.title}`)
       const paused = collaboration.paused
       console.log(
@@ -887,7 +895,9 @@ async function main(): Promise<void> {
           console.log(`  ${item.at} by ${item.by}${item.reason ? ` — ${item.reason}` : ''}`)
         }
       }
-    })
+    } finally {
+      store.close()
+    }
     return
   }
   if (cmd === 'chat') {

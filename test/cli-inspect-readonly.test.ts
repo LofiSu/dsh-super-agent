@@ -18,10 +18,10 @@ afterEach(() => {
   for (const dir of homes.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-function run(name: string, state: string) {
+function run(name: string, state: string, args: string[] = []) {
   return spawnSync(
     process.execPath,
-    ['--import', 'tsx', 'src/cli/main.ts', name],
+    ['--import', 'tsx', 'src/cli/main.ts', name, ...args],
     {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -51,6 +51,21 @@ describe('read-only inspect commands', () => {
       expect(databaseFiles(state)).toEqual([])
     },
   )
+
+  it.each([
+    ['approvals', []],
+    ['collab', ['latest']],
+    ['recovery-effects', ['latest']],
+    ['recovery-effects', ['latest', 'retry', 'effect_missing']],
+    ['recovery-effects', ['latest', 'acknowledge', 'effect_missing']],
+  ])('%s fails closed without creating a database on an empty home', (command, args) => {
+    const state = home()
+    const result = run(command, state, args)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('local state database does not exist')
+    expect(databaseFiles(state)).toEqual([])
+  })
 
   it('init still creates the database', () => {
     const state = home()
