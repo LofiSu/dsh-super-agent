@@ -71,6 +71,12 @@ function openInspectStore(home: string): Store {
   return Store.openReadOnly(home)
 }
 
+function assertDatabaseExists(home: string): void {
+  if (!fs.existsSync(path.join(home, 'ds-agent.db'))) {
+    throw new Error('local state database does not exist')
+  }
+}
+
 function resolveTicket(store: Store, raw: string | undefined): Ticket {
   const all = store.listDocs<Ticket>('ticket')
   const live = all.filter(ticket => !ticket.ended)
@@ -102,6 +108,7 @@ function withEngine<T>(
   opts: { verbose?: boolean } = {},
 ): T {
   const home = defaultHome()
+  assertDatabaseExists(home)
   const store = new Store(home)
   const metrics = new Metrics(home)
   const host: Host = {
@@ -530,7 +537,7 @@ async function main(): Promise<void> {
   if (cmd === 'retry') {
     const ticketRef = bare(3)[0]
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -771,7 +778,7 @@ async function main(): Promise<void> {
     }
     const note = option('note')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -832,7 +839,7 @@ async function main(): Promise<void> {
     const ticketRef = bare(3, ['reason'])[0]
     const reason = option('reason')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {

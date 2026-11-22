@@ -67,6 +67,22 @@ describe('read-only inspect commands', () => {
     expect(databaseFiles(state)).toEqual([])
   })
 
+  it.each([
+    ['retry', ['latest']],
+    ['approve', ['latest', 'appr-1']],
+    ['deny', ['latest', 'appr-1']],
+    ['pause', ['latest']],
+    ['intervene', ['latest', 'hello']],
+    ['resume', ['latest']],
+  ])('%s fails closed without creating a database on an empty home', (command, args) => {
+    const state = home()
+    const result = run(command, state, args)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('local state database does not exist')
+    expect(databaseFiles(state)).toEqual([])
+  })
+
   it('init still creates the database', () => {
     const state = home()
     const result = run('init', state)
