@@ -52,6 +52,23 @@ export {
   type LocalAgentSpec,
   type LocalAgentRunResult,
 } from './env/local-agents.ts'
+export { APPROVAL_ANSWERS, formatApprovalCard, type ApprovalAnswer } from './core/approval-card.ts'
+export { approvalActionId, type ApprovalDecision } from './core/collab.ts'
+export {
+  CARD_FIELDS,
+  FillVault,
+  PASSWORD_FIELDS,
+  ProcessFillTarget,
+  fillAction,
+  fillTargetFromEnv,
+  fillVaultPath,
+  loadFillVault,
+  type FillEntrySummary,
+  type FillField,
+  type FillKind,
+  type FillReceipt,
+  type FillTarget,
+} from './env/fill-vault.ts'
 export {
   BROWSER_ERRAND_ACTIONS,
   BROWSER_PROTOCOL,

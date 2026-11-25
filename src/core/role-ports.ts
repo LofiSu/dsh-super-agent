@@ -57,7 +57,7 @@ export function bindRolePorts(engine: Engine): RolePorts {
         ...(input.publish ? { publish: input.publish } : {}),
         requestedBy: '',
       })
-      return { approvalId: approval.id, status: 'pending' as const }
+      return { approvalId: approval.id, actionId: approval.actionId, status: 'pending' as const }
     },
   }
   const watchdogMethods: Omit<WatchdogPorts, typeof rolePortBrand> = {

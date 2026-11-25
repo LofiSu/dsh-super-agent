@@ -225,6 +225,11 @@ export interface ResumeRecord {
 /**
  * One action a Worker paused to ask the owner about. The owner decides through
  * the CLI; the model can request, never decide.
+ *
+ * `actionId` is derived from the exact `action` text and is the stable handle
+ * for the card the owner sees. A decision recomputes it, so rewriting the
+ * action after the request makes the old card undecidable; the Worker must ask
+ * again. The id is not a capability and cannot be minted by chat text.
  */
 export interface PublishApprovalBinding {
   repo: string
@@ -240,6 +245,8 @@ export interface ApprovalRequest {
   at: string
   /** The exact action the Worker will perform if approved. One line. */
   action: string
+  /** Deterministic id over the exact action text shown to the owner. */
+  actionId: string
   /** Structured, immutable publish intent when this approval covers a PR publish. */
   publish?: PublishApprovalBinding
   reason?: string
@@ -254,10 +261,16 @@ export interface ApprovalRequest {
     source: 'crash-boundary'
     effectIds: string[]
   }
-  status: 'pending' | 'approved' | 'denied'
+  status: 'pending' | 'approved' | 'denied' | 'dismissed'
   decidedAt?: string
   decidedBy?: string
   note?: string
+  /** Set before the external fill call; this approval is never automatically reusable. */
+  fillState?: 'in_flight' | 'unknown' | 'completed'
+  /** Timestamp for the durable fill claim, including interrupted/uncertain attempts. */
+  fillClaimedAt?: string
+  /** Set after a vault fill completes; retained for legacy approval displays. */
+  usedAt?: string
 }
 
 /**

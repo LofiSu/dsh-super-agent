@@ -45,6 +45,28 @@ export {
 } from './sanitize.ts'
 export { MemoryVault, FileVault, type Vault } from './vault.ts'
 export {
+  CARD_FIELDS,
+  FillVault,
+  MAX_FILL_VALUE_CHARS,
+  PASSWORD_FIELDS,
+  ProcessFillTarget,
+  VAULT_FILE,
+  VAULT_FILE_ENV,
+  fillAction,
+  fillTargetFromEnv,
+  fillVaultPath,
+  loadFillVault,
+  sanitizeFillLabel,
+  type FillEntrySummary,
+  type FillField,
+  type FillKind,
+  type FillReceipt,
+  type FillTarget,
+  type FillVaultLoad,
+  type FillVaultOptions,
+  type ProcessFillTargetOptions,
+} from './fill-vault.ts'
+export {
   assertRequiredSandboxDimensions,
   enforceRequiredSandbox,
   enforceRequiredSandboxOnHost,

@@ -104,6 +104,8 @@ export interface WorkerPorts {
     publish?: PublishApprovalBinding
   }): {
     approvalId: string
+    /** Deterministic id over the exact action text on the card. */
+    actionId: string
     status: 'pending'
   }
 }
