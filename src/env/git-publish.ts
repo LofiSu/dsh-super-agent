@@ -21,6 +21,7 @@ export interface GitRun {
 
 const GIT_CONFIG_ARGS = [
   '-c', 'core.hooksPath=/dev/null',
+  '-c', 'core.fsmonitor=false',
   '-c', 'uploadpack.packObjectsHook=',
   '-c', 'credential.helper=',
   '-c', 'credential.helper=!gh auth git-credential',

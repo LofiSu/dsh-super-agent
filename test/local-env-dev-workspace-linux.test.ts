@@ -160,7 +160,8 @@ describe.skipIf(!HAS_BWRAP)('LocalEnv dev workspace (Linux bwrap)', () => {
 
   it('credential hide: bash cannot read dummy secret file', async () => {
     const root = tempHome()
-    const secretFile = path.join(root, 'fake-netrc-file')
+    const secretDir = tempHome()
+    const secretFile = path.join(secretDir, 'fake-netrc-file')
     fs.writeFileSync(secretFile, 'dummy-not-a-real-token\n')
     const env = new LocalEnv(root, {
       timeoutMs: 30_000,
@@ -168,8 +169,10 @@ describe.skipIf(!HAS_BWRAP)('LocalEnv dev workspace (Linux bwrap)', () => {
       credentialHidePaths: [secretFile],
     })
     const result = await env.bash('hide-file', `cat ${JSON.stringify(secretFile)}; echo exit:$?`)
-    expect(result.stdout).toMatch(/exit:(1|[2-9]\d*)/)
+    // The hidden path is overlaid with /dev/null, so `cat` succeeds with empty output.
+    expect(result.stdout).toMatch(/exit:0/)
     expect(result.stdout).not.toContain('dummy-not-a-real-token')
+    fs.rmSync(secretDir, { recursive: true, force: true })
   })
 
   it('credential hide: bash cannot read dummy secret path', async () => {

@@ -27,6 +27,7 @@ import { githubRepoFromEnv } from './channels/github-source.ts'
 import { parseBashAllowNetwork } from './env/bash-allow-network.ts'
 import { parseBashTimeoutMs } from './env/bash-timeout.ts'
 import { FeaturePrPublisher } from './env/git-publish.ts'
+import { isGitRepositorySource } from './env/git-workspace.ts'
 import { LocalEnv } from './env/local-env.ts'
 import {
   BrowserErrands,
@@ -569,7 +570,12 @@ export class Runtime {
     }
     const store = new Store(opts.home)
     const metrics = new Metrics(opts.home)
-    const workspaceSource = baseEnv.DS_AGENT_WORKSPACE_SOURCE_REPO?.trim() || process.cwd()
+    const configuredSource = baseEnv.DS_AGENT_WORKSPACE_SOURCE_REPO?.trim()
+    // An explicitly configured source is kept verbatim so a bad value remains
+    // an actionable clone error. The implicit cwd default is only usable when
+    // it is actually a git repository; otherwise leave the workspace empty.
+    const workspaceSource = configuredSource
+      || (isGitRepositorySource(process.cwd()) ? process.cwd() : undefined)
     const env = new LocalEnv(path.join(opts.home, 'workspaces'), {
       env: baseEnv,
       timeoutMs: parseBashTimeoutMs(baseEnv),

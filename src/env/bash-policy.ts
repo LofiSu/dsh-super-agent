@@ -18,22 +18,69 @@ export function devShellCommandRejection(
 ): string | null {
   const trimmed = command.trim()
   if (!trimmed) return null
-  const headBranch = options?.headBranch?.trim() || undefined
-  const onProtectedHead = headBranch ? protectedRefName(headBranch) : false
+  const initialHead = options?.headBranch?.trim() || undefined
+  const statements = splitShellStatements(trimmed)
+  // Branch-dependent checks use the branch active at each statement: a prior
+  // `git switch/checkout` changes HEAD for everything that follows.
+  const headStates = branchStatesForStatements(statements, initialHead)
 
-  if (rejectsGhPrMerge(trimmed)) {
-    return 'dev shell policy: gh pr merge is not allowed (use a PR and owner/orchestrator merge)'
-  }
-  if (rejectsGitPushToProtected(trimmed, onProtectedHead)) {
-    return 'dev shell policy: git push to main/master is not allowed'
-  }
-  if (onProtectedHead && rejectsMergeRebaseStatements(trimmed)) {
-    return 'dev shell policy: merge or rebase on main/master is not allowed'
-  }
-  if (rejectsCheckoutThenMergeIntoProtected(trimmed)) {
-    return 'dev shell policy: merge or rebase onto main/master is not allowed'
+  for (let i = 0; i < statements.length; i += 1) {
+    const stmt = statements[i]
+    const state = headStates[i]
+    const onProtectedHead = state ? protectedRefName(state) : false
+    if (rejectsGhPrMerge(stmt)) {
+      return 'dev shell policy: gh pr merge is not allowed (use a PR and owner/orchestrator merge)'
+    }
+    if (rejectsGitPushToProtected(stmt, onProtectedHead)) {
+      return 'dev shell policy: git push to main/master is not allowed'
+    }
+    if (onProtectedHead && rejectsMergeRebaseStatement(stmt)) {
+      return 'dev shell policy: merge or rebase on main/master is not allowed'
+    }
   }
   return null
+}
+
+/** Track explicit branch switches, so later statements see the updated HEAD. */
+function branchStatesForStatements(statements: string[], initial: string | undefined): (string | undefined)[] {
+  let current = initial
+  return statements.map(stmt => {
+    const switched = switchedBranch(stmt)
+    if (switched !== undefined) current = switched
+    return current
+  })
+}
+
+/**
+ * Return the branch a switch/checkout selects, or undefined when it cannot be
+ * determined. We only ever *advance* the tracked head on a confident branch
+ * switch; an ambiguous checkout leaves the prior (more conservative) state in
+ * place so a file checkout can never make a protected HEAD look unprotected.
+ */
+function switchedBranch(statement: string): string | undefined {
+  const tokens = tokenizeSimple(statement)
+  const switchIdx = gitSubcommandIndex(tokens, 'switch')
+  const checkoutIdx = gitSubcommandIndex(tokens, 'checkout')
+  if (switchIdx >= 0) {
+    const args = tokens.slice(switchIdx + 1)
+    // `git switch --detach` leaves HEAD on no branch; keep the prior state.
+    if (args.includes('--detach')) return undefined
+    // `git switch` never checks out paths, so the first operand is a branch.
+    return args.find(t => !t.startsWith('-'))
+  }
+  if (checkoutIdx >= 0) {
+    const args = tokens.slice(checkoutIdx + 1)
+    // `git checkout -- <path>` checks out files, not a branch.
+    if (args.includes('--')) return undefined
+    const createsBranch = args.some(t => /^-[bBC]$/.test(t))
+    const target = args.find(t => !t.startsWith('-'))
+    if (!target) return undefined
+    if (createsBranch) return target
+    // Only branch-like names count; a plain filename (`git checkout README.md`)
+    // must not be mistaken for a switch away from a protected HEAD.
+    if (protectedRefName(target) || target.includes('/') || target.startsWith('refs/')) return target
+  }
+  return undefined
 }
 
 export function assertDevShellCommandAllowed(
@@ -76,42 +123,109 @@ export function splitShellStatements(command: string): string[] {
   return parts.map(p => p.trim()).filter(Boolean)
 }
 
+/**
+ * Detect a subcommand after git global options (`-C .`, `-c k=v`, `--no-pager`,
+ * etc.). The policy is defense in depth behind the OS sandbox; we deliberately
+ * fail closed when the shape is ambiguous.
+ */
+function gitSubcommandIndex(tokens: string[], sub: string): number {
+  const gitIdx = tokens.findIndex(t => t === 'git')
+  if (gitIdx < 0) return -1
+  let i = gitIdx + 1
+  while (i < tokens.length) {
+    const t = tokens[i]
+    if (t === sub) return i
+    if (!isGitGlobalOption(t)) return -1
+    // `-C`/`-c`/`--git-dir`/`--work-tree`/`--namespace`/`--exec-path` take a separate value.
+    if (/^-(C|c)$/.test(t) || GIT_GLOBAL_VALUE_OPTIONS.has(t)) i += 2
+    else i += 1
+  }
+  return -1
+}
+
+const GIT_GLOBAL_VALUE_OPTIONS = new Set([
+  '--git-dir', '--work-tree', '--namespace', '--exec-path', '--super-prefix', '--config-env',
+])
+
+function isGitGlobalOption(token: string): boolean {
+  if (/^-[A-Za-z]$/.test(token)) return true
+  if (/^--[\w-]+(?:=\S+)?$/.test(token)) return true
+  return false
+}
+
+function hasGitSubcommand(statement: string, sub: string): boolean {
+  return gitSubcommandIndex(tokenizeSimple(statement), sub) >= 0
+}
+
 function rejectsGhPrMerge(command: string): boolean {
-  return splitShellStatements(command).some(stmt => /\bgh\s+pr\s+merge\b/.test(stmt))
+  // gh global options (`-R owner/repo`) may precede the `pr merge` subcommand.
+  return /\bgh(?:\s+--[\w-]+(?:=\S+)?|\s+-[A-Za-z](?:\s+\S+)?)*\s+pr\s+merge\b/.test(command)
 }
 
 function rejectsGitPushToProtected(command: string, onProtectedHead: boolean): boolean {
-  return splitShellStatements(command).some(stmt => {
-    if (!/\bgit\s+push\b/.test(stmt)) return false
-    if (onProtectedHead && gitPushHasNoNonProtectedDestRefspec(stmt)) return true
-    return gitPushStatementTargetsProtected(stmt)
-  })
+  const stmt = command
+  if (!hasGitSubcommand(stmt, 'push')) return false
+  if (onProtectedHead && gitPushHasNoNonProtectedDestRefspec(stmt)) return true
+  return gitPushStatementTargetsProtected(stmt)
 }
 
 /** True when push has no explicit refspec, or only `git push [remote]` (upstream/default push). */
 function gitPushHasNoNonProtectedDestRefspec(statement: string): boolean {
-  const tokens = tokenizeSimple(statement)
-  const pushIdx = tokens.findIndex((t, i) => t === 'push' && i > 0 && tokens[i - 1] === 'git')
-  if (pushIdx < 0) return false
-
-  const afterPush = tokens.slice(pushIdx + 1).filter(t => !t.startsWith('-'))
-  const refspecs: string[] = []
-  let skippedRemote = false
-  for (const arg of afterPush) {
-    if (!skippedRemote && looksLikeRemoteName(arg)) {
-      skippedRemote = true
-      continue
-    }
-    refspecs.push(arg)
-  }
+  const { refspecs } = parsePushArgs(statement)
   if (refspecs.length === 0) return true
-  return !refspecs.some(refspec => !refspecTargetsProtectedBranch(refspec))
+  return !refspecs.some(refspec => !isDefaultHeadRefspec(refspec) && !refspecTargetsProtectedBranch(refspec))
 }
 
-function rejectsMergeRebaseStatements(command: string): boolean {
-  return splitShellStatements(command).some(
-    stmt => /\bgit\s+merge\b/.test(stmt) || /\bgit\s+rebase\b/.test(stmt),
-  )
+function isDefaultHeadRefspec(refspec: string): boolean {
+  return /^\+?(?:HEAD|@)$/.test(refspec)
+}
+
+function rejectsMergeRebaseStatement(statement: string): boolean {
+  return hasGitSubcommand(statement, 'merge') || hasGitSubcommand(statement, 'rebase')
+}
+
+interface PushArgs {
+  refspecs: string[]
+  pushModes: Set<string>
+}
+
+/**
+ * Parse push arguments by position: options first, then the optional repository
+ * (a remote name, local path, or URL), then refspecs. Modes such as `--all` or
+ * `--mirror` include protected branches and are reported so callers reject them.
+ */
+function parsePushArgs(statement: string): PushArgs {
+  const tokens = tokenizeSimple(statement)
+  const pushIdx = gitSubcommandIndex(tokens, 'push')
+  const pushModes = new Set<string>()
+  if (pushIdx < 0) return { refspecs: [], pushModes }
+
+  const afterPush = tokens.slice(pushIdx + 1)
+  const operands: string[] = []
+  for (const arg of afterPush) {
+    if (arg.startsWith('-')) {
+      if (/^--(all|mirror)$/.test(arg)) pushModes.add(arg)
+      continue
+    }
+    operands.push(arg)
+  }
+
+  if (pushModes.size > 0) return { refspecs: [], pushModes }
+  // Consume the repository argument by position when present. A bare HEAD/@ is
+  // a default-push refspec, not a remote, so it must not be mistaken for one.
+  let refspecs = operands
+  if (operands.length > 0 && !isDefaultHeadRefspec(operands[0]) && isRepositoryArg(operands[0])) {
+    refspecs = operands.slice(1)
+  }
+  return { refspecs, pushModes }
+}
+
+function isRepositoryArg(arg: string): boolean {
+  // Remote names are simple words; paths and URLs are also valid repositories.
+  // A refspec always contains a colon or targets a recognizable branch/root.
+  if (arg.includes(':')) return false
+  if (isDefaultHeadRefspec(arg)) return false
+  return /^[\w.-]+$/.test(arg) || arg.includes('/') || arg === '.' || arg === '..'
 }
 
 /**
@@ -119,28 +233,10 @@ function rejectsMergeRebaseStatements(command: string): boolean {
  * Allows `git push origin feature/foo` and local bare remotes on feature branches.
  */
 export function gitPushStatementTargetsProtected(statement: string): boolean {
-  const tokens = tokenizeSimple(statement)
-  const pushIdx = tokens.findIndex((t, i) => t === 'push' && i > 0 && tokens[i - 1] === 'git')
-  if (pushIdx < 0) return false
-
-  const afterPush = tokens.slice(pushIdx + 1).filter(t => !t.startsWith('-'))
-  const refspecs: string[] = []
-  let skippedRemote = false
-  for (const arg of afterPush) {
-    if (!skippedRemote && looksLikeRemoteName(arg)) {
-      skippedRemote = true
-      continue
-    }
-    refspecs.push(arg)
-  }
-  if (refspecs.length === 0) return false
-
-  return refspecs.some(refspec => refspecTargetsProtectedBranch(refspec))
-}
-
-function looksLikeRemoteName(arg: string): boolean {
-  if (arg.includes(':') || arg.includes('/') || arg === '.' || arg === 'HEAD') return false
-  return /^[\w.-]+$/.test(arg)
+  const { refspecs, pushModes } = parsePushArgs(statement)
+  if (pushModes.size > 0) return true
+  return refspecs.some(refspec =>
+    !isDefaultHeadRefspec(refspec) && refspecTargetsProtectedBranch(refspec))
 }
 
 export function refspecTargetsProtectedBranch(refspec: string): boolean {
@@ -162,28 +258,12 @@ export function refspecTargetsProtectedBranch(refspec: string): boolean {
 
 export function protectedRefName(ref: string): boolean {
   const r = ref.trim()
-  if (r === 'HEAD') return false
+  if (r === 'HEAD' || r === '@') return false
   const branch = r
     .replace(/^refs\/heads\//, '')
     .replace(/^origin\//, '')
     .split('/')[0]
   return PROTECTED_BRANCHES.has(branch)
-}
-
-function rejectsCheckoutThenMergeIntoProtected(command: string): boolean {
-  const stmts = splitShellStatements(command)
-  let checkedOutProtected = false
-  for (const stmt of stmts) {
-    if (/\bgit\s+checkout\s+(?:-\w+\s+)*(?:main|master)\b/.test(stmt)
-      || /\bgit\s+switch\s+(?:-\w+\s+)*(?:main|master)\b/.test(stmt)) {
-      checkedOutProtected = true
-      continue
-    }
-    if (!checkedOutProtected) continue
-    if (/\bgit\s+merge\b/.test(stmt)) return true
-    if (/\bgit\s+rebase\b/.test(stmt)) return true
-  }
-  return false
 }
 
 function tokenizeSimple(statement: string): string[] {

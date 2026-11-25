@@ -8,6 +8,17 @@ import { FeaturePrPublisher, runGit } from '../src/env/git-publish.ts'
 import { UserError } from '../src/shared/errors.ts'
 import { tempHome } from './fixtures.ts'
 
+const GIT_LOCATION_VARS = [
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR',
+]
+
+function fixtureGitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: '1' }
+  for (const name of GIT_LOCATION_VARS) delete env[name]
+  return env
+}
+
 const mockGh = () => vi.fn(async (args: string[]) => {
   if (args[1] === 'list') return '[]'
   if (args[1] === 'create') return 'https://github.com/o/r/pull/42\n'
@@ -16,22 +27,23 @@ const mockGh = () => vi.fn(async (args: string[]) => {
 })
 
 function initWorkspace(ws: string, branch: string, bareRemote: string): void {
-  execFileSync('git', ['init', '-b', 'main'], { cwd: ws, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } })
-  execFileSync('git', ['config', 'user.email', 't@t.com'], { cwd: ws })
-  execFileSync('git', ['config', 'user.name', 't'], { cwd: ws })
+  const env = fixtureGitEnv()
+  execFileSync('git', ['init', '-b', 'main'], { cwd: ws, env })
+  execFileSync('git', ['config', 'user.email', 't@t.com'], { cwd: ws, env })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: ws, env })
   fs.writeFileSync(path.join(ws, 'README.md'), 'seed\n')
-  execFileSync('git', ['add', 'README.md'], { cwd: ws })
-  execFileSync('git', ['commit', '-m', 'seed'], { cwd: ws })
-  execFileSync('git', ['checkout', '-b', branch], { cwd: ws })
+  execFileSync('git', ['add', 'README.md'], { cwd: ws, env })
+  execFileSync('git', ['commit', '-m', 'seed'], { cwd: ws, env })
+  execFileSync('git', ['checkout', '-b', branch], { cwd: ws, env })
   fs.appendFileSync(path.join(ws, 'README.md'), 'change\n')
-  execFileSync('git', ['add', 'README.md'], { cwd: ws })
-  execFileSync('git', ['commit', '-m', 'work'], { cwd: ws })
-  execFileSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: ws })
+  execFileSync('git', ['add', 'README.md'], { cwd: ws, env })
+  execFileSync('git', ['commit', '-m', 'work'], { cwd: ws, env })
+  execFileSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: ws, env })
 }
 
 function bareFixture(root: string, name = 'remote.git'): string {
   const bare = path.join(root, name)
-  execFileSync('git', ['init', '--bare', '-b', 'main', bare], { stdio: 'ignore' })
+  execFileSync('git', ['init', '--bare', '-b', 'main', bare], { stdio: 'ignore', env: fixtureGitEnv() })
   return bare
 }
 
@@ -65,7 +77,7 @@ describe('FeaturePrPublisher', () => {
     const pub = publisher(ws, { pushRemote: bare, gh })
     const approval = await pub.prepare(input)
     const result = await pub.publish(input, approval)
-    const remoteHead = execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/my-feature'], { encoding: 'utf8' }).trim()
+    const remoteHead = execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/my-feature'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()
     expect(remoteHead).toBe(approval.head)
     expect(result.branch).toBe('peanut/my-feature')
     expect(result.number).toBe(42)
@@ -98,7 +110,7 @@ describe('FeaturePrPublisher', () => {
     expect(calls.some(args => args[0] === 'fetch')).toBe(true)
     expect(calls.some(args => args[0] === 'push')).toBe(false)
     expect(gh).not.toHaveBeenCalled()
-    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/ending'])).toThrow()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/ending'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('refuses publication when HEAD resolves through an external object alternate', async () => {
@@ -113,7 +125,7 @@ describe('FeaturePrPublisher', () => {
     fs.writeFileSync(alternateFile, `# external object store\n${path.join(root, 'external-objects')}\n`)
 
     await expect(pub.publish(input, approval)).rejects.toThrow(/alternate/i)
-    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/alternate'])).toThrow()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/alternate'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('refuses a symlinked alternates file that exposes external objects', async () => {
@@ -129,7 +141,7 @@ describe('FeaturePrPublisher', () => {
     const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
 
     await expect(pub.prepare(input)).rejects.toThrow(/alternate/i)
-    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/symlink-alternate'])).toThrow()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/symlink-alternate'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('rejects case-varied HTTP alternate metadata in the resolved common directory', async () => {
@@ -144,7 +156,7 @@ describe('FeaturePrPublisher', () => {
     const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
 
     await expect(pub.prepare(input)).rejects.toThrow(/alternate/i)
-    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/case-varied-alternate'])).toThrow()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/case-varied-alternate'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('publishes normally when alternate metadata files are empty', async () => {
@@ -161,7 +173,7 @@ describe('FeaturePrPublisher', () => {
     const approval = await pub.prepare(input)
     await pub.publish(input, approval)
 
-    expect(execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/empty-alternates'], { encoding: 'utf8' }).trim()).toBe(approval.head)
+    expect(execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/empty-alternates'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()).toBe(approval.head)
   })
 
   it('does not execute a worker repository pre-push hook', async () => {
@@ -179,12 +191,28 @@ describe('FeaturePrPublisher', () => {
     const uploadpackHook = path.join(root, 'uploadpack-hook')
     fs.writeFileSync(uploadpackHook, `#!/bin/sh\nprintf ran > ${JSON.stringify(marker)}\n`)
     fs.chmodSync(uploadpackHook, 0o755)
-    execFileSync('git', ['config', 'uploadpack.packObjectsHook', uploadpackHook], { cwd: ws })
+    execFileSync('git', ['config', 'uploadpack.packObjectsHook', uploadpackHook], { cwd: ws, env: fixtureGitEnv() })
     const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
     const binding = await pub.prepare(input)
     await pub.publish(input, binding)
     expect(fs.existsSync(marker)).toBe(false)
-    expect(execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/hook'], { encoding: 'utf8' })).toContain(binding.head)
+    expect(execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/hook'], { encoding: 'utf8', env: fixtureGitEnv() })).toContain(binding.head)
+  })
+
+  it('overrides worker-controlled core.fsmonitor config for host git commands', async () => {
+    const root = tempHome()
+    const fsmonitorHook = path.join(root, 'fsmonitor-hook')
+    fs.writeFileSync(fsmonitorHook, '#!/bin/sh\nexit 0\n')
+    fs.chmodSync(fsmonitorHook, 0o755)
+    const ws = path.join(root, 'fsmonitor-workspace')
+    fs.mkdirSync(ws)
+    execFileSync('git', ['init', '-b', 'main'], { cwd: ws, env: fixtureGitEnv() })
+    execFileSync('git', ['config', 'core.fsmonitor', fsmonitorHook], { cwd: ws, env: fixtureGitEnv() })
+    // runGit must override repository-local config on the command line so no
+    // worker-controlled fsmonitor command is ever consulted by host git.
+    const result = await runGit(['config', '--get', 'core.fsmonitor'], { cwd: ws })
+    expect(result.code).toBe(0)
+    expect(result.stdout.trim()).toBe('false')
   })
 
   it('ignores worker insteadOf config when selecting the effective push destination', async () => {
@@ -194,7 +222,7 @@ describe('FeaturePrPublisher', () => {
     const ws = path.join(root, 'redirect-workspace')
     fs.mkdirSync(ws)
     initWorkspace(ws, 'peanut/fixed', intended)
-    execFileSync('git', ['config', `url.${redirect}.insteadOf`, 'https://github.com/o/r.git'], { cwd: ws })
+    execFileSync('git', ['config', `url.${redirect}.insteadOf`, 'https://github.com/o/r.git'], { cwd: ws, env: fixtureGitEnv() })
     const mappedGit: GitRun = (args, opts) => {
       const mapped = [...args]
       if (mapped[0] === 'push') {
@@ -206,8 +234,8 @@ describe('FeaturePrPublisher', () => {
     const pub = publisher(ws, { git: mappedGit, gh: mockGh() })
     const binding = await pub.prepare(input)
     await pub.publish(input, binding)
-    expect(execFileSync('git', ['--git-dir', intended, 'rev-parse', 'refs/heads/peanut/fixed'], { encoding: 'utf8' }).trim()).toBe(binding.head)
-    expect(() => execFileSync('git', ['--git-dir', redirect, 'show-ref', '--verify', 'refs/heads/peanut/fixed'])).toThrow()
+    expect(execFileSync('git', ['--git-dir', intended, 'rev-parse', 'refs/heads/peanut/fixed'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()).toBe(binding.head)
+    expect(() => execFileSync('git', ['--git-dir', redirect, 'show-ref', '--verify', 'refs/heads/peanut/fixed'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('refuses publishing if the approved binding no longer matches current metadata', async () => {
@@ -221,7 +249,7 @@ describe('FeaturePrPublisher', () => {
     const binding = await pub.prepare(input)
     await expect(pub.publish({ ...input, body: 'changed after approval' }, binding)).rejects.toThrow(/approval does not match/)
     expect(gh).not.toHaveBeenCalled()
-    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/mismatch'])).toThrow()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/mismatch'], { env: fixtureGitEnv() })).toThrow()
   })
 
   it('refuses protected or invalid branches before host publication', async () => {

@@ -8,9 +8,14 @@ const GIT_ENV = { GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' } as const
 
 export const PEANUT_BRANCH_PREFIX = 'peanut/'
 
-/** Host credential paths to overlay in Linux bwrap (after `--ro-bind / /`). */
+/**
+ * Host credential paths to overlay in Linux bwrap (after `--ro-bind / /`).
+ * Every candidate is returned even when absent at startup: an owner may sign in
+ * later (e.g. `gh auth login`), and the per-command existence probe in
+ * `bwrapHidePathArgs` decides which paths are masked for each shell.
+ */
 export function defaultCredentialHidePaths(home = os.homedir()): string[] {
-  const roots = [
+  return [
     path.join(home, '.config', 'gh'),
     path.join(home, '.ssh'),
     path.join(home, '.git-credentials'),
@@ -21,13 +26,42 @@ export function defaultCredentialHidePaths(home = os.homedir()): string[] {
     path.join(home, '.config', 'claude'),
     '/workspace/ds-agent-notify-secrets',
   ]
-  return roots.filter(p => {
-    try {
-      return fs.existsSync(p)
-    } catch {
-      return false
+}
+
+/**
+ * Install checkout-local exclusions for runtime files a worker creates inside
+ * its checkout (`.config/`, `tmp/`, `.ssh/`). These are host/runtime state and
+ * must never be stageable by a later `git add -A`, even though the checkout is
+ * worker-writable. No-op when the directory is not a git checkout.
+ */
+export function excludeWorkspaceRuntimePaths(workspace: string): void {
+  let gitDir: string
+  try {
+    gitDir = execSync('git rev-parse --git-dir', {
+      cwd: workspace,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, ...GIT_ENV },
+    }).trim()
+  } catch {
+    return
+  }
+  const infoDir = path.resolve(workspace, gitDir, 'info')
+  try {
+    fs.mkdirSync(infoDir, { recursive: true })
+    const exclude = path.join(infoDir, 'exclude')
+    const existing = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : ''
+    const rules = ['/.config/', '/tmp/', '/.ssh/']
+    const missing = rules.filter(rule => !existing.split(/\r?\n/).some(line => line.trim() === rule))
+    if (missing.length > 0) {
+      const prefix = existing && !existing.endsWith('\n') ? '\n' : ''
+      fs.appendFileSync(exclude, `${prefix}${missing.join('\n')}\n`)
     }
-  })
+  } catch {
+    // Exclusions are defense in depth; never fail workspace setup on a
+    // read-only or unusual git layout. The publisher still refuses external
+    // object directories and protected refs.
+  }
 }
 
 /** Drop hide targets that lie inside a writable workspace root. */
@@ -53,6 +87,30 @@ export function hidePathsForWorkspace(
   })
 }
 
+/**
+ * True only when `source` is an existing git checkout or bare repository.
+ * Used to decide whether the serve cwd can seed a worker workspace: an
+ * explicitly configured but invalid source must remain an actionable error,
+ * while an invalid *default* cwd simply leaves the workspace empty.
+ */
+export function isGitRepositorySource(source: string): boolean {
+  try {
+    fs.accessSync(source, fs.constants.F_OK)
+  } catch {
+    return false
+  }
+  try {
+    execSync('git rev-parse --git-dir', {
+      cwd: source,
+      stdio: 'ignore',
+      env: { ...process.env, ...GIT_ENV },
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function workspaceDirIsEmpty(dir: string): boolean {
   try {
     return fs.readdirSync(dir).length === 0
@@ -69,7 +127,10 @@ export function seedWorkspaceCheckout(workspace: string, sourceRepo: string): vo
     'git',
     ['clone', '--no-hardlinks', '--', sourceRepo, workspace],
     {
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
+      encoding: 'utf8',
+      timeout: 120_000,
+      killSignal: 'SIGKILL',
       env: { ...process.env, ...GIT_ENV },
     },
   )
@@ -82,7 +143,8 @@ export function seedWorkspaceCheckout(workspace: string, sourceRepo: string): vo
   }
   if (clone.status !== 0) {
     rollbackSeed()
-    throw new UserError(`git clone failed (exit ${clone.status ?? 1})`)
+    const detail = String(clone.stderr ?? '').trim().slice(0, 300)
+    throw new UserError(`git clone failed (exit ${clone.status ?? 1})${detail ? `: ${detail}` : ''}`)
   }
   try {
     assertGitCommonDirInsideWorkspace(workspace)

@@ -9,6 +9,7 @@ import { assertDevShellCommandAllowed } from './bash-policy.ts'
 import { parseBashAllowNetwork } from './bash-allow-network.ts'
 import {
   defaultCredentialHidePaths,
+  excludeWorkspaceRuntimePaths,
   hidePathsForWorkspace,
   seedWorkspaceCheckout,
 } from './git-workspace.ts'
@@ -266,6 +267,9 @@ export class LocalEnv implements EnvPort {
       Object.assign(env, this.vault.resolveForChild(this.vaultNames))
     }
     {
+      // Install checkout-local exclusions before any runtime dirs/files are
+      // created so a later `git add -A` cannot stage host credentials.
+      excludeWorkspaceRuntimePaths(cwd)
       const tmp = path.join(cwd, 'tmp')
       fs.mkdirSync(tmp, { recursive: true, mode: 0o700 })
       env.HOME = cwd
