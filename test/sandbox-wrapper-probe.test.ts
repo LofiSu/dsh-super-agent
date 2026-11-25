@@ -294,8 +294,17 @@ describe('sandbox probe requires the forbidden parent to be visible', () => {
   })
 })
 
+/**
+ * A bwrap on PATH is not enough: an installed wrapper that cannot create user
+ * namespaces fails its wrapped `true`, which would make the on-host assertion
+ * below fail on an otherwise valid host. Gate on an actual working execution
+ * probe and skip the host regression on incapable hosts.
+ */
 const REAL_LINUX_BWRAP = process.platform === 'linux'
-  && spawnSync('which', ['bwrap'], { stdio: 'ignore' }).status === 0
+  && (() => {
+    const probe = spawnSync('bwrap', ['true'], { stdio: 'ignore', timeout: 15_000 })
+    return probe.status === 0 && probe.error === undefined
+  })()
 
 const SOURCE_PROBE_MODULE = fileURLToPath(new URL('../src/env/sandbox-probe.ts', import.meta.url))
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))

@@ -162,19 +162,23 @@ describe('deployment resident channel lifecycle', () => {
   it('feishu loop does not redeliver the same message after cursor advance (dedupe)', async () => {
     const rt = runtime()
     rt.start()
-    const source = new CountingFeishuSource([feishuTrigger('om_1', 1_761_958_800_000)])
-    const ingested: string[] = []
+    // A fresh source restoring the persisted cursor can still replay the same
+    // message id (Feishu queries a one-second overlap). Present the identical
+    // trigger twice so the test actually exercises Runtime's id dedupe.
+    const replay = feishuTrigger('om_1', 1_761_958_800_000)
+    const ingested: Array<{ id: string; result: string }> = []
     const base = rt.ingestAsync.bind(rt)
     rt.ingestAsync = async (t: Trigger) => {
-      ingested.push(t.id)
-      return base(t)
+      const result = await base(t)
+      ingested.push({ id: t.id, result })
+      return result
     }
 
     await runFeishuLoop({
       runtime: rt,
       chatId: 'oc_test',
       client: noNetworkFeishu(),
-      createSource: () => source,
+      createSource: () => new CountingFeishuSource([replay]),
       intervalMs: 5,
       once: true,
     })
@@ -182,11 +186,19 @@ describe('deployment resident channel lifecycle', () => {
       runtime: rt,
       chatId: 'oc_test',
       client: noNetworkFeishu(),
-      createSource: () => new CountingFeishuSource([]),
+      createSource: () => new CountingFeishuSource([replay]),
       intervalMs: 5,
       once: true,
     })
-    expect(ingested).toEqual(['feishu_om_1'])
+    // The replay is seen by ingest twice, but only the first intake is stored.
+    expect(ingested).toEqual([
+      { id: 'feishu_om_1', result: 'stored' },
+      { id: 'feishu_om_1', result: 'duplicate' },
+    ])
+    // The second pass must short-circuit at Runtime's dedupe: only one full
+    // ingress/commit may run. A removed dedupe branch emits a second
+    // `[ingress] two-level ...` line even though Engine still ids the replay.
+    expect(rt.log.text().match(/\[ingress\] two-level /g)).toHaveLength(1)
     const cursor = rt.store.getDoc<{ chatId: string; lastCreateTimeMs: number }>('feishu_cursor', 'cursor')
     expect(cursor?.chatId).toBe('oc_test')
     expect(cursor?.lastCreateTimeMs).toBe(1_761_958_800_000)
