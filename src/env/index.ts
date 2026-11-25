@@ -66,4 +66,13 @@ export {
   type FillVaultOptions,
   type ProcessFillTargetOptions,
 } from './fill-vault.ts'
+export {
+  assertRequiredSandboxDimensions,
+  enforceRequiredSandbox,
+  enforceRequiredSandboxOnHost,
+  sandboxPolicyForProbe,
+  probeSandboxConfinement,
+  type SandboxConfinementProbe,
+  type SandboxRequiredDimension,
+} from './sandbox-probe.ts'
 export { wrapBashCommand, sandboxEnabledFromEnv, type SandboxPolicy } from './seccomp.ts'
