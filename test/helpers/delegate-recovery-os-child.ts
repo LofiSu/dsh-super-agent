@@ -2,7 +2,6 @@
  * OS-process child: seeds a running ticket, runs delegate_agent mid-flight, or
  * completes recovery on restart. Not part of the product CLI.
  */
-import fs from 'node:fs'
 import path from 'node:path'
 import { bindRolePorts } from '../../src/core/role-ports.ts'
 import { LocalEnv } from '../../src/env/local-env.ts'
@@ -16,6 +15,7 @@ import {
   type ExternalOperationRecord,
 } from '../../src/core/external-effects.ts'
 import { RECOVERY_BOUNDARY_DOC_ID, type RecoveryBoundaryRecord } from '../../src/core/recovery-boundary.ts'
+import { publishMarker } from './marker-io.ts'
 
 const home = process.argv[2]
 if (!home) {
@@ -23,8 +23,8 @@ if (!home) {
   process.exit(2)
 }
 
-const marker = path.join(home, '.delegate-os-ready')
 const mode = process.env.DS_AGENT_RECOVERY_CHILD_MODE ?? 'seed'
+const marker = path.join(home, mode === 'restart' ? '.delegate-os-recovered' : '.delegate-os-ready')
 const task = process.env.DS_AGENT_DELEGATE_TASK ?? 'delegate-task'
 
 function runningTicket(): Ticket {
@@ -99,6 +99,11 @@ async function main(): Promise<void> {
     localAgents,
   })
 
+  process.on('SIGTERM', () => {
+    localAgents.killAll()
+    void runtime.finish().then(() => process.exit(0), () => process.exit(1))
+  })
+
   if (mode === 'seed') {
     // Start once with no tickets so recoveryAttempted is set; then seed a
     // running ticket without auto-recover mutating it before delegate_agent.
@@ -118,18 +123,18 @@ async function main(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 10))
     }
     if (delegationFailure) throw delegationFailure
-    fs.writeFileSync(marker, `${JSON.stringify({
+    publishMarker(marker, {
       phase: 'delegating',
       delegateActive: localAgents.activeCount,
       delegateOperationId: operation.id,
       delegateOperationPhase: operation.phase,
       durableStarted: true,
-    })}\n`)
+    })
   } else if (mode === 'restart') {
     runtime.start({ assessPending: false })
     const boundary = runtime.store.getDoc<RecoveryBoundaryRecord>('recovery', RECOVERY_BOUNDARY_DOC_ID)
     const ticket = runtime.store.getDoc<Ticket>('ticket', 'ticket_delegate_os')
-    fs.writeFileSync(marker, `${JSON.stringify({
+    publishMarker(marker, {
       phase: 'post-recovery',
       recoveryOutcome: boundary?.outcome,
       assignmentCount: ticket?.assignments.length,
@@ -137,13 +142,9 @@ async function main(): Promise<void> {
       recoveredInputs: ticket?.inputs.filter(i => i.text?.startsWith('RECOVERED:')).length ?? 0,
       unknownApprovals: ticket?.collab?.approvals?.filter(a =>
         a.status === 'pending' && a.action.startsWith(UNKNOWN_OUTCOME_PREFIX)).length ?? 0,
-    })}\n`)
+    })
   }
 
-  process.on('SIGTERM', () => {
-    localAgents.killAll()
-    void runtime.finish().then(() => process.exit(0), () => process.exit(1))
-  })
 }
 
 main().catch(error => {

@@ -1,6 +1,7 @@
 import { platform } from 'node:os'
+import path from 'node:path'
 import { dirname } from 'node:path'
-import { existsSync } from 'node:fs'
+import fs, { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { UserError } from '../shared/errors.ts'
 
@@ -46,10 +47,6 @@ const DARWIN_READ_PATHS = [
   '/etc',
   '/private/var/db/dyld',
   '/dev',
-  '/private/tmp',
-  '/tmp',
-  '/var/folders',
-  '/private/var/folders',
 ] as const
 
 /** System/toolchain roots bound read-only for bash and Node in strict Linux mode. */
@@ -73,6 +70,76 @@ function strictReadRoots(policy: SandboxPolicy): readonly string[] {
   return policy.readRoots ?? []
 }
 
+/**
+ * Canonicalize a path that is expected to exist. Roots that do not exist keep
+ * their lexical form, matching the runtime's "fall back to lexical" rule.
+ */
+function canonicalRoot(root: string): string {
+  try { return fs.realpathSync(root) } catch { return path.resolve(root) }
+}
+
+/**
+ * Canonicalize a candidate that may not exist yet (e.g. a vault file): resolve
+ * its nearest existing parent and re-append the missing suffix so a canonical
+ * root still covers it.
+ */
+function canonicalCandidate(candidate: string): string {
+  const absolute = path.resolve(candidate)
+  try { return fs.realpathSync(absolute) } catch { /* resolve the parent below */ }
+  let parent = path.dirname(absolute)
+  const suffix: string[] = [path.basename(absolute)]
+  while (true) {
+    try {
+      const canonicalParent = fs.realpathSync(parent)
+      return path.join(canonicalParent, ...suffix.reverse())
+    } catch {
+      const next = path.dirname(parent)
+      if (next === parent) return absolute
+      suffix.push(path.basename(parent))
+      parent = next
+    }
+  }
+}
+
+/** True when `target` is inside `root`, comparing lexical and canonical forms. */
+function containsPath(root: string, target: string): boolean {
+  const within = (base: string): boolean => {
+    const relative = path.relative(path.resolve(base), target)
+    return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+  if (within(root)) return true
+  const canonical = canonicalRoot(root)
+  // A root whose canonical form is the filesystem root would match everything,
+  // re-creating the whole-host exposure strict mode is meant to prevent. Keep
+  // only the lexical check for such aliases.
+  if (path.resolve(canonical) === path.parse(canonical).root) return false
+  return within(canonical)
+}
+
+/** True when a path falls under a root intentionally exposed by strict mode. */
+export function strictReadIsolationIncludesPath(
+  candidate: string,
+  policy: SandboxPolicy,
+  system: SandboxSystem = {
+    platform: platform(),
+    available: () => false,
+    exists: existsSync,
+  },
+): boolean {
+  const roots = system.platform === 'linux'
+    ? [
+      ...LINUX_READ_PATHS.filter(root => (system.exists ?? existsSync)(root)),
+      ...(policy.writableRoots ?? []),
+      ...strictReadRoots(policy),
+    ]
+    : system.platform === 'darwin'
+      ? darwinReadPaths(policy, system.execPath ?? process.execPath)
+      : []
+  const target = path.resolve(candidate)
+  const canonicalTarget = canonicalCandidate(candidate)
+  return roots.some(root => containsPath(root, target) || containsPath(root, canonicalTarget))
+}
+
 function darwinReadPaths(policy: SandboxPolicy, execPath: string): string[] {
   return [
     ...new Set([
@@ -86,7 +153,9 @@ function darwinReadPaths(policy: SandboxPolicy, execPath: string): string[] {
 }
 
 function darwinProfile(policy: SandboxPolicy, execPath: string): string {
-  const writes = ['/private/tmp', '/tmp', '/var/folders', '/private/var/folders', ...(policy.writableRoots ?? [])]
+  const writes = policy.readIsolation
+    ? [...(policy.writableRoots ?? [])]
+    : ['/private/tmp', '/tmp', '/var/folders', '/private/var/folders', ...(policy.writableRoots ?? [])]
   const lines = [
     '(version 1)',
     '(deny default)',
@@ -122,12 +191,16 @@ function linuxStrictArgv(policy: SandboxPolicy, exists: (path: string) => boolea
   ]
   return [
     'bwrap',
+    // Isolate PIDs as well as the filesystem: with --proc /proc but a shared
+    // PID namespace, a same-user sandboxed process can enter /proc/<host-pid>/root
+    // and read host paths outside the bind list (including the fill vault).
+    '--unshare-pid',
     ...(policy.allowNetwork ? [] : ['--unshare-net']),
     ...(policy.unsharePid === true ? ['--unshare-pid'] : []),
     ...reads,
     '--dev', '/dev',
     '--proc', '/proc',
-    '--ro-bind', '/tmp', '/tmp',
+    '--tmpfs', '/tmp',
     ...writable,
     '--',
   ]
