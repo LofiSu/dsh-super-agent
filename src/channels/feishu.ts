@@ -359,7 +359,9 @@ export class FeishuSource {
     if (cached) return cached
     try {
       const mode = await this.client.getChatMode(chatId)
-      const chatType = mode === 'p2p'
+      // Feishu chat-information uses `p2p`/`private` for one-to-one chats and
+      // `group`/`topic` for group chats. Only verified 1:1 modes may opt in.
+      const chatType = mode === 'p2p' || mode === 'private'
         ? 'p2p'
         : mode === 'group' || mode === 'topic'
           ? 'group'

@@ -50,7 +50,11 @@ function admissionDeny(trigger: Trigger, rules?: AdmissionRules): string | undef
   }
   if (rules.groups?.length) {
     const address = trigger.channel?.address
-    const verifiedFeishuP2p = trigger.channel?.source === 'im'
+    // Only a direct-addressed Feishu p2p trigger is outside the group rule.
+    // The address marker alone is untrusted: other producers (or a mention in
+    // a restricted chat) must not bypass the configured group allowlist.
+    const verifiedFeishuP2p = trigger.addressed === 'direct'
+      && trigger.channel?.source === 'im'
       && address?.provider === 'feishu'
       && address.chat_type === 'p2p'
     if (!verifiedFeishuP2p) {
