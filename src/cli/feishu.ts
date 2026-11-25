@@ -102,7 +102,7 @@ export function resolveFeishuCliConfig(
 
 /** The pull surface `FeishuSource` implements; tests may inject a fake. */
 export interface FeishuLoopSource {
-  pull(): Promise<readonly Trigger[]>
+  pull(signal?: AbortSignal): Promise<readonly Trigger[]>
   /** Highest `create_time` (ms) observed so far, or the seed when none was seen. */
   readonly cursorMs: number
   /** Reset the pull cursor after a blocked ingress window so the next pull replays it. */
@@ -226,7 +226,7 @@ export async function runFeishuLoop(options: FeishuLoopOptions): Promise<FeishuL
         // in-memory cursor while walking the batch, before the loop ingests
         // anything; a blocked trigger must not be skipped on the next poll.
         const cursorBeforePull = source.cursorMs
-        const triggers = await source.pull()
+        const triggers = await source.pull(options.signal)
         let cursorBlockedByIngress = false
         for (const trigger of triggers) {
           const preview = trigger.text.replace(/\s+/g, ' ').slice(0, 80)
