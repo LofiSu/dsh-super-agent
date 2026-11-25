@@ -70,6 +70,7 @@ export class Store {
   private readonly db: DatabaseSync
   private readonly readOnly: boolean
   private depth = 0
+  private afterCommitEffects: (() => void)[] = []
   private closed = false
   private schemaVersionValue = 0
 
@@ -142,10 +143,15 @@ export class Store {
     this.assertWritable()
     if (this.depth > 0) return work()
     this.depth += 1
+    this.afterCommitEffects = []
+    let committed = false
+    let effects: (() => void)[] = []
     try {
       this.db.exec('BEGIN')
       const result = work()
       this.db.exec('COMMIT')
+      committed = true
+      effects = this.afterCommitEffects
       return result
     } catch (error) {
       try {
@@ -156,7 +162,15 @@ export class Store {
       throw error
     } finally {
       this.depth -= 1
+      this.afterCommitEffects = []
+      if (committed) for (const effect of effects) effect()
     }
+  }
+
+  /** Run an in-memory side effect only if the outermost transaction commits. */
+  afterCommit(effect: () => void): void {
+    if (this.depth === 0) effect()
+    else this.afterCommitEffects.push(effect)
   }
 
   nextId(prefix: string): string {
