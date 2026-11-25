@@ -414,6 +414,38 @@ describe('Feishu client and outbox', () => {
     expect(triggers[1]!.text).toBe('second')
   })
 
+  it.each([undefined, '', '0', ' 0 '])('skips chat-mode lookup when direct mode is disabled (%s)', async flag => {
+    const { fn, calls } = fakeFetch(url => {
+      if (url.includes('tenant_access_token')) return tokenHandler(url)
+      if (url.includes('/open-apis/im/v1/messages?')) {
+        return { body: { code: 0, data: { has_more: false, items: [apiMessage()] } } }
+      }
+      return { body: { code: 230002, msg: 'chat metadata permission absent' } }
+    })
+    const logs: string[] = []
+    const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
+      sinceMs: 1761958000000,
+      config,
+      log: line => logs.push(line),
+    })
+    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
+    if (flag === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+    else process.env.DS_AGENT_FEISHU_P2P_DIRECT = flag
+    try {
+      for (let pull = 0; pull < 2; pull += 1) {
+        const trigger = (await source.pull())[0]!
+        expect(trigger.addressed).toBeUndefined()
+        expect(trigger.channel?.address?.group).toBe('oc_chat')
+        expect(filterTrigger(trigger, ruleSemantic)).toMatchObject({ action: 'drop', reason: 'noise' })
+      }
+      expect(calls.filter(call => call.url.endsWith('/open-apis/im/v1/chats/oc_chat'))).toHaveLength(0)
+      expect(logs).toEqual([])
+    } finally {
+      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+    }
+  })
+
   it('resolves API-shaped polled messages as p2p from verified chat mode', async () => {
     const { fn, calls } = fakeFetch(url => {
       if (url.includes('tenant_access_token')) return tokenHandler(url)

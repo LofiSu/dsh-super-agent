@@ -399,9 +399,10 @@ export class FeishuSource {
     })
     const triggers: Trigger[] = []
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()
+    const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
     for (const item of items) {
       if (this.threadId && item.thread_id !== this.threadId) continue
-      if (!resolvedTypes.has(item.chat_id)) {
+      if (p2pDirectEnabled && !resolvedTypes.has(item.chat_id)) {
         resolvedTypes.set(item.chat_id, await this.verifiedChatType(item.chat_id))
       }
       const chatType = resolvedTypes.get(item.chat_id)
