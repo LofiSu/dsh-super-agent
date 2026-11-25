@@ -1,8 +1,10 @@
 /**
  * Copy runtime assets that tsc does not emit into dist.
  *
- * Keep this list in sync with non-.ts files under src/; the packaging smoke
- * script asserts every emitted asset is in the tarball.
+ * Keep this list in sync with the non-.ts files the runtime loads; the
+ * packaging smoke script asserts each emitted asset is in the tarball. The
+ * evaluator child ships under dist/scripts so a published package can run it
+ * with plain node (no tsx, no src/).
  */
 import { copyFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -10,7 +12,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-/** Non-.ts files under `src/` that the published package needs at runtime. */
+/**
+ * Assets under `src/` that the published package needs at runtime.
+ * The evaluator child is sourced from scripts/ and is handled separately below.
+ */
 export const RUNTIME_ASSETS = [
   'watchdog/rules.json',
   'env/fixtures/sandbox-loopback-server.mjs',
@@ -28,7 +33,13 @@ export function copyRuntimeAssets(repoRoot: string = root): void {
 
 function main(): void {
   copyRuntimeAssets()
-  console.log(`copied ${RUNTIME_ASSETS.length} asset(s) to dist: ${RUNTIME_ASSETS.join(', ')}`)
+  const from = path.join(root, 'scripts', 'evolution-eval-child.mjs')
+  const to = path.join(root, 'dist', 'scripts', 'evolution-eval-child.mjs')
+  mkdirSync(path.dirname(to), { recursive: true })
+  copyFileSync(from, to)
+  console.log(
+    `copied ${RUNTIME_ASSETS.length + 1} asset(s) to dist: ${[...RUNTIME_ASSETS, 'scripts/evolution-eval-child.mjs'].join(', ')}`,
+  )
 }
 
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : ''
