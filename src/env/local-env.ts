@@ -104,6 +104,17 @@ export class LocalEnv implements EnvPort {
     return this.sandbox.readIsolation === true
   }
 
+  /**
+   * Whether worker credential hide paths are enforced by an OS sandbox.
+   * Sandbox opt-out (test/embedding) means no enforcement: publication must
+   * fail closed in that case. On supported sandboxes `wrapBashCommand` adds
+   * hide rules for both Darwin and Linux (see `seccomp.ts`).
+   */
+  get credentialsHideEnforced(): boolean {
+    return this.sandbox.enabled === true
+      && (process.platform === 'darwin' || process.platform === 'linux')
+  }
+
   workspace(workerId: string): string {
     const dir = path.join(this.root, workerId)
     fs.mkdirSync(dir, { recursive: true })

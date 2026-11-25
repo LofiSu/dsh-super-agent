@@ -586,6 +586,11 @@ export class Runtime {
     const publishFeaturePr = new FeaturePrPublisher({
       repo: ghRepo,
       workspace: workerId => env.workspace(workerId),
+      assertCredentialsHidden: () => {
+        if (!env.credentialsHideEnforced) {
+          throw new Error('publish refused: worker credential hides are not enforced by the OS sandbox')
+        }
+      },
     })
     const now = opts.now ?? (() => new Date().toISOString())
     const promptFiles = opts.prompts ?? loadPromptFiles(opts.home, baseEnv, line => log.info(line))

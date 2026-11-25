@@ -1,6 +1,6 @@
 import { platform } from 'node:os'
 import { dirname } from 'node:path'
-import { existsSync, lstatSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { UserError } from '../shared/errors.ts'
 
@@ -90,6 +90,27 @@ function darwinReadPaths(policy: SandboxPolicy, execPath: string): string[] {
 
 function darwinProfile(policy: SandboxPolicy, execPath: string): string {
   const writes = ['/private/tmp', '/tmp', '/var/folders', '/private/var/folders', ...(policy.writableRoots ?? [])]
+  // Host credentials must be unreadable in BOTH modes. macOS matches SBPL
+  // filters against canonical paths, so normalize symlinked prefixes such as
+  // /tmp -> /private/tmp. Directories use `subpath` (hides current and future
+  // contents); files use `literal`. Place the denies after the allow rules so
+  // the more specific filter wins (SBPL prefers the most specific match).
+  const hideDenies = (policy.hidePaths ?? []).map(p => {
+    let canonical = p
+    let isDir = false
+    try {
+      canonical = realpathSync(p)
+      isDir = lstatSync(canonical).isDirectory()
+    } catch {
+      try {
+        isDir = lstatSync(p).isDirectory()
+      } catch {
+        // Absent candidate: a literal deny still hides it if created later.
+      }
+    }
+    const kind = isDir ? 'subpath' : 'literal'
+    return `(deny file-read* (${kind} ${sbplString(canonical)}))`
+  })
   const lines = [
     '(version 1)',
     '(deny default)',
@@ -108,6 +129,7 @@ function darwinProfile(policy: SandboxPolicy, execPath: string): string {
     // Compatibility default: today's sandbox allows all host reads.
     lines.push('(allow file-read*)')
   }
+  lines.push(...hideDenies)
   for (const dir of new Set(writes)) lines.push(`(allow file-write* (subpath ${sbplString(dir)}))`)
   lines.push('(allow file-write* (literal "/dev/null"))')
   lines.push(policy.allowNetwork ? '(allow network*)' : '(deny network*)')

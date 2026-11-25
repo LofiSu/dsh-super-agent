@@ -18,6 +18,15 @@ export function devShellCommandRejection(
 ): string | null {
   const trimmed = command.trim()
   if (!trimmed) return null
+  // Text-based defense in depth: shells, subshells, and command substitution
+  // can hide a protected operation from the statement splitter. Reject these
+  // shapes outright when they could wrap a git/gh command; the OS sandbox is
+  // the real boundary. This is not a shell parser.
+  const wrapperRejection = wrapperBypassRejection(trimmed)
+  if (wrapperRejection) return wrapperRejection
+  if (checkoutProtectedRefThenPushInCommand(trimmed)) {
+    return 'dev shell policy: git push after checking out a protected ref is not allowed'
+  }
   const initialHead = options?.headBranch?.trim() || undefined
   const statements = splitShellStatements(trimmed)
   // Branch-dependent checks use the branch active at each statement: a prior
@@ -37,6 +46,65 @@ export function devShellCommandRejection(
     if (onProtectedHead && rejectsMergeRebaseStatement(stmt)) {
       return 'dev shell policy: merge or rebase on main/master is not allowed'
     }
+    if (checkoutProtectedRefThenPush(stmt)) {
+      return 'dev shell policy: git push after checking out a protected ref is not allowed'
+    }
+  }
+  return null
+}
+
+/**
+ * `git checkout main -- <path>` checks out files but references a protected
+ * ref; following it with a default push is ambiguous under text analysis, so
+ * reject conservatively.
+ */
+function checkoutProtectedRefThenPush(statement: string): boolean {
+  const tokens = tokenizeSimple(statement)
+  const checkoutIdx = gitSubcommandIndex(tokens, 'checkout')
+  if (checkoutIdx < 0) return false
+  const args = tokens.slice(checkoutIdx + 1)
+  const refsProtected = args.some(t => /^(main|master|origin\/(main|master)|refs\/heads\/(main|master))$/.test(t))
+  return refsProtected && hasGitSubcommand(statement, 'push')
+}
+
+/**
+ * `git checkout main -- <path>` in one statement followed by a default push in
+ * a later statement leaves HEAD ambiguous under text analysis. Reject whole
+ * commands with that shape conservatively.
+ */
+function checkoutProtectedRefThenPushInCommand(command: string): boolean {
+  const statements = splitShellStatements(command)
+  let sawProtectedCheckout = false
+  for (const stmt of statements) {
+    const tokens = tokenizeSimple(stmt)
+    const checkoutIdx = gitSubcommandIndex(tokens, 'checkout')
+    if (checkoutIdx >= 0 && tokens.slice(checkoutIdx + 1)
+      .some(t => /^(main|master|origin\/(main|master)|refs\/heads\/(main|master))$/.test(t))) {
+      sawProtectedCheckout = true
+    }
+    if (sawProtectedCheckout && hasGitSubcommand(stmt, 'push')) return true
+  }
+  return false
+}
+
+/**
+ * Reject nested shells, subshells, and command substitution that could hide a
+ * protected git/gh operation. Deliberately conservative: a nested shell with
+ * no git/gh content is allowed, and command substitution near a protected ref
+ * is rejected without trying to evaluate it.
+ */
+function wrapperBypassRejection(command: string): string | null {
+  if (/\b(?:bash|sh|zsh|dash|ksh)\s+-\w*c\b/.test(command)
+    && /\b(?:git|gh)\b/.test(command)) {
+    return 'dev shell policy: nested shells running git/gh are not allowed'
+  }
+  if (/\([^)]*\b(?:git|gh)\b[^)]*\)/.test(command)) {
+    return 'dev shell policy: subshells running git/gh are not allowed'
+  }
+  if (/\$\([^)]*\b(?:git|echo|printf|cat)\b/.test(command)
+    || /`[^`]*\b(?:git|echo|printf|cat)\b/.test(command)
+    || /\$\{[^}]*(?:main|master)\b/.test(command)) {
+    return 'dev shell policy: command substitution in dev shell commands is not allowed'
   }
   return null
 }
@@ -204,7 +272,7 @@ function parsePushArgs(statement: string): PushArgs {
   const operands: string[] = []
   for (const arg of afterPush) {
     if (arg.startsWith('-')) {
-      if (/^--(all|mirror)$/.test(arg)) pushModes.add(arg)
+      if (/^--(all|mirror)$/.test(arg) || /^--repo(?:=|$)/.test(arg)) pushModes.add(arg)
       continue
     }
     operands.push(arg)

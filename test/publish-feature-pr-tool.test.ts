@@ -135,6 +135,34 @@ describe('publish_feature_pr tool', () => {
     expect(pub.publish).not.toHaveBeenCalled()
   })
 
+  it('shows a bounded commit summary in the owner approval action text', async () => {
+    runtime = freshRuntime({ allowMockModel: true })
+    seedTicket(runtime, 'ticket-summary')
+    const describeCommit = vi.fn(async () => '3 files changed, 12 insertions(+)\nREADME.md | 2 ++\nnotes.txt | 10 ++++++++++')
+    const pub = {
+      prepare: vi.fn(async () => binding),
+      describeCommit,
+      publish: vi.fn(),
+    } as unknown as FeaturePrPublisher
+    const tools = registry(runtime, pub)
+    await tools.invoke(
+      { id: 'c1', name: 'request_approval', args: { publish: {
+        title: binding.title,
+        body: binding.body,
+        branch: binding.branch,
+      } } },
+      { sessionId: 'w1', role: 'worker', ticketId: 'ticket-summary' },
+    )
+    const saved = runtime.store.getDoc<{ collab?: { approvals?: Array<{ action: string }> } }>('ticket', 'ticket-summary')
+    const action = saved?.collab?.approvals?.[0]?.action ?? ''
+    expect(describeCommit).toHaveBeenCalledWith('w1', binding)
+    expect(action).toContain('files changed')
+    expect(action).toContain('README.md')
+    expect(action).toContain(binding.head.slice(0, 8))
+    expect(action.length).toBeLessThanOrEqual(1200)
+    expect(pub.publish).not.toHaveBeenCalled()
+  })
+
   it('refuses an approved publish after its ticket has ended', async () => {
     runtime = freshRuntime({ allowMockModel: true })
     seedTicket(runtime, 'ticket-ended')

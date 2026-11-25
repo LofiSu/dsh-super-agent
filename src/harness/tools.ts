@@ -456,7 +456,15 @@ function executorTools(ports: RolePortFor<'worker'>, deps: WorkerToolDeps): Tool
             body: intent.body == null ? undefined : String(intent.body),
             branch: intent.branch == null ? undefined : String(intent.branch),
           })
-          action = `publish_feature_pr ${JSON.stringify(publish)}`
+          // Show the owner what is actually in the commit, not just metadata
+          // supplied by the worker. Bounded and secret-free by construction.
+          let summary = ''
+          try {
+            summary = await deps.publishFeaturePr.describeCommit(ctx.sessionId, publish)
+          } catch {
+            summary = '(commit summary unavailable)'
+          }
+          action = `publish_feature_pr ${JSON.stringify(publish)} | ${summary}`
         } else {
           action = oneLine(String(args.action ?? ''))
           if (!action) throw new UserError('request_approval needs the exact action')

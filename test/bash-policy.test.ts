@@ -118,6 +118,33 @@ describe('bash policy — compound commands', () => {
     expect(devShellCommandRejection('git -c k=v rebase origin/main', { headBranch: 'main' })).toMatch(/merge or rebase on/)
   })
 
+  it('rejects nested shell wrappers around protected git operations', () => {
+    expect(devShellCommandRejection("bash -c 'git push origin main'")).toMatch(/nested shells/)
+    expect(devShellCommandRejection('sh -c \'git merge main\'', { headBranch: 'main' })).toMatch(/nested shells/)
+    expect(devShellCommandRejection("bash -lc 'git push origin main'")).toMatch(/nested shells/)
+    expect(devShellCommandRejection("bash -c 'echo ok'")).toBeNull()
+  })
+
+  it('rejects subshells wrapping protected git operations', () => {
+    expect(devShellCommandRejection('(git push origin main)')).toMatch(/subshell/)
+    expect(devShellCommandRejection('(git merge other)', { headBranch: 'main' })).toMatch(/subshell/)
+  })
+
+  it('rejects command substitution around protected refs', () => {
+    expect(devShellCommandRejection('git push origin $(echo main)')).toMatch(/command substitution/)
+    expect(devShellCommandRejection('git push origin `echo main`')).toMatch(/command substitution/)
+    expect(devShellCommandRejection('git push origin ${BRANCH:-main}')).toMatch(/command substitution/)
+  })
+
+  it('rejects checkout of protected path then default push', () => {
+    expect(devShellCommandRejection('git checkout main -- file && git push', { headBranch: 'peanut/x' })).toMatch(/protected ref/)
+  })
+
+  it('rejects --repo push mode that can select a local bare remote', () => {
+    expect(gitPushStatementTargetsProtected('git push --repo=/tmp/mirror.git main')).toBe(true)
+    expect(devShellCommandRejection('git push --repo=/tmp/mirror.git main')).toMatch(/push/)
+  })
+
   it('allows merge origin/main into feature branch', () => {
     expect(devShellCommandRejection('git merge origin/main')).toBeNull()
   })

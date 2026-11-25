@@ -215,6 +215,45 @@ describe('FeaturePrPublisher', () => {
     expect(result.stdout.trim()).toBe('false')
   })
 
+  it('refuses publish when the approved commit contains credential paths', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'forced-secret-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/forced-secret', bare)
+    // Worker force-stages a credential file despite checkout-local excludes.
+    fs.mkdirSync(path.join(ws, '.config', 'gh'), { recursive: true })
+    fs.writeFileSync(path.join(ws, '.config', 'gh', 'hosts.yml'), 'dummy-not-a-real-token\n')
+    execFileSync('git', ['add', '-f', '.config/gh/hosts.yml'], { cwd: ws, env: fixtureGitEnv() })
+    execFileSync('git', ['commit', '-m', 'leak'], { cwd: ws, env: fixtureGitEnv() })
+    const gh = mockGh()
+    const pub = publisher(ws, { pushRemote: bare, gh })
+    const binding = await pub.prepare(input)
+    await expect(pub.publish(input, binding)).rejects.toThrow(/credential/i)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/forced-secret'], { env: fixtureGitEnv() })).toThrow()
+    expect(gh).not.toHaveBeenCalled()
+  })
+
+  it('refuses publish when credential hides are not enforced', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'no-hide-enforcement')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/no-hide', bare)
+    const gh = mockGh()
+    const pub = new FeaturePrPublisher({
+      repo: parseRepo('o/r'),
+      workspace: () => ws,
+      pushRemote: bare,
+      gh,
+      assertCredentialsHidden: () => { throw new Error('publish refused: worker credential hides are not enforced by the OS sandbox') },
+    })
+    const binding = await pub.prepare(input)
+    await expect(pub.publish(input, binding)).rejects.toThrow(/credential hides are not enforced/)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/no-hide'], { env: fixtureGitEnv() })).toThrow()
+    expect(gh).not.toHaveBeenCalled()
+  })
+
   it('ignores worker insteadOf config when selecting the effective push destination', async () => {
     const root = tempHome()
     const intended = bareFixture(root, 'intended.git')
