@@ -78,10 +78,12 @@ Set these for a live Feishu/Lark channel:
 
 Bot permissions: `im:message`, `im:message:send_as_bot`, `im:message:readonly`,
 and for group chats the sensitive scope `im:message.group_msg` (list/poll
-messages in groups the bot belongs to). Also useful for setup:
-`im:chat:readonly` to list chats, and `im:chat:create` only for demo creation.
-The bot must be a member of `FEISHU_CHAT_ID`. Publish a new app version after
-adding scopes.
+messages in groups the bot belongs to). Connector wake polling also requires
+`im:chat:readonly` to read `/open-apis/im/v1/chats/:chat_id` and classify the
+trusted `chat_mode`; `im:chat:read` or `im:chat` also satisfy the endpoint's
+scope requirements. This is required even when direct mode is off.
+`im:chat:create` is only needed for demo creation. The bot must be a member of
+`FEISHU_CHAT_ID`. Publish a new app version after adding scopes.
 
 One-time setup:
 
@@ -110,9 +112,19 @@ Inbound paths:
   and it does not open Feishu's long-connection/WebSocket transport either.
 - **Polling Source (the implemented CLI path)** — `FeishuSource` lists
   `/open-apis/im/v1/messages` since a cursor, maps text/post/image messages to
-  `Trigger`s, and dedupes by `feishu_<message_id>`. Thread key:
-  `im:feishu:<chat_id>[:<thread_id>]`. `serve --feishu` covers **exactly one
-  chat per process**.
+  `Trigger`s, and dedupes by `feishu_<message_id>`. The list response does not
+  carry the p2p/group discriminator, so the Source resolves the chat and uses
+  only `chat_mode` (`p2p` or `group`/`topic`); `chat_type` visibility such as
+  `private`/`public` is never used as a wake classification. This trusted class
+  remains separate from direct-ingress admission: `address.group` is retained,
+  mention-only addressing is unchanged, and actor/group allowlists still apply.
+  Thread key: `im:feishu:<chat_id>[:<thread_id>]`. `serve --feishu` covers
+  **exactly one chat per process**. After upgrading or fixing the chat-information
+  scope, an already-ingested message is not retroactively reclassified, and an
+  overlapping poll does not rewrite its completed trigger. To qualify an existing
+  private thread, send a new message in the configured chat after metadata lookup
+  succeeds; it must pass normal ingress and admission. This needs no cursor reset
+  and does not weaken the private-target check.
 
 Outbound: `FeishuOutboxAdapter` replies in-thread with
 `/open-apis/im/v1/messages/:message_id/reply` when the source message is known,
@@ -175,8 +187,10 @@ successful pull and ingest, and only when it advances. On restart the stored
 value is passed back to `FeishuSource`, so the previous window is not replayed.
 `FeishuSource` queries one second before the cursor to catch messages sharing a
 boundary second; any overlap is deduped by Trigger id (`feishu_<message_id>`) in
-`Runtime.ingest`, so a message already processed is never processed twice. A
-stored cursor whose `chatId` differs from the current chat is ignored.
+`Runtime.ingest`, so a message already processed is never processed twice. If
+the cursor write fails, the source cursor is restored to the beginning of that
+pull and the full window is retried. A stored cursor whose `chatId` differs from
+the current chat is ignored.
 
 **Admission semantics.** The loop calls `runtime.ingest(trigger)` with the
 Trigger returned by `feishuTriggerFromMessage`; it does not mark anything
@@ -193,8 +207,10 @@ become a Ticket.
 both in-flight polls and their drains (jobs, outbox flush), closes the iMessage
 API, and only then runs `Runtime.finish()` to stop the daemon and close SQLite.
 The loops never close the Runtime or the clients; `serve` owns them. A failed
-pull is logged and retried with bounded exponential backoff (cap 30s);
-stream/ingest errors are logged and skipped like the iMessage loop. A TCC/Full
+pull is logged and retried with bounded exponential backoff (cap 30s). An
+ingest error restores the source cursor to the beginning of that pull, so the
+next poll replays the window and durable trigger-id dedupe handles any earlier
+successful items. A TCC/Full
 Disk Access denial is terminal for the iMessage loop (not retried forever), names
 the exact System Settings path, and leaves a combined Feishu loop and the daemon
 running.

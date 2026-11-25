@@ -22,6 +22,8 @@ export interface SandboxPolicy {
    * so host credentials are not readable at their absolute paths.
    */
   hidePaths?: readonly string[]
+  /** Linux bwrap: separate PID namespace when the wrapper supports it. */
+  unsharePid?: boolean
 }
 
 export interface SandboxSystem {
@@ -166,6 +168,7 @@ function linuxStrictArgv(policy: SandboxPolicy, exists: (path: string) => boolea
   return [
     'bwrap',
     ...(policy.allowNetwork ? [] : ['--unshare-net']),
+    ...(policy.unsharePid === true ? ['--unshare-pid'] : []),
     ...reads,
     '--dev', '/dev',
     '--proc', '/proc',
@@ -233,6 +236,7 @@ export function wrapBashCommand(
       : [
         'bwrap',
         ...(policy.allowNetwork ? [] : ['--unshare-net']),
+        ...(policy.unsharePid === true ? ['--unshare-pid'] : []),
         '--ro-bind', '/', '/',
         ...hideArgs,
         '--dev', '/dev',

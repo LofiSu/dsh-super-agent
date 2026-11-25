@@ -121,12 +121,12 @@ describe('publish-outcome read-only database entry', () => {
         store.close()
         const db = new DatabaseSync(dbPath)
         db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
-          .run(7, 'owned future-schema fixture')
+          .run(8, 'owned future-schema fixture')
         db.close()
       } else {
         const db = new DatabaseSync(dbPath)
         db.exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-                 INSERT INTO schema_migrations VALUES(7, 'owned future-schema fixture')`)
+                 INSERT INTO schema_migrations VALUES(8, 'owned future-schema fixture')`)
         db.close()
       }
       const before = createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex')

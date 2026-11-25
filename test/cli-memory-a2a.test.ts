@@ -39,8 +39,11 @@ describe('ds-agent memory / a2a', () => {
   })
 
   it('reports an empty memory index', () => {
+    const dir = home()
+    const store = new Store(dir)
+    store.close()
     const state = JSON.parse(command('memory', {
-      DS_AGENT_HOME: home(),
+      DS_AGENT_HOME: dir,
       DS_AGENT_INSTANCE_ID: 'alpha',
     })) as { instance: string; memories: number; recent: unknown[] }
     expect(state).toMatchObject({ instance: 'alpha', memories: 0, recent: [] })

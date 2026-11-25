@@ -13,7 +13,14 @@ import {
   hidePathsForWorkspace,
   seedWorkspaceCheckout,
 } from './git-workspace.ts'
+import { enforceRequiredSandbox } from './sandbox-probe.ts'
 import { readIsolationFromEnv, sandboxEnabledFromEnv, wrapBashCommand, type SandboxPolicy } from './seccomp.ts'
+
+function unsharePidRequiredFromEnv(env: NodeJS.ProcessEnv): boolean {
+  const raw = env.DS_AGENT_SANDBOX_REQUIRED?.trim()
+  if (!raw) return false
+  return raw.split(',').map(t => t.trim()).includes('process')
+}
 
 export interface LocalEnvOptions {
   timeoutMs?: number
@@ -81,6 +88,7 @@ export class LocalEnv implements EnvPort {
       ...(options.sandbox ?? { enabled: sandboxEnabledFromEnv(env) }),
       allowNetwork,
     }
+    const unsharePid = (process.platform === 'linux' && unsharePidRequiredFromEnv(env)) || sandbox.unsharePid === true
     this.sourceRepo = options.sourceRepo?.trim() || undefined
     this.credentialHidePaths = options.credentialHidePaths
       ? [...options.credentialHidePaths]
@@ -89,6 +97,10 @@ export class LocalEnv implements EnvPort {
       ...sandbox,
       readIsolation: options.readIsolation ?? sandbox.readIsolation ?? envReadIsolation,
       readRoots: [...(sandbox.readRoots ?? []), ...(options.readRoots ?? [])],
+      unsharePid,
+    }
+    if (env.DS_AGENT_SANDBOX_REQUIRED?.trim()) {
+      enforceRequiredSandbox(env, this.sandbox)
     }
     const vaultSecrets = this.vault
       ? Object.values(this.vault.resolveForChild(this.vaultNames)).filter(

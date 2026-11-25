@@ -1,7 +1,10 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { githubTrigger } from '../channels/github.ts'
 import { cliTrigger } from '../channels/cli.ts'
 import { imTrigger } from '../channels/im.ts'
 import { Engine } from '../core/engine.ts'
+import { ensureCollaboration } from '../core/collab.ts'
 import {
   resolveUnknownOutcomeEffects,
   retryableUnknownEffectIds,
@@ -17,14 +20,19 @@ import { redactSecrets, secretValues } from '../env/sanitize.ts'
 import { LOCAL_AGENTS_FILE, loadLocalAgents } from '../env/local-agents.ts'
 import { SKILLS_DIR, SKILL_FILE, SkillRegistry } from '../env/skills.ts'
 import { loadRoutines, ROUTINES_ENV, ROUTINES_FILE } from '../harness/routines.ts'
+import { CONNECTORS_FILE, loadConnectorConfig } from '../connectors/config.ts'
+import { ConnectorIndex } from '../connectors/index-store.ts'
+import { loadConnectorWakeState } from '../connectors/wake.ts'
+import { CONNECTOR_KINDS, isGoogleService, type ConnectorKind } from '../connectors/types.ts'
 import { aggregateReportOf, describeTopologyOf, type TeamRecord } from '../harness/team.ts'
 import { formatMetricsJson, Metrics } from '../metrics/metrics.ts'
+import { executionReceipt, formatExecutionReceipt } from '../core/receipt.ts'
 import type { A2AEnvelope } from '../channels/a2a.ts'
 import type { LongTermMemoryEntry } from '../memory/long-term.ts'
 import { Runtime } from '../runtime.ts'
 import { visibleTickets } from '../speculate/index.ts'
 import type { JobRow, Role, SessionRow, Ticket } from '../shared/types.ts'
-import { readPublishAdmissionsReadOnly, Store } from '../store/sqlite.ts'
+import { readPublishAdmissionsReadOnly, Store, type ReceiptTicket } from '../store/sqlite.ts'
 import { healthProbe } from '../watchdog/health.ts'
 import { startEmbeddedGateway } from '../gateway/embedded.ts'
 import { defaultHome, runDemo } from './demo.ts'
@@ -64,6 +72,16 @@ function meshCapacity(): number {
   return Number.isSafeInteger(n) && n > 0 ? n : 4
 }
 
+function openInspectStore(home: string): Store {
+  return Store.openReadOnly(home)
+}
+
+function assertDatabaseExists(home: string): void {
+  if (!fs.existsSync(path.join(home, 'ds-agent.db'))) {
+    throw new Error('local state database does not exist')
+  }
+}
+
 function resolveTicket(store: Store, raw: string | undefined): Ticket {
   const all = store.listDocs<Ticket>('ticket')
   const live = all.filter(ticket => !ticket.ended)
@@ -95,6 +113,7 @@ function withEngine<T>(
   opts: { verbose?: boolean } = {},
 ): T {
   const home = defaultHome()
+  assertDatabaseExists(home)
   const store = new Store(home)
   const metrics = new Metrics(home)
   const host: Host = {
@@ -147,6 +166,7 @@ function help(): void {
   pnpm ds-agent init
   pnpm ds-agent tasks
   pnpm ds-agent panel            # Panel · Execution (tickets, mandate, executor, outbox)
+  pnpm ds-agent receipt <ticketId> [--json] # read-only execution evidence from local state
   pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
   pnpm ds-agent status
   pnpm ds-agent health
@@ -163,8 +183,8 @@ function help(): void {
   pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
   pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
   pnpm ds-agent ui [--host 127.0.0.1] [--port <n>] [--token <token>]
-                            # read-only loopback dashboard over persisted state; requires
-                            # DS_AGENT_UI_TOKEN or --token (at least 16 characters)
+                            # read-only loopback dashboard over existing state; does not
+                            # create state; requires DS_AGENT_UI_TOKEN or --token (16+ chars)
   pnpm ds-agent backup --out <file.db>  # WAL-safe snapshot of the SQLite store
   pnpm ds-agent restore <file.db> [--force]
                             # replace the store from a snapshot; --force is required
@@ -188,6 +208,11 @@ function help(): void {
                             # inspect or resolve one uncertain external effect on an ended Ticket
   pnpm ds-agent publish-outcome <ticketId> [--json]
                             # read-only facts for consumed feature-PR approvals; never retries
+  pnpm ds-agent connectors [status] [--json]  # Google Workspace connector config and index stats
+  pnpm ds-agent connectors query "invoice" [--service gmail] [--kind message]
+                            [--since ISO] [--wake-only] [--limit 10] [--json]
+                            # read the connector data index; separate from long-term memory
+                            # connectors.json is absent/off by default; no network is used here
 
 Mid-task collaboration (persisted in SQLite):
   pnpm ds-agent pause <ticketId> [--reason "waiting on staging"]
@@ -227,7 +252,9 @@ before SQLite is opened, and stores its cursor in SQLite as
 one start; otherwise the stored cursor for that chat seeds the poll, otherwise
 the source starts at now-5min. Feishu triggers keep the chat id in
 channel.address.group, so DS_AGENT_GROUP_ALLOWLIST admits by chat; only a real
-bot mention sets addressed=mention, and group messages are never marked direct.
+bot mention sets addressed=mention, and group messages are never marked direct. Connector wake polling also
+requires im:chat:readonly to resolve trusted chat_mode (im:chat:read or im:chat
+also satisfy this scope), regardless of whether direct mode is enabled.
 --imessage and --feishu may be combined: both configurations are resolved before
 Runtime.create, one Runtime/SQLite store is shared, and each loop keeps its own
 AbortController, cursor, and outbox. If either configuration is absent or
@@ -251,7 +278,8 @@ SQLite. For iMessage it opens chat.db read-only, checks the required columns,
 prints count/latest ROWID (never message text), reports admission and osascript
 presence, and prints the exact manual Automation command without running it. For
 Feishu it reports paired credentials, chat id, base URL, and scopes without
-printing secrets; --network adds one real tenant_access_token call and still
+printing secrets; connector wake polling requires im:chat:readonly for chat_mode
+lookup (im:chat:read or im:chat also work), even with direct mode off. --network adds one real tenant_access_token call and still
 sends no message. Exit 0 means every selected channel is ready. A safe no-send
 smoke is: run channels check (optionally --network), run the printed iMessage
 Automation command manually, then stop; the first real Router reply is the first
@@ -261,8 +289,10 @@ terminal to control Messages under System Settings > Privacy & Security >
 Automation.
 
 Feishu setup: create a custom app with the Bot capability, add scopes im:message,
-im:message:send_as_bot, im:message:readonly, and im:message.group_msg (for group
-history), publish an app version, add the bot to exactly one target chat, copy
+im:message:send_as_bot, im:message:readonly, im:message.group_msg (for group
+history), and im:chat:readonly (required for connector wake chat_mode lookup even
+when direct mode is off; im:chat:read or im:chat also work). Publish an app
+version, add the bot to exactly one target chat, copy
 its oc_... chat id, then set FEISHU_APP_ID, FEISHU_APP_SECRET, and
 FEISHU_CHAT_ID (or pass --chat). Inbound CLI delivery is one-chat polling only;
 webhook servers and long-connection/WebSocket delivery are not implemented.
@@ -406,10 +436,10 @@ async function serve(home: string): Promise<void> {
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
   try {
-    // Only the long-lived serving process ticks owner routines and the
-    // owner-gated idle wake; one-shot commands (approve, retry, chat, resume,
-    // emit) must not fire them.
-    runtime.start({ assessPending: canAssess, routines: true, proactive: true })
+    // Only the long-lived serving process ticks owner routines, the
+    // owner-gated idle wake, and connector polling. One-shot commands
+    // (approve, retry, chat, resume, emit) must not fire them.
+    runtime.start({ assessPending: canAssess, routines: true, proactive: true, connectors: true })
   } catch (error) {
     channels?.abort()
     channels?.close()
@@ -449,6 +479,15 @@ async function serve(home: string): Promise<void> {
   await new Promise<void>(() => undefined)
 }
 
+function getReceiptTicket(store: Store, id: string): ReceiptTicket | undefined {
+  try {
+    return store.getReceiptTicket(id)
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error('ticket payload is malformed JSON')
+    throw error
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, sub] = process.argv.slice(2)
   const home = defaultHome()
@@ -473,7 +512,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'tasks') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const tickets = visibleTickets(store.listDocs<Ticket>('ticket'))
     if (tickets.length === 0) console.log('no tickets')
     for (const ticket of tickets) console.log(`${ticket.id}\t${ticketStage(ticket)}\t${ticket.title}`)
@@ -481,9 +520,33 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'panel' || cmd === 'execution') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(formatExecution(executionView(store, home)))
+    } finally {
+      store.close()
+    }
+    return
+  }
+  if (cmd === 'receipt') {
+    const refs = bare(3)
+    if (refs.length !== 1) {
+      throw new Error('usage: ds-agent receipt <ticketId> [--json]')
+    }
+    const ticketRef = refs[0]!
+    const store = Store.openReadOnly(home)
+    try {
+      const exact = getReceiptTicket(store, ticketRef)
+      const matches = exact ? [] : store.listDocIdsByPrefix('ticket', ticketRef)
+      if (!exact && matches.length > 1) throw new Error('ambiguous ticket id prefix')
+      const ticket = exact ?? (matches[0] ? getReceiptTicket(store, matches[0]) : undefined)
+      if (!ticket) throw new Error('unknown ticket id')
+      const receipt = executionReceipt(store, ticket)
+      if (process.argv.includes('--json')) {
+        console.log(JSON.stringify(receipt, null, 2))
+      } else {
+        console.log(formatExecutionReceipt(receipt))
+      }
     } finally {
       store.close()
     }
@@ -492,7 +555,7 @@ async function main(): Promise<void> {
   if (cmd === 'retry') {
     const ticketRef = bare(3)[0]
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -510,7 +573,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'health') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(JSON.stringify(healthProbe(store, home)))
     } finally {
@@ -539,7 +602,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'memory' || cmd === 'a2a') {
     const limit = Math.max(1, Number(option('limit') ?? 10) || 10)
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const instance = process.env.DS_AGENT_INSTANCE_ID ?? 'local'
       if (cmd === 'memory') {
@@ -575,7 +638,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'status') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const sessions = store.listSessions()
     const jobs = store.listJobs()
     console.log(`db ${store.path}`)
@@ -589,7 +652,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'team') {
     const ref = bare(3)[0]
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const teams = store.listDocs<TeamRecord>('team')
       if (!ref) {
@@ -617,7 +680,7 @@ async function main(): Promise<void> {
   if (cmd === 'teams') {
     const ticket = option('ticket')
     const session = option('session')
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       let teams = store.listDocs<TeamRecord>('team')
       if (ticket) teams = teams.filter(team => team.ticketId === ticket)
@@ -630,7 +693,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'approvals') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const pending: {
       ticketId: string
       title: string
@@ -728,7 +791,11 @@ async function main(): Promise<void> {
     if (!ticketRef) {
       throw new Error('usage: ds-agent recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]')
     }
-    const store = new Store(home)
+    const resolving = resolution === 'retry' || resolution === 'acknowledge'
+    if (resolving && !fs.existsSync(path.join(home, 'ds-agent.db'))) {
+      throw new Error('local state database does not exist')
+    }
+    const store = resolving ? new Store(home) : openInspectStore(home)
     try {
       const ticket = resolveTicket(store, ticketRef)
       if (!ticket.ended) {
@@ -778,7 +845,7 @@ async function main(): Promise<void> {
     }
     const note = option('note')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -839,7 +906,7 @@ async function main(): Promise<void> {
     const ticketRef = bare(3, ['reason'])[0]
     const reason = option('reason')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -862,9 +929,10 @@ async function main(): Promise<void> {
   }
   if (cmd === 'collab') {
     const ticketRef = bare(3)[0]
-    withEngine((engine, store) => {
+    const store = openInspectStore(home)
+    try {
       const ticket = resolveTicket(store, ticketRef)
-      const { collaboration } = engine.collaboration(ticket.id)
+      const collaboration = ensureCollaboration(ticket)
       console.log(`ticket ${ticket.id} [${ticketStage(ticket)}] ${ticket.title}`)
       const paused = collaboration.paused
       console.log(
@@ -901,7 +969,9 @@ async function main(): Promise<void> {
           console.log(`  ${item.at} by ${item.by}${item.reason ? ` — ${item.reason}` : ''}`)
         }
       }
-    })
+    } finally {
+      store.close()
+    }
     return
   }
   if (cmd === 'chat') {
@@ -1026,6 +1096,10 @@ async function main(): Promise<void> {
     console.log(redact(buildSystemPrompt(input)))
     return
   }
+  if (cmd === 'connectors') {
+    runConnectorsCommand(home, sub)
+    return
+  }
   if (cmd === 'routines') {
     const routines = loadRoutines(home, process.env)
     if (process.argv.includes('--json')) {
@@ -1081,6 +1155,97 @@ async function main(): Promise<void> {
     return
   }
   throw new Error(`unknown command ${cmd}`)
+}
+
+function runConnectorsCommand(home: string, sub: string | undefined): void {
+  const store = new Store(home)
+  try {
+    const config = loadConnectorConfig(home, process.env)
+    if (sub === 'query') {
+      const text = bare(4, ['service', 'kind', 'since', 'limit']).join(' ').trim()
+      const service = option('service')
+      if (service !== undefined && !isGoogleService(service)) {
+        throw new Error(`unknown connector service ${service}`)
+      }
+      const kind = option('kind')
+      if (kind !== undefined && !CONNECTOR_KINDS.includes(kind as ConnectorKind)) {
+        throw new Error(`unknown connector kind ${kind}`)
+      }
+      const since = option('since')
+      const limitRaw = option('limit')
+      const limit = limitRaw === undefined ? undefined : Number(limitRaw)
+      if (limit !== undefined && !Number.isFinite(limit)) throw new Error('--limit must be a number')
+      const records = new ConnectorIndex(store).query({
+        ...(text ? { text } : {}),
+        ...(service !== undefined ? { service } : {}),
+        ...(kind !== undefined ? { kind: kind as ConnectorKind } : {}),
+        ...(since !== undefined ? { since } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+        ...(process.argv.includes('--wake-only') ? { wakeOnly: true } : {}),
+      })
+      if (process.argv.includes('--json')) {
+        console.log(JSON.stringify(records, null, 2))
+        return
+      }
+      if (records.length === 0) {
+        console.log('no connector records')
+        return
+      }
+      for (const record of records) {
+        console.log(`${record.occurredAt}\t${record.service}:${record.kind}\t${record.id}\t${record.title}`)
+      }
+      return
+    }
+    if (sub !== undefined && sub !== 'status') {
+      throw new Error('connectors needs "status" or "query": ds-agent connectors [status] | query "text"')
+    }
+    const stats = new ConnectorIndex(store).stats()
+    const state = loadConnectorWakeState(store)
+    const credentialSource = config.google.credentialsFile ?? config.google.credentialsEnv ?? '-'
+    const credentialReady = config.google.credentialsFile !== undefined
+      ? fs.existsSync(path.isAbsolute(config.google.credentialsFile)
+        ? config.google.credentialsFile
+        : path.join(home, config.google.credentialsFile))
+      : config.google.credentialsEnv !== undefined
+        ? Boolean(process.env[config.google.credentialsEnv]?.trim())
+        : false
+    const summary = {
+      home,
+      configFile: `${CONNECTORS_FILE}${fs.existsSync(path.join(home, CONNECTORS_FILE)) ? '' : ' (absent)'}`,
+      enabled: config.enabled,
+      services: config.google.services,
+      credentialSource,
+      credentialReady,
+      poll: config.poll,
+      index: config.index,
+      wake: config.wake,
+      stats,
+      wakeState: {
+        lastCheckAt: state.lastCheckAt === undefined ? undefined : new Date(state.lastCheckAt).toISOString(),
+        lastWakeAt: state.lastWakeAt === undefined ? undefined : new Date(state.lastWakeAt).toISOString(),
+        wakes: state.wakes.length,
+        notified: state.notified.length,
+      },
+    }
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify(summary, null, 2))
+      return
+    }
+    console.log(`connectors ${config.enabled ? 'enabled' : 'disabled'} (${summary.configFile})`)
+    console.log(`  services: ${config.google.services.join(',')}`)
+    console.log(`  credentials: ${credentialSource} ${credentialReady ? 'present' : 'missing'}`)
+    console.log(`  poll: every ${config.poll.intervalMinutes}m max=${config.poll.maxRecordsPerPoll}`)
+    console.log(`  index: ${stats.count} records maxRecords=${config.index.maxRecords} maxAgeDays=${config.index.maxAgeDays}`)
+    console.log(
+      `  wake: ${config.wake.enabled ? 'enabled' : 'disabled'} `
+      + `services=${config.wake.services.join(',')} target=${config.wake.source}:${config.wake.thread}`,
+    )
+    if (state.lastCheckAt !== undefined) {
+      console.log(`  lastCheckAt: ${new Date(state.lastCheckAt).toISOString()}`)
+    }
+  } finally {
+    store.close()
+  }
 }
 
 function sessionLine(session: SessionRow): string {
