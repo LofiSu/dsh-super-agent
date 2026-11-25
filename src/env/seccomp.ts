@@ -1,7 +1,7 @@
 import { platform } from 'node:os'
 import path from 'node:path'
 import { dirname } from 'node:path'
-import fs, { existsSync } from 'node:fs'
+import fs, { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { UserError } from '../shared/errors.ts'
 
@@ -18,6 +18,11 @@ export interface SandboxPolicy {
   readIsolation?: boolean
   /** Extra host paths exposed read-only in strict mode (absolute paths). */
   readRoots?: readonly string[]
+  /**
+   * Linux non-strict mode: overlay these paths with tmpfs after `--ro-bind / /`
+   * so host credentials are not readable at their absolute paths.
+   */
+  hidePaths?: readonly string[]
   /** Linux bwrap: separate PID namespace when the wrapper supports it. */
   unsharePid?: boolean
 }
@@ -156,6 +161,27 @@ function darwinProfile(policy: SandboxPolicy, execPath: string): string {
   const writes = policy.readIsolation
     ? [...(policy.writableRoots ?? [])]
     : ['/private/tmp', '/tmp', '/var/folders', '/private/var/folders', ...(policy.writableRoots ?? [])]
+  // Host credentials must be unreadable in BOTH modes. macOS matches SBPL
+  // filters against canonical paths, so normalize symlinked prefixes such as
+  // /tmp -> /private/tmp. Directories use `subpath` (hides current and future
+  // contents); files use `literal`. Place the denies after the allow rules so
+  // the more specific filter wins (SBPL prefers the most specific match).
+  const hideDenies = (policy.hidePaths ?? []).map(p => {
+    let canonical = p
+    let isDir = false
+    try {
+      canonical = realpathSync(p)
+      isDir = lstatSync(canonical).isDirectory()
+    } catch {
+      try {
+        isDir = lstatSync(p).isDirectory()
+      } catch {
+        // Absent candidate: a literal deny still hides it if created later.
+      }
+    }
+    const kind = isDir ? 'subpath' : 'literal'
+    return `(deny file-read* (${kind} ${sbplString(canonical)}))`
+  })
   const lines = [
     '(version 1)',
     '(deny default)',
@@ -174,10 +200,29 @@ function darwinProfile(policy: SandboxPolicy, execPath: string): string {
     // Compatibility default: today's sandbox allows all host reads.
     lines.push('(allow file-read*)')
   }
+  lines.push(...hideDenies)
   for (const dir of new Set(writes)) lines.push(`(allow file-write* (subpath ${sbplString(dir)}))`)
   lines.push('(allow file-write* (literal "/dev/null"))')
   lines.push(policy.allowNetwork ? '(allow network*)' : '(deny network*)')
   return `${lines.join('\n')}\n`
+}
+
+/** Directory: `--tmpfs`; file: hide with `--ro-bind /dev/null`. */
+export function bwrapHidePathArgs(
+  hidePaths: readonly string[],
+  exists: (path: string) => boolean,
+  lstatIsDirectory: (path: string) => boolean,
+): string[] {
+  const out: string[] = []
+  for (const p of hidePaths) {
+    if (!exists(p)) continue
+    if (lstatIsDirectory(p)) {
+      out.push('--tmpfs', p)
+    } else {
+      out.push('--ro-bind', '/dev/null', p)
+    }
+  }
+  return out
 }
 
 function linuxStrictArgv(policy: SandboxPolicy, exists: (path: string) => boolean): string[] {
@@ -247,13 +292,26 @@ export function wrapBashCommand(
     if (!system.available('bwrap')) {
       throw new UserError('worker bash requires bubblewrap (bwrap) on Linux')
     }
+    const exists = system.exists ?? existsSync
+    const hideArgs = bwrapHidePathArgs(
+      policy.hidePaths ?? [],
+      exists,
+      p => {
+        try {
+          return lstatSync(p).isDirectory()
+        } catch {
+          return false
+        }
+      },
+    )
     const argv = policy.readIsolation
-      ? linuxStrictArgv(policy, system.exists ?? existsSync)
+      ? linuxStrictArgv(policy, exists)
       : [
         'bwrap',
         ...(policy.allowNetwork ? [] : ['--unshare-net']),
         ...(policy.unsharePid === true ? ['--unshare-pid'] : []),
         '--ro-bind', '/', '/',
+        ...hideArgs,
         '--dev', '/dev',
         '--proc', '/proc',
         ...(policy.writableRoots ?? []).flatMap(root => ['--bind', root, root]),

@@ -231,6 +231,15 @@ export interface ResumeRecord {
  * action after the request makes the old card undecidable; the Worker must ask
  * again. The id is not a capability and cannot be minted by chat text.
  */
+export interface PublishApprovalBinding {
+  repo: string
+  head: string
+  branch: string
+  base: 'main'
+  title: string
+  body?: string
+}
+
 export interface ApprovalRequest {
   id: string
   at: string
@@ -238,6 +247,8 @@ export interface ApprovalRequest {
   action: string
   /** Deterministic id over the exact action text shown to the owner. */
   actionId: string
+  /** Structured, immutable publish intent when this approval covers a PR publish. */
+  publish?: PublishApprovalBinding
   reason?: string
   /** Session id that asked. */
   requestedBy: string

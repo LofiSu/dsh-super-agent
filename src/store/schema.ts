@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS events (
 `
 
 /** The schema version this build writes and understands. */
-export const LATEST_SCHEMA_VERSION = 5
+export const LATEST_SCHEMA_VERSION = 7
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -119,8 +119,10 @@ function ensureColumn(db: DatabaseSync, table: string, column: string, ddl: stri
  * Ordered schema migrations. Version 1 is the original `SCHEMA`; version 2
  * adds the outbox columns that earlier builds created with `ensureColumn`;
  * version 3 adds the durable lifecycle-event log, version 4 adds spill refs,
- * and version 5 indexes per-Ticket reply/outbox lookups. Add new steps here and
- * bump `LATEST_SCHEMA_VERSION`; never edit an applied step in place.
+ * versions 5 and 6 add the publish-approval admission ledger and its durable
+ * observation columns, and version 7 indexes per-Ticket receipt lookups.
+ * Add new steps here and bump `LATEST_SCHEMA_VERSION`; never edit an applied
+ * step in place.
  */
 export const MIGRATIONS: readonly StoreMigration[] = [
   {
@@ -156,6 +158,30 @@ CREATE TABLE IF NOT EXISTS lifecycle_events (
   },
   {
     version: 5,
+    // A publish approval is admitted at most once. Rows are durable tombstones:
+    // failures never release them because an external push may have happened.
+    up: db => db.exec(`
+CREATE TABLE IF NOT EXISTS publish_approval_admissions (
+  ticket_id TEXT NOT NULL,
+  approval_id TEXT NOT NULL,
+  admitted_at TEXT NOT NULL,
+  PRIMARY KEY (ticket_id, approval_id)
+);
+`),
+  },
+  {
+    version: 6,
+    // Add durable outcome evidence without inferring facts for consumed v5 rows.
+    // Existing rows receive only the explicit legacy marker; binding/result stay NULL.
+    up: db => {
+      ensureColumn(db, 'publish_approval_admissions', 'binding_json', 'TEXT')
+      ensureColumn(db, 'publish_approval_admissions', 'observation_state', "TEXT NOT NULL DEFAULT 'legacy_unrecorded'")
+      ensureColumn(db, 'publish_approval_admissions', 'result_json', 'TEXT')
+      ensureColumn(db, 'publish_approval_admissions', 'observed_at', 'TEXT')
+    },
+  },
+  {
+    version: 7,
     // Receipt queries are scoped by Ticket; these indexes keep them efficient
     // without loading unrelated reply/outbox payloads into memory.
     up: db => db.exec(`

@@ -1,8 +1,9 @@
-import os from 'node:os'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
+import { defaultCredentialHidePaths } from '../src/env/git-workspace.ts'
 import { LocalEnv, type LocalEnvOptions } from '../src/env/local-env.ts'
 import {
   readIsolationFromEnv,
@@ -140,6 +141,43 @@ describe('strict read isolation (Darwin)', () => {
     expect(profile).toContain('(allow network*)')
     expect(profile).not.toContain('(deny network*)')
   })
+
+  it('denies credential hide paths in non-strict mode (macOS default)', () => {
+    const hidePaths = ['/Users/example/.config/gh', '/Users/example/.ssh/id_ed25519']
+    const profile = darwinProfile({
+      enabled: true,
+      writableRoots: ['/Users/example/workspace'],
+      hidePaths,
+    })
+    // Non-strict compatibility wildcard stays, with specific deny rules after it.
+    expect(profile).toContain('(allow file-read*)')
+    const wildcardAt = profile.indexOf('(allow file-read*)')
+    for (const p of hidePaths) {
+      expect(profile).toContain(`(deny file-read* (literal ${JSON.stringify(p)}))`)
+      // More specific deny must follow the broad allow so it wins.
+      expect(profile.indexOf(`(deny file-read* (literal ${JSON.stringify(p)}))`)).toBeGreaterThan(wildcardAt)
+    }
+  })
+
+  it('denies credential hide paths in strict mode too', () => {
+    const hidePaths = ['/Users/example/.config/gh']
+    const profile = darwinProfile({
+      enabled: true,
+      readIsolation: true,
+      writableRoots: ['/Users/example/workspace'],
+      hidePaths,
+    })
+    expect(profile).not.toContain('(allow file-read*)')
+    expect(profile).toContain(`(deny file-read* (literal ${JSON.stringify(hidePaths[0])}))`)
+  })
+
+  it('honors defaultCredentialHidePaths when wired into the sandbox policy', () => {
+    const hidePaths = defaultCredentialHidePaths('/Users/example')
+    const profile = darwinProfile({ enabled: true, hidePaths })
+    for (const p of hidePaths) {
+      expect(profile).toContain(`(deny file-read* (literal ${JSON.stringify(p)}))`)
+    }
+  })
 })
 
 const REAL_DARWIN_SANDBOX = process.platform === 'darwin'
@@ -150,6 +188,28 @@ const REAL_DARWIN_SANDBOX = process.platform === 'darwin'
  * the real macOS sandbox with strict mode and skips where it is unavailable.
  */
 describe.skipIf(!REAL_DARWIN_SANDBOX)('strict read isolation smoke (macOS)', () => {
+  it('non-strict mode still denies reads of configured credential hide paths', async () => {
+    const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-hide-darwin-'))
+    const secretFile = path.join(secretDir, 'hosts.yml')
+    fs.writeFileSync(secretFile, 'dummy-not-a-real-token\n')
+    try {
+      const env = new LocalEnv(tempHome(), {
+        timeoutMs: 15_000,
+        sandbox: { enabled: true, allowNetwork: false },
+        credentialHidePaths: [secretFile],
+        env: { PATH: process.env.PATH, HOME: os.homedir() },
+        allowlist: ['PATH', 'HOME'],
+      })
+      const result = await env.bash('hide', `cat ${JSON.stringify(secretFile)}; echo exit:$?`)
+      expect(result.stdout).not.toContain('dummy-not-a-real-token')
+      // sandbox-exec denies the read outright (exit 1); /dev/null masking in
+      // Linux bwrap yields exit 0 with empty output. Both are acceptable hides.
+      expect(result.stdout).toMatch(/exit:(0|1)\b/)
+    } finally {
+      fs.rmSync(secretDir, { recursive: true, force: true })
+    }
+  })
+
   it('runs a shell, reads /etc/hosts, and denies reads outside the allowlist', async () => {
     const env = new LocalEnv(tempHome(), {
       timeoutMs: 15_000,
@@ -166,8 +226,11 @@ describe.skipIf(!REAL_DARWIN_SANDBOX)('strict read isolation smoke (macOS)', () 
     expect(allowed.stdout).toContain('shell-ok')
     expect(allowed.stdout).toContain('hosts-ok')
 
-    // The home directory is deliberately outside the strict allowlist.
-    const denied = await env.bash('smoke', 'ls "$HOME"')
+    // $HOME is the worker workspace; the real host home stays outside the allowlist.
+    const hostHome = os.homedir()
+    const ws = env.workspace('smoke')
+    if (hostHome === ws) return
+    const denied = await env.bash('smoke', `ls ${JSON.stringify(hostHome)}`)
     expect(denied.code).not.toBe(0)
     expect(denied.stderr).toMatch(/Operation not permitted|Permission denied/)
   })

@@ -6,6 +6,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { EXTERNAL_OP_KIND, type ExternalOperationRecord } from '../src/core/external-effects.ts'
 import type { Ticket } from '../src/shared/types.ts'
+import { LATEST_SCHEMA_VERSION } from '../src/store/schema.ts'
 import { Store } from '../src/store/sqlite.ts'
 
 const homes: string[] = []
@@ -256,12 +257,14 @@ describe('ds-agent receipt', () => {
     newerStore.close()
     const newerDb = new DatabaseSync(path.join(newerHome, 'ds-agent.db'))
     newerDb.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
-      .run(6, '2026-11-19T12:00:00.000Z')
+      .run(LATEST_SCHEMA_VERSION + 1, '2026-11-19T12:00:00.000Z')
     newerDb.close()
 
     const newer = runReceipt(newerHome, 'ticket_1')
     expect(newer.status).not.toBe(0)
-    expect(newer.stderr).toContain('database schema version 6 is newer than this build supports (5)')
+    expect(newer.stderr).toContain(
+      `database schema version ${LATEST_SCHEMA_VERSION + 1} is newer than this build supports (${LATEST_SCHEMA_VERSION})`,
+    )
 
     const emptyHome = tempHome()
     const emptyStore = new Store(emptyHome)

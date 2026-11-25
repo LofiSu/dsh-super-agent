@@ -25,6 +25,11 @@ import { arbitrateSubscribers } from './core/intake.ts'
 import { withSessionRole } from './core/session-role.ts'
 import { bindRolePorts } from './core/role-ports.ts'
 import type { Host } from './core/host.ts'
+import { githubRepoFromEnv } from './channels/github-source.ts'
+import { parseBashAllowNetwork } from './env/bash-allow-network.ts'
+import { parseBashTimeoutMs } from './env/bash-timeout.ts'
+import { FeaturePrPublisher } from './env/git-publish.ts'
+import { isGitRepositorySource } from './env/git-workspace.ts'
 import {
   FillVault,
   fillTargetFromEnv,
@@ -707,12 +712,31 @@ export class Runtime {
     }
     const store = new Store(opts.home)
     const metrics = new Metrics(opts.home)
+    const configuredSource = baseEnv.DS_AGENT_WORKSPACE_SOURCE_REPO?.trim()
+    // An explicitly configured source is kept verbatim so a bad value remains
+    // an actionable clone error. The implicit cwd default is only usable when
+    // it is actually a git repository; otherwise leave the workspace empty.
+    const workspaceSource = configuredSource
+      || (isGitRepositorySource(process.cwd()) ? process.cwd() : undefined)
     const env = new LocalEnv(path.join(opts.home, 'workspaces'), {
       env: baseEnv,
+      timeoutMs: parseBashTimeoutMs(baseEnv),
+      sourceRepo: workspaceSource,
+      sandbox: { enabled: true, allowNetwork: parseBashAllowNetwork(baseEnv) },
       ...(fillVault ? {
         redactValues: fillVault.redactionValues(),
         readIsolation: true,
       } : {}),
+    })
+    const ghRepo = githubRepoFromEnv(baseEnv)
+    const publishFeaturePr = new FeaturePrPublisher({
+      repo: ghRepo,
+      workspace: workerId => env.workspace(workerId),
+      assertCredentialsHidden: () => {
+        if (!env.credentialsHideEnforced) {
+          throw new Error('publish refused: worker credential hides are not enforced by the OS sandbox')
+        }
+      },
     })
     const now = opts.now ?? (() => new Date().toISOString())
     const connectorIndex = new ConnectorIndex(store, { redact, now: () => new Date(now()) })
@@ -1867,6 +1891,7 @@ export class Runtime {
       ...(mcp ? { mcp } : {}),
       localAgents,
       ...(skills.size ? { skills } : {}),
+      publishFeaturePr,
       ...(browserErrands ? { browserErrands } : {}),
     })
     const harness = new Harness({

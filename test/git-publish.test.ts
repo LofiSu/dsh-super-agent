@@ -1,0 +1,322 @@
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { parseRepo } from '../src/channels/github-source.ts'
+import type { GitRun } from '../src/env/git-publish.ts'
+import { FeaturePrPublisher, runGit } from '../src/env/git-publish.ts'
+import { UserError } from '../src/shared/errors.ts'
+import { tempHome } from './fixtures.ts'
+
+const GIT_LOCATION_VARS = [
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR',
+]
+
+function fixtureGitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: '1' }
+  for (const name of GIT_LOCATION_VARS) delete env[name]
+  return env
+}
+
+const mockGh = () => vi.fn(async (args: string[]) => {
+  if (args[1] === 'list') return '[]'
+  if (args[1] === 'create') return 'https://github.com/o/r/pull/42\n'
+  if (args[1] === 'view') return JSON.stringify({ number: 42, url: 'https://github.com/o/r/pull/42' })
+  return ''
+})
+
+function initWorkspace(ws: string, branch: string, bareRemote: string): void {
+  const env = fixtureGitEnv()
+  execFileSync('git', ['init', '-b', 'main'], { cwd: ws, env })
+  execFileSync('git', ['config', 'user.email', 't@t.com'], { cwd: ws, env })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: ws, env })
+  fs.writeFileSync(path.join(ws, 'README.md'), 'seed\n')
+  execFileSync('git', ['add', 'README.md'], { cwd: ws, env })
+  execFileSync('git', ['commit', '-m', 'seed'], { cwd: ws, env })
+  execFileSync('git', ['checkout', '-b', branch], { cwd: ws, env })
+  fs.appendFileSync(path.join(ws, 'README.md'), 'change\n')
+  execFileSync('git', ['add', 'README.md'], { cwd: ws, env })
+  execFileSync('git', ['commit', '-m', 'work'], { cwd: ws, env })
+  execFileSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: ws, env })
+}
+
+function bareFixture(root: string, name = 'remote.git'): string {
+  const bare = path.join(root, name)
+  execFileSync('git', ['init', '--bare', '-b', 'main', bare], { stdio: 'ignore', env: fixtureGitEnv() })
+  return bare
+}
+
+function moveWorkspaceObjectsToAlternate(ws: string, root: string): string {
+  const externalObjects = path.join(root, 'external-objects')
+  const objects = path.join(ws, '.git', 'objects')
+  fs.renameSync(objects, externalObjects)
+  const info = path.join(objects, 'info')
+  fs.mkdirSync(info, { recursive: true })
+  return path.join(info, 'alternates')
+}
+
+function publisher(ws: string, options: { pushRemote?: string; git?: GitRun; gh?: ReturnType<typeof mockGh> } = {}): FeaturePrPublisher {
+  return new FeaturePrPublisher({
+    repo: parseRepo('o/r'),
+    workspace: () => ws,
+    ...options,
+  })
+}
+
+const input = { workerId: 'w1', title: 'My PR', body: 'details' }
+
+describe('FeaturePrPublisher', () => {
+  it('imports and pushes the approved commit from a host-owned bare repository', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'ws')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/my-feature', bare)
+    const gh = mockGh()
+    const pub = publisher(ws, { pushRemote: bare, gh })
+    const approval = await pub.prepare(input)
+    const result = await pub.publish(input, approval)
+    const remoteHead = execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/my-feature'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()
+    expect(remoteHead).toBe(approval.head)
+    expect(result.branch).toBe('peanut/my-feature')
+    expect(result.number).toBe(42)
+    expect(gh).toHaveBeenCalledWith(expect.arrayContaining(['pr', 'create', '--base', 'main']))
+    expect(gh).not.toHaveBeenCalledWith(expect.arrayContaining(['merge']))
+  })
+
+  it('checks current authorization after object transfer and before the push', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'ending-during-transfer')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/ending', bare)
+    let live = true
+    const calls: string[][] = []
+    const git: GitRun = async (args, opts) => {
+      calls.push(args)
+      const result = await runGit(args, opts)
+      if (args[0] === 'fetch') live = false
+      return result
+    }
+    const gh = mockGh()
+    const pub = publisher(ws, { pushRemote: bare, git, gh })
+    const approval = await pub.prepare(input)
+
+    await expect(pub.publish(input, approval, () => {
+      if (!live) throw new UserError('ticket ticket-1 has ended; cannot publish')
+    })).rejects.toThrow(/ticket .* has ended/)
+
+    expect(calls.some(args => args[0] === 'fetch')).toBe(true)
+    expect(calls.some(args => args[0] === 'push')).toBe(false)
+    expect(gh).not.toHaveBeenCalled()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/ending'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('refuses publication when HEAD resolves through an external object alternate', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'alternate-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/alternate', bare)
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+    const approval = await pub.prepare(input)
+    const alternateFile = moveWorkspaceObjectsToAlternate(ws, root)
+    fs.writeFileSync(alternateFile, `# external object store\n${path.join(root, 'external-objects')}\n`)
+
+    await expect(pub.publish(input, approval)).rejects.toThrow(/alternate/i)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/alternate'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('refuses a symlinked alternates file that exposes external objects', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'symlink-alternate-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/symlink-alternate', bare)
+    const alternateFile = moveWorkspaceObjectsToAlternate(ws, root)
+    const externalAlternateFile = path.join(root, 'external-alternates')
+    fs.writeFileSync(externalAlternateFile, `${path.join(root, 'external-objects')}\n`)
+    fs.symlinkSync(externalAlternateFile, alternateFile)
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+
+    await expect(pub.prepare(input)).rejects.toThrow(/alternate/i)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/symlink-alternate'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('rejects case-varied HTTP alternate metadata in the resolved common directory', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'case-varied-alternate-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/case-varied-alternate', bare)
+    const info = path.join(ws, '.git', 'Objects', 'INFO')
+    fs.mkdirSync(info, { recursive: true })
+    fs.writeFileSync(path.join(info, 'HTTP-Alternates'), '# external object URL\nhttps://invalid.example/objects\n')
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+
+    await expect(pub.prepare(input)).rejects.toThrow(/alternate/i)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/case-varied-alternate'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('publishes normally when alternate metadata files are empty', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'empty-alternates-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/empty-alternates', bare)
+    const info = path.join(ws, '.git', 'objects', 'info')
+    fs.mkdirSync(info, { recursive: true })
+    fs.writeFileSync(path.join(info, 'alternates'), '')
+    fs.writeFileSync(path.join(info, 'http-alternates'), '')
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+    const approval = await pub.prepare(input)
+    await pub.publish(input, approval)
+
+    expect(execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/heads/peanut/empty-alternates'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()).toBe(approval.head)
+  })
+
+  it('does not execute a worker repository pre-push hook', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'hook-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/hook', bare)
+    const marker = path.join(root, 'hook-ran')
+    const hooks = path.join(ws, '.git', 'hooks')
+    fs.mkdirSync(hooks, { recursive: true })
+    const hook = path.join(hooks, 'pre-push')
+    fs.writeFileSync(hook, `#!/bin/sh\nprintf ran > ${JSON.stringify(marker)}\n`)
+    fs.chmodSync(hook, 0o755)
+    const uploadpackHook = path.join(root, 'uploadpack-hook')
+    fs.writeFileSync(uploadpackHook, `#!/bin/sh\nprintf ran > ${JSON.stringify(marker)}\n`)
+    fs.chmodSync(uploadpackHook, 0o755)
+    execFileSync('git', ['config', 'uploadpack.packObjectsHook', uploadpackHook], { cwd: ws, env: fixtureGitEnv() })
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+    const binding = await pub.prepare(input)
+    await pub.publish(input, binding)
+    expect(fs.existsSync(marker)).toBe(false)
+    expect(execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/hook'], { encoding: 'utf8', env: fixtureGitEnv() })).toContain(binding.head)
+  })
+
+  it('overrides worker-controlled core.fsmonitor config for host git commands', async () => {
+    const root = tempHome()
+    const fsmonitorHook = path.join(root, 'fsmonitor-hook')
+    fs.writeFileSync(fsmonitorHook, '#!/bin/sh\nexit 0\n')
+    fs.chmodSync(fsmonitorHook, 0o755)
+    const ws = path.join(root, 'fsmonitor-workspace')
+    fs.mkdirSync(ws)
+    execFileSync('git', ['init', '-b', 'main'], { cwd: ws, env: fixtureGitEnv() })
+    execFileSync('git', ['config', 'core.fsmonitor', fsmonitorHook], { cwd: ws, env: fixtureGitEnv() })
+    // runGit must override repository-local config on the command line so no
+    // worker-controlled fsmonitor command is ever consulted by host git.
+    const result = await runGit(['config', '--get', 'core.fsmonitor'], { cwd: ws })
+    expect(result.code).toBe(0)
+    expect(result.stdout.trim()).toBe('false')
+  })
+
+  it('refuses publish when the approved commit contains credential paths', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'forced-secret-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/forced-secret', bare)
+    // Worker force-stages a credential file despite checkout-local excludes.
+    fs.mkdirSync(path.join(ws, '.config', 'gh'), { recursive: true })
+    fs.writeFileSync(path.join(ws, '.config', 'gh', 'hosts.yml'), 'dummy-not-a-real-token\n')
+    execFileSync('git', ['add', '-f', '.config/gh/hosts.yml'], { cwd: ws, env: fixtureGitEnv() })
+    execFileSync('git', ['commit', '-m', 'leak'], { cwd: ws, env: fixtureGitEnv() })
+    const gh = mockGh()
+    const pub = publisher(ws, { pushRemote: bare, gh })
+    const binding = await pub.prepare(input)
+    await expect(pub.publish(input, binding)).rejects.toThrow(/credential/i)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/forced-secret'], { env: fixtureGitEnv() })).toThrow()
+    expect(gh).not.toHaveBeenCalled()
+  })
+
+  it('refuses publish when credential hides are not enforced', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'no-hide-enforcement')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/no-hide', bare)
+    const gh = mockGh()
+    const pub = new FeaturePrPublisher({
+      repo: parseRepo('o/r'),
+      workspace: () => ws,
+      pushRemote: bare,
+      gh,
+      assertCredentialsHidden: () => { throw new Error('publish refused: worker credential hides are not enforced by the OS sandbox') },
+    })
+    const binding = await pub.prepare(input)
+    await expect(pub.publish(input, binding)).rejects.toThrow(/credential hides are not enforced/)
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/no-hide'], { env: fixtureGitEnv() })).toThrow()
+    expect(gh).not.toHaveBeenCalled()
+  })
+
+  it('ignores worker insteadOf config when selecting the effective push destination', async () => {
+    const root = tempHome()
+    const intended = bareFixture(root, 'intended.git')
+    const redirect = bareFixture(root, 'redirect.git')
+    const ws = path.join(root, 'redirect-workspace')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/fixed', intended)
+    execFileSync('git', ['config', `url.${redirect}.insteadOf`, 'https://github.com/o/r.git'], { cwd: ws, env: fixtureGitEnv() })
+    const mappedGit: GitRun = (args, opts) => {
+      const mapped = [...args]
+      if (mapped[0] === 'push') {
+        const remoteIndex = mapped.findIndex(arg => arg === 'https://github.com/o/r.git')
+        if (remoteIndex >= 0) mapped[remoteIndex] = intended
+      }
+      return runGit(mapped, opts)
+    }
+    const pub = publisher(ws, { git: mappedGit, gh: mockGh() })
+    const binding = await pub.prepare(input)
+    await pub.publish(input, binding)
+    expect(execFileSync('git', ['--git-dir', intended, 'rev-parse', 'refs/heads/peanut/fixed'], { encoding: 'utf8', env: fixtureGitEnv() }).trim()).toBe(binding.head)
+    expect(() => execFileSync('git', ['--git-dir', redirect, 'show-ref', '--verify', 'refs/heads/peanut/fixed'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('refuses publishing if the approved binding no longer matches current metadata', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'mismatch')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/mismatch', bare)
+    const gh = mockGh()
+    const pub = publisher(ws, { pushRemote: bare, gh })
+    const binding = await pub.prepare(input)
+    await expect(pub.publish({ ...input, body: 'changed after approval' }, binding)).rejects.toThrow(/approval does not match/)
+    expect(gh).not.toHaveBeenCalled()
+    expect(() => execFileSync('git', ['--git-dir', bare, 'show-ref', '--verify', 'refs/heads/peanut/mismatch'], { env: fixtureGitEnv() })).toThrow()
+  })
+
+  it('refuses protected or invalid branches before host publication', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'bad-branch')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/ok', bare)
+    const pub = publisher(ws, { pushRemote: bare, gh: mockGh() })
+    await expect(pub.prepare({ ...input, branch: 'main' })).rejects.toThrow(UserError)
+    await expect(pub.prepare({ ...input, branch: 'foo:main' })).rejects.toThrow(UserError)
+  })
+
+  it('updates an existing open PR only after matching approval', async () => {
+    const root = tempHome()
+    const bare = bareFixture(root)
+    const ws = path.join(root, 'existing')
+    fs.mkdirSync(ws)
+    initWorkspace(ws, 'peanut/exist', bare)
+    const gh = vi.fn(async (args: string[]) => {
+      if (args[1] === 'list') return JSON.stringify([{ number: 7, url: 'https://github.com/o/r/pull/7' }])
+      return ''
+    })
+    const pub = publisher(ws, { pushRemote: bare, gh })
+    const binding = await pub.prepare(input)
+    const result = await pub.publish(input, binding)
+    expect(result.number).toBe(7)
+    expect(gh).toHaveBeenCalledWith(expect.arrayContaining(['pr', 'edit', '7']))
+    expect(gh).not.toHaveBeenCalledWith(expect.arrayContaining(['pr', 'create']))
+  })
+})
