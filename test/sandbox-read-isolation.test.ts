@@ -167,6 +167,9 @@ describe('strict read isolation (Linux)', () => {
     expect(argv.join(' ')).toContain('--tmpfs /tmp')
     expect(argv.join(' ')).not.toContain('--ro-bind / /')
     expect(argv.join(' ')).toContain(`--bind ${workspace} ${workspace}`)
+    // Strict mode unshares PIDs too: a --proc mount alone exposes host
+    // processes and lets a same-user worker reach host paths via /proc/<pid>/root.
+    expect(argv).toContain('--unshare-pid')
     // Network stays isolated unless explicitly allowed.
     expect(argv).toContain('--unshare-net')
     expect(argv.at(-1)).toBe('echo hi')

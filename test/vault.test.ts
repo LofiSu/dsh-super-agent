@@ -64,6 +64,31 @@ describe('T51 vault + Store/Env boundary', () => {
     expect(raw.fill).toEqual({ login: { kind: 'password', password: 'fill-only-value' } })
   })
 
+  it('preserves an on-disk fill section edited after construction', () => {
+    const file = path.join(tempHome(), 'vault.json')
+    fs.writeFileSync(file, JSON.stringify({
+      fill: { login: { kind: 'password', password: 'fill-only-value' } },
+    }), { mode: 0o600 })
+    const vault = new FileVault(file)
+    // Owner edits the fill section after the instance was constructed.
+    fs.writeFileSync(file, JSON.stringify({
+      fill: { card: { kind: 'card', cvc: 'new-cvc' } },
+    }), { mode: 0o600 })
+    vault.set('TOKEN', 'env-token-value')
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
+    expect(raw.fill).toEqual({ card: { kind: 'card', cvc: 'new-cvc' } })
+  })
+
+  it('keeps a legacy string-valued fill entry writable', () => {
+    const file = path.join(tempHome(), 'vault.json')
+    fs.writeFileSync(file, JSON.stringify({ fill: 'old-fill-value' }), { mode: 0o600 })
+    const vault = new FileVault(file)
+    vault.set('fill', 'new-fill-value')
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
+    expect(raw.fill).toBe('new-fill-value')
+    expect(new FileVault(file).resolveForChild(['fill']).fill).toBe('new-fill-value')
+  })
+
   it('describes presence without serializing secret values', () => {
     const file = path.join(tempHome(), 'vault.json')
     const vault = new FileVault(file)

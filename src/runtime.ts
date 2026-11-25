@@ -421,6 +421,23 @@ class RedactingLogger extends Logger {
   }
 }
 
+/**
+ * Build the Runtime's redactor. Explicit secrets (browser driver credentials,
+ * fill vault values) are matched at any length; discovered secrets (env/MCP)
+ * keep the default minimum-length floor. Exported so the exact boundary can be
+ * tested without constructing a full Runtime.
+ */
+export function runtimeRedactor(secrets: {
+  discovered: readonly string[]
+  explicit: readonly string[]
+}): (text: string) => string {
+  // redactKnownSecrets keeps discovered secrets only at the default floor and
+  // matches explicit secrets at any non-zero length.
+  const explicit = [...new Set(secrets.explicit.filter(secret => secret.length > 0))]
+  const discovered = [...new Set(secrets.discovered)]
+  return (text: string) => redactKnownSecrets(text, explicit, discovered)
+}
+
 /** Load a file-backed vault only when strict worker reads can hide its source. */
 export function loadRuntimeFillVault(
   filePath: string,
@@ -617,7 +634,7 @@ export class Runtime {
       ...secretValues(baseEnv),
       ...mcpConfig.configs.flatMap(config => secretValues(config.env)),
     ])].sort((a, b) => b.length - a.length)
-    const redact = (text: string) => redactKnownSecrets(text, [...browserSecrets, ...vaultSecrets], secrets)
+    const redact = runtimeRedactor({ discovered: secrets, explicit: [...browserSecrets, ...vaultSecrets] })
     const log = new RedactingLogger(redact)
     if (mcpConfig.error) log.info(`[mcp] DS_AGENT_MCP_SERVERS ignored: ${mcpConfig.error}`)
     const model = opts.model ?? createModelFromEnv(baseEnv)

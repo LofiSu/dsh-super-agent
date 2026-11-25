@@ -17,6 +17,26 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
+describe('approval documentation tables', () => {
+  it('escapes command separators inside the capability table cell', () => {
+    const doc = fs.readFileSync(path.join(process.cwd(), 'docs/INSTINCT_CAPABILITIES.md'), 'utf8')
+    const row = doc.split('\n').find(line => line.includes('approval card：approve'))
+    expect(row).toBeDefined()
+    expect(row!.split(' | ').length).toBe(6) // six columns with leading/trailing pipes => six ' | ' segments
+    expect(row).toContain('approve\\|deny\\|dismiss')
+  })
+})
+
+describe('approval action-id parsing', () => {
+  it('accepts equals and spaced forms, and rejects missing or mismatched ids', async () => {
+    const { parseApprovalActionId } = await import('../src/cli/approval-args.ts')
+    expect(parseApprovalActionId(['approve', 't', 'a', '--action-id=act_123'])).toBe('act_123')
+    expect(parseApprovalActionId(['approve', 't', 'a', '--action-id', 'act_123'])).toBe('act_123')
+    expect(() => parseApprovalActionId(['approve', 't', 'a', '--action-id'])).toThrow(/action-id/)
+    expect(() => parseApprovalActionId(['approve', 't', 'a', '--action-id='])).toThrow(/action-id/)
+  })
+})
+
 interface CliResult {
   status: number | null
   stdout: string

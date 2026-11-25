@@ -10,7 +10,7 @@ import { LocalEnv } from '../src/env/local-env.ts'
 import { ToolRegistry } from '../src/harness/tools.ts'
 import { Metrics } from '../src/metrics/metrics.ts'
 import type { Ticket } from '../src/shared/types.ts'
-import { loadRuntimeFillVault, Runtime } from '../src/runtime.ts'
+import { loadRuntimeFillVault, Runtime, runtimeRedactor } from '../src/runtime.ts'
 import type { SandboxSystem } from '../src/env/seccomp.ts'
 import { Store } from '../src/store/sqlite.ts'
 import { tempHome } from './fixtures.ts'
@@ -403,6 +403,17 @@ describe('fill vault tools', () => {
     } finally {
       runtime.store.close()
     }
+  })
+
+  it('redacts short vault values such as a three-digit CVC in the Runtime redactor', () => {
+    const redact = runtimeRedactor({
+      discovered: ['long-env-secret-value'],
+      explicit: ['987', 'short-browser-secret'],
+    })
+    expect(redact('card cvc is 987 and token long-env-secret-value')).toBe(
+      'card cvc is [redacted] and token [redacted]',
+    )
+    expect(redact('short-browser-secret')).toBe('[redacted]')
   })
 
   it('does not register fill tools when the vault config is absent', async () => {

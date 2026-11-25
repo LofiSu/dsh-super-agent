@@ -145,6 +145,10 @@ function linuxStrictArgv(policy: SandboxPolicy, exists: (path: string) => boolea
   ]
   return [
     'bwrap',
+    // Isolate PIDs as well as the filesystem: with --proc /proc but a shared
+    // PID namespace, a same-user sandboxed process can enter /proc/<host-pid>/root
+    // and read host paths outside the bind list (including the fill vault).
+    '--unshare-pid',
     ...(policy.allowNetwork ? [] : ['--unshare-net']),
     ...reads,
     '--dev', '/dev',

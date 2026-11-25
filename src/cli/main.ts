@@ -43,6 +43,7 @@ import { runProfileCommand, runWireCommand } from './wiring.ts'
 import { runSetupCommand } from './setup.ts'
 import { readPackageVersion } from './version.ts'
 import { runEvolutionCommand } from './evolution.ts'
+import { parseApprovalActionId } from './approval-args.ts'
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -790,7 +791,7 @@ async function main(): Promise<void> {
       throw new Error(`usage: ds-agent ${cmd} <ticketId> <approvalId> [--note "..."] [--action-id <id>]`)
     }
     const note = option('note')
-    const expectedActionId = option('action-id')
+    const expectedActionId = parseApprovalActionId(process.argv.slice(3))
     const resolved = (() => {
       const store = openInspectStore(home)
       try {

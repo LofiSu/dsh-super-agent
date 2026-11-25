@@ -12,6 +12,27 @@ import {
 import { RECOVERY_BOUNDARY_DOC_ID, type RecoveryBoundaryRecord } from '../src/core/recovery-boundary.ts'
 import type { Ticket } from '../src/shared/types.ts'
 import { Store } from '../src/store/sqlite.ts'
+import { readCompleteMarker } from './helpers/marker-io.ts'
+
+describe('marker publication across processes', () => {
+  it('publishes markers atomically and never observes a partial JSON record', async () => {
+    const { publishMarker, readCompleteMarker } = await import('./helpers/marker-io.ts')
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-marker-'))
+    try {
+    const marker = path.join(home, 'marker.json')
+    publishMarker(marker, { phase: 'delegating', n: 1 })
+    expect(readCompleteMarker(marker)).toEqual({ phase: 'delegating', n: 1 })
+    // A partial write at the destination is not a completed record.
+    fs.writeFileSync(marker, '{"phase":"par')
+    expect(readCompleteMarker(marker)).toBeUndefined()
+    // Re-publishing replaces the partial record atomically.
+    publishMarker(marker, { phase: 'delegating', n: 2 })
+    expect(readCompleteMarker(marker)).toEqual({ phase: 'delegating', n: 2 })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('external effects unknown-outcome gate (OS fault)', () => {
   const children: ChildProcess[] = []
@@ -42,9 +63,8 @@ describe('external effects unknown-outcome gate (OS fault)', () => {
     const file = markerPath(home, mode)
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      if (fs.existsSync(file)) {
-        return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
-      }
+      const marker = readCompleteMarker(file)
+      if (marker) return marker
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     throw new Error(`timed out waiting for ${file}`)

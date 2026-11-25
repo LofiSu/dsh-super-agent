@@ -2,7 +2,6 @@
  * OS-process child: seeds a running ticket, runs delegate_agent mid-flight, or
  * completes recovery on restart. Not part of the product CLI.
  */
-import fs from 'node:fs'
 import path from 'node:path'
 import { bindRolePorts } from '../../src/core/role-ports.ts'
 import { LocalEnv } from '../../src/env/local-env.ts'
@@ -16,6 +15,7 @@ import {
   type ExternalOperationRecord,
 } from '../../src/core/external-effects.ts'
 import { RECOVERY_BOUNDARY_DOC_ID, type RecoveryBoundaryRecord } from '../../src/core/recovery-boundary.ts'
+import { publishMarker } from './marker-io.ts'
 
 const home = process.argv[2]
 if (!home) {
@@ -123,18 +123,18 @@ async function main(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 10))
     }
     if (delegationFailure) throw delegationFailure
-    fs.writeFileSync(marker, `${JSON.stringify({
+    publishMarker(marker, {
       phase: 'delegating',
       delegateActive: localAgents.activeCount,
       delegateOperationId: operation.id,
       delegateOperationPhase: operation.phase,
       durableStarted: true,
-    })}\n`)
+    })
   } else if (mode === 'restart') {
     runtime.start({ assessPending: false })
     const boundary = runtime.store.getDoc<RecoveryBoundaryRecord>('recovery', RECOVERY_BOUNDARY_DOC_ID)
     const ticket = runtime.store.getDoc<Ticket>('ticket', 'ticket_delegate_os')
-    fs.writeFileSync(marker, `${JSON.stringify({
+    publishMarker(marker, {
       phase: 'post-recovery',
       recoveryOutcome: boundary?.outcome,
       assignmentCount: ticket?.assignments.length,
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
       recoveredInputs: ticket?.inputs.filter(i => i.text?.startsWith('RECOVERED:')).length ?? 0,
       unknownApprovals: ticket?.collab?.approvals?.filter(a =>
         a.status === 'pending' && a.action.startsWith(UNKNOWN_OUTCOME_PREFIX)).length ?? 0,
-    })}\n`)
+    })
   }
 
 }

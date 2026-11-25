@@ -336,34 +336,52 @@ export class ProcessFillTarget implements FillTarget {
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: this.env,
+        // On POSIX, make the helper a process-group leader so a timeout can
+        // kill its descendants along with it. No secret enters argv/env here.
+        detached: process.platform !== 'win32',
       })
-      let stdout = ''
-      let stderr = ''
       let settled = false
-      const cap = 16_384
-      const append = (current: string, chunk: Buffer): string =>
-        current.length >= cap ? current : (current + String(chunk)).slice(0, cap)
-      const clean = (text: string): string => text.split(value).join('[redacted]')
-      const timer = setTimeout(() => child.kill('SIGKILL'), this.timeoutMs)
+      // Helper stdout/stderr are never included in errors: a helper that echoes
+      // stdin can print the raw secret or its JSON-escaped representation, and
+      // neither form must ever reach a UserError message.
+      const killHelper = (): void => {
+        try {
+          // Kill the whole process group where supported so descendants with
+          // inherited stdio cannot keep the stream open. Node's child.kill()
+          // only signals the direct helper.
+          if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL')
+          else child.kill('SIGKILL')
+        } catch {
+          try { child.kill('SIGKILL') } catch { /* already gone */ }
+        }
+      }
+      const timer = setTimeout(() => finish(() => {
+        killHelper()
+        reject(new UserError(`fill helper timed out after ${this.timeoutMs}ms`))
+      }), this.timeoutMs)
       const finish = (fn: () => void): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        // Detach the pipes so a surviving descendant holding them open cannot
+        // keep the event loop (or a pending close) alive after we settle.
+        for (const stream of [child.stdout, child.stderr, child.stdin]) {
+          try { stream?.destroy() } catch { /* already closed */ }
+        }
         fn()
       }
-      child.stdout.on('data', chunk => { stdout = append(stdout, chunk) })
-      child.stderr.on('data', chunk => { stderr = append(stderr, chunk) })
       child.on('error', () => finish(() => reject(new UserError('fill helper could not start'))))
       child.on('close', code => finish(() => {
         if (code === 0) {
           resolve()
           return
         }
-        const hint = clean(`${stdout}\n${stderr}`).replace(/\s+/g, ' ').trim().slice(0, 200)
-        reject(new UserError(
-          `fill helper failed (exit ${code ?? 'signal'})${hint ? `: ${hint}` : ''}`,
-        ))
+        // Exit status only. No stdout/stderr: it may contain secret material.
+        reject(new UserError(`fill helper failed (exit ${code ?? 'signal'})`))
       }))
+      // Destroying a pipe on timeout can surface an error event; swallow it.
+      child.stdout.on('error', () => undefined)
+      child.stderr.on('error', () => undefined)
       child.stdin.on('error', () => undefined)
       child.stdin.end(`${JSON.stringify({ field, value })}\n`)
     })

@@ -595,7 +595,11 @@ describe('approval CLI', () => {
     const collaboration = runCli(home, ['collab', 'ticket_1'])
     expect(collaboration.status, collaboration.stderr).toBe(0)
     expect(collaboration.stdout).toContain('paused: 2026-01-01T00:00:30.000Z by human — reviewing')
-    expect(collaboration.stdout).toContain('pending  appr_1  publish the release notes')
+    // The approval card now renders as a three-answer card bound to the exact
+    // action text (see formatApprovalCard), not the legacy one-line listing.
+    expect(collaboration.stdout).toContain('appr_1  [pending]  ')
+    expect(collaboration.stdout).toContain('action: publish the release notes')
+    expect(collaboration.stdout).toContain('answers: approve | deny | dismiss')
     expect(collaboration.stdout).toContain('guide_1 [pending] hold for review')
     expect(databaseHash(home)).toBe(before)
   })

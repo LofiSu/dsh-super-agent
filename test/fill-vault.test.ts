@@ -196,6 +196,52 @@ describe('fill-only vault', () => {
     expect(message).not.toContain('stdin-only-value')
   })
 
+  it('never echoes a JSON-escaped secret into a failing-helper error', async () => {
+    const failing = new ProcessFillTarget({
+      command: process.execPath,
+      args: ['-e', `let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.error(s);process.exit(4)})`],
+      label: 'escaping-helper',
+      timeoutMs: 5_000,
+    })
+    let message = ''
+    try {
+      await failing.fill('password', 'p"ass\\word')
+    } catch (error) {
+      message = String(error)
+    }
+    expect(message).toContain('exit 4')
+    // The helper echoed stdin: both the raw value and its JSON escaped form
+    // must be absent from any error text.
+    expect(message).not.toContain('p"ass\\word')
+    expect(message).not.toContain('p\\"ass\\\\word')
+    expect(message).not.toContain('p\\"ass')
+  })
+
+  it('settles the fill at the timeout even when a descendant inherits the helper stdio', async () => {
+    const script = [
+      "const {spawn}=require('node:child_process');",
+      "const hold=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit'});",
+      "process.stdin.resume();",
+      "setTimeout(()=>{},100000);",
+    ].join('')
+    const target = new ProcessFillTarget({
+      command: process.execPath,
+      args: ['-e', script],
+      label: 'hanging-helper',
+      timeoutMs: 300,
+    })
+    const started = Date.now()
+    let message = ''
+    try {
+      await target.fill('password', 'timeout-secret')
+    } catch (error) {
+      message = String(error)
+    }
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(message).toMatch(/timed out|timeout/i)
+    expect(message).not.toContain('timeout-secret')
+  })
+
   it('redacts raw synthetic values from shell output as defense in depth', async () => {
     const dir = home()
     const file = writeVault(dir, {
