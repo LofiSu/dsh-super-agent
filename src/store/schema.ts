@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS events (
 `
 
 /** The schema version this build writes and understands. */
-export const LATEST_SCHEMA_VERSION = 4
+export const LATEST_SCHEMA_VERSION = 5
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -118,9 +118,9 @@ function ensureColumn(db: DatabaseSync, table: string, column: string, ddl: stri
 /**
  * Ordered schema migrations. Version 1 is the original `SCHEMA`; version 2
  * adds the outbox columns that earlier builds created with `ensureColumn`;
- * version 3 adds the durable lifecycle-event log that backs restart replay.
- * Add new steps here and bump `LATEST_SCHEMA_VERSION`; never edit an applied
- * step in place.
+ * version 3 adds the durable lifecycle-event log, version 4 adds spill refs,
+ * and version 5 indexes per-Ticket reply/outbox lookups. Add new steps here and
+ * bump `LATEST_SCHEMA_VERSION`; never edit an applied step in place.
  */
 export const MIGRATIONS: readonly StoreMigration[] = [
   {
@@ -154,6 +154,15 @@ CREATE TABLE IF NOT EXISTS lifecycle_events (
     // keep an empty ref list; the body and grants are untouched.
     up: db => ensureColumn(db, 'spills', 'refs', "TEXT NOT NULL DEFAULT '[]'"),
   },
+  {
+    version: 5,
+    // Receipt queries are scoped by Ticket; these indexes keep them efficient
+    // without loading unrelated reply/outbox payloads into memory.
+    up: db => db.exec(`
+CREATE INDEX IF NOT EXISTS replies_ticket_id_idx ON replies(ticket_id);
+CREATE INDEX IF NOT EXISTS outbox_ticket_id_idx ON outbox(ticket_id);
+`),
+  },
 ]
 
 function tableExists(db: DatabaseSync, name: string): boolean {
@@ -161,6 +170,19 @@ function tableExists(db: DatabaseSync, name: string): boolean {
     `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
   ).get(name) as { name: string } | undefined
   return row !== undefined
+}
+
+function readSchemaLedgerVersion(db: DatabaseSync): number {
+  if (!tableExists(db, 'schema_migrations')) return 0
+  const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: unknown }[]
+  let current = 0
+  for (const row of rows) {
+    if (typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 1) {
+      throw new UserError('database schema ledger contains an invalid version')
+    }
+    current = Math.max(current, row.version)
+  }
+  return current
 }
 
 /**
@@ -204,10 +226,7 @@ export function migrate(
   // before taking a write lock so a newer database is untouched.
   db.exec('PRAGMA busy_timeout = 5000')
   if (tableExists(db, 'schema_migrations')) {
-    const row = db.prepare(
-      'SELECT MAX(version) AS version FROM schema_migrations',
-    ).get() as { version: number | null }
-    const known = row.version == null ? 0 : Number(row.version)
+    const known = readSchemaLedgerVersion(db)
     if (known > latest) throw newerVersionError(known, latest)
     if (known >= latest) return known
   }
@@ -217,10 +236,7 @@ export function migrate(
     // Re-read inside the write transaction: another opener may have applied
     // migrations while this connection waited for the lock.
     db.exec(SCHEMA_MIGRATIONS_DDL)
-    const row = db.prepare(
-      'SELECT MAX(version) AS version FROM schema_migrations',
-    ).get() as { version: number | null }
-    const current = row.version == null ? 0 : Number(row.version)
+    const current = readSchemaLedgerVersion(db)
     if (current > latest) throw newerVersionError(current, latest)
 
     const pending = ordered.filter(migration => migration.version > current)

@@ -1,7 +1,10 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { githubTrigger } from '../channels/github.ts'
 import { cliTrigger } from '../channels/cli.ts'
 import { imTrigger } from '../channels/im.ts'
 import { Engine } from '../core/engine.ts'
+import { ensureCollaboration } from '../core/collab.ts'
 import {
   resolveUnknownOutcomeEffects,
   retryableUnknownEffectIds,
@@ -19,12 +22,13 @@ import { SKILLS_DIR, SKILL_FILE, SkillRegistry } from '../env/skills.ts'
 import { loadRoutines, ROUTINES_ENV, ROUTINES_FILE } from '../harness/routines.ts'
 import { aggregateReportOf, describeTopologyOf, type TeamRecord } from '../harness/team.ts'
 import { formatMetricsJson, Metrics } from '../metrics/metrics.ts'
+import { executionReceipt, formatExecutionReceipt } from '../core/receipt.ts'
 import type { A2AEnvelope } from '../channels/a2a.ts'
 import type { LongTermMemoryEntry } from '../memory/long-term.ts'
 import { Runtime } from '../runtime.ts'
 import { visibleTickets } from '../speculate/index.ts'
 import type { JobRow, Role, SessionRow, Ticket } from '../shared/types.ts'
-import { Store } from '../store/sqlite.ts'
+import { Store, type ReceiptTicket } from '../store/sqlite.ts'
 import { healthProbe } from '../watchdog/health.ts'
 import { startEmbeddedGateway } from '../gateway/embedded.ts'
 import { defaultHome, runDemo } from './demo.ts'
@@ -64,6 +68,16 @@ function meshCapacity(): number {
   return Number.isSafeInteger(n) && n > 0 ? n : 4
 }
 
+function openInspectStore(home: string): Store {
+  return Store.openReadOnly(home)
+}
+
+function assertDatabaseExists(home: string): void {
+  if (!fs.existsSync(path.join(home, 'ds-agent.db'))) {
+    throw new Error('local state database does not exist')
+  }
+}
+
 function resolveTicket(store: Store, raw: string | undefined): Ticket {
   const all = store.listDocs<Ticket>('ticket')
   const live = all.filter(ticket => !ticket.ended)
@@ -95,6 +109,7 @@ function withEngine<T>(
   opts: { verbose?: boolean } = {},
 ): T {
   const home = defaultHome()
+  assertDatabaseExists(home)
   const store = new Store(home)
   const metrics = new Metrics(home)
   const host: Host = {
@@ -147,6 +162,7 @@ function help(): void {
   pnpm ds-agent init
   pnpm ds-agent tasks
   pnpm ds-agent panel            # Panel · Execution (tickets, mandate, executor, outbox)
+  pnpm ds-agent receipt <ticketId> [--json] # read-only execution evidence from local state
   pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
   pnpm ds-agent status
   pnpm ds-agent health
@@ -163,8 +179,8 @@ function help(): void {
   pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
   pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
   pnpm ds-agent ui [--host 127.0.0.1] [--port <n>] [--token <token>]
-                            # read-only loopback dashboard over persisted state; requires
-                            # DS_AGENT_UI_TOKEN or --token (at least 16 characters)
+                            # read-only loopback dashboard over existing state; does not
+                            # create state; requires DS_AGENT_UI_TOKEN or --token (16+ chars)
   pnpm ds-agent backup --out <file.db>  # WAL-safe snapshot of the SQLite store
   pnpm ds-agent restore <file.db> [--force]
                             # replace the store from a snapshot; --force is required
@@ -447,6 +463,15 @@ async function serve(home: string): Promise<void> {
   await new Promise<void>(() => undefined)
 }
 
+function getReceiptTicket(store: Store, id: string): ReceiptTicket | undefined {
+  try {
+    return store.getReceiptTicket(id)
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error('ticket payload is malformed JSON')
+    throw error
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, sub] = process.argv.slice(2)
   const home = defaultHome()
@@ -471,7 +496,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'tasks') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const tickets = visibleTickets(store.listDocs<Ticket>('ticket'))
     if (tickets.length === 0) console.log('no tickets')
     for (const ticket of tickets) console.log(`${ticket.id}\t${ticketStage(ticket)}\t${ticket.title}`)
@@ -479,9 +504,33 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'panel' || cmd === 'execution') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(formatExecution(executionView(store, home)))
+    } finally {
+      store.close()
+    }
+    return
+  }
+  if (cmd === 'receipt') {
+    const refs = bare(3)
+    if (refs.length !== 1) {
+      throw new Error('usage: ds-agent receipt <ticketId> [--json]')
+    }
+    const ticketRef = refs[0]!
+    const store = Store.openReadOnly(home)
+    try {
+      const exact = getReceiptTicket(store, ticketRef)
+      const matches = exact ? [] : store.listDocIdsByPrefix('ticket', ticketRef)
+      if (!exact && matches.length > 1) throw new Error('ambiguous ticket id prefix')
+      const ticket = exact ?? (matches[0] ? getReceiptTicket(store, matches[0]) : undefined)
+      if (!ticket) throw new Error('unknown ticket id')
+      const receipt = executionReceipt(store, ticket)
+      if (process.argv.includes('--json')) {
+        console.log(JSON.stringify(receipt, null, 2))
+      } else {
+        console.log(formatExecutionReceipt(receipt))
+      }
     } finally {
       store.close()
     }
@@ -490,7 +539,7 @@ async function main(): Promise<void> {
   if (cmd === 'retry') {
     const ticketRef = bare(3)[0]
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -508,7 +557,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'health') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       console.log(JSON.stringify(healthProbe(store, home)))
     } finally {
@@ -537,7 +586,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'memory' || cmd === 'a2a') {
     const limit = Math.max(1, Number(option('limit') ?? 10) || 10)
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const instance = process.env.DS_AGENT_INSTANCE_ID ?? 'local'
       if (cmd === 'memory') {
@@ -573,7 +622,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'status') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const sessions = store.listSessions()
     const jobs = store.listJobs()
     console.log(`db ${store.path}`)
@@ -587,7 +636,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'team') {
     const ref = bare(3)[0]
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       const teams = store.listDocs<TeamRecord>('team')
       if (!ref) {
@@ -615,7 +664,7 @@ async function main(): Promise<void> {
   if (cmd === 'teams') {
     const ticket = option('ticket')
     const session = option('session')
-    const store = new Store(home)
+    const store = openInspectStore(home)
     try {
       let teams = store.listDocs<TeamRecord>('team')
       if (ticket) teams = teams.filter(team => team.ticketId === ticket)
@@ -628,7 +677,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'approvals') {
-    const store = new Store(home)
+    const store = openInspectStore(home)
     const pending: {
       ticketId: string
       title: string
@@ -677,7 +726,11 @@ async function main(): Promise<void> {
     if (!ticketRef) {
       throw new Error('usage: ds-agent recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]')
     }
-    const store = new Store(home)
+    const resolving = resolution === 'retry' || resolution === 'acknowledge'
+    if (resolving && !fs.existsSync(path.join(home, 'ds-agent.db'))) {
+      throw new Error('local state database does not exist')
+    }
+    const store = resolving ? new Store(home) : openInspectStore(home)
     try {
       const ticket = resolveTicket(store, ticketRef)
       if (!ticket.ended) {
@@ -727,7 +780,7 @@ async function main(): Promise<void> {
     }
     const note = option('note')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -788,7 +841,7 @@ async function main(): Promise<void> {
     const ticketRef = bare(3, ['reason'])[0]
     const reason = option('reason')
     const resolved = (() => {
-      const store = new Store(home)
+      const store = openInspectStore(home)
       try {
         return resolveTicket(store, ticketRef)
       } finally {
@@ -811,9 +864,10 @@ async function main(): Promise<void> {
   }
   if (cmd === 'collab') {
     const ticketRef = bare(3)[0]
-    withEngine((engine, store) => {
+    const store = openInspectStore(home)
+    try {
       const ticket = resolveTicket(store, ticketRef)
-      const { collaboration } = engine.collaboration(ticket.id)
+      const collaboration = ensureCollaboration(ticket)
       console.log(`ticket ${ticket.id} [${ticketStage(ticket)}] ${ticket.title}`)
       const paused = collaboration.paused
       console.log(
@@ -850,7 +904,9 @@ async function main(): Promise<void> {
           console.log(`  ${item.at} by ${item.by}${item.reason ? ` — ${item.reason}` : ''}`)
         }
       }
-    })
+    } finally {
+      store.close()
+    }
     return
   }
   if (cmd === 'chat') {
