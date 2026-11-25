@@ -217,6 +217,17 @@ describe('fill-only vault', () => {
     expect(message).not.toContain('p\\"ass')
   })
 
+  it('drains a verbose helper so it completes without timing out', async () => {
+    const target = new ProcessFillTarget({
+      command: process.execPath,
+      // Write far more than a pipe buffer to both stdout and stderr before exiting.
+      args: ['-e', "process.stdin.resume(); for(let i=0;i<2000;i++){console.log('o'.repeat(512));console.error('e'.repeat(512))} process.exit(0)"],
+      label: 'verbose-helper',
+      timeoutMs: 2_000,
+    })
+    await expect(target.fill('password', 'drain-secret')).resolves.toBeUndefined()
+  })
+
   it('settles the fill at the timeout even when a descendant inherits the helper stdio', async () => {
     const script = [
       "const {spawn}=require('node:child_process');",

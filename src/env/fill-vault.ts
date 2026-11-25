@@ -379,6 +379,11 @@ export class ProcessFillTarget implements FillTarget {
         // Exit status only. No stdout/stderr: it may contain secret material.
         reject(new UserError(`fill helper failed (exit ${code ?? 'signal'})`))
       }))
+      // Drain both output streams without retaining their bytes: a helper that
+      // writes more than a pipe can hold would otherwise block forever. No
+      // 'data' listener is attached, so no output is buffered or logged.
+      child.stdout.resume()
+      child.stderr.resume()
       // Destroying a pipe on timeout can surface an error event; swallow it.
       child.stdout.on('error', () => undefined)
       child.stderr.on('error', () => undefined)

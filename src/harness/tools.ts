@@ -750,6 +750,19 @@ function fillTools(
   store: Store,
   log: (line: string) => void,
 ): ToolDef[] {
+  // A target may apply each field to a shared form as it arrives. Serialize the
+  // whole approved sequence per target so two fills cannot interleave fields.
+  const targetQueues = new Map<string, Promise<void>>()
+  const withTargetQueue = <T>(key: string, run: () => Promise<T>): Promise<T> => {
+    const previous = targetQueues.get(key) ?? Promise.resolve()
+    const current = previous.catch(() => undefined).then(run)
+    const tail = current.then(() => undefined, () => undefined)
+    targetQueues.set(key, tail)
+    void tail.then(() => {
+      if (targetQueues.get(key) === tail) targetQueues.delete(key)
+    })
+    return current
+  }
   return [
     {
       name: 'list_vault_entries',
@@ -796,25 +809,30 @@ function fillTools(
         const fields = parseFillFields(args.fields, available)
         const plan = plannedFill(fill, entry, fields)
         const approvalId = String(args.approvalId ?? '')
-        // Claim durably before calling a target that may apply a field and then
-        // lose its response. A crash leaves in_flight, which remains consumed.
-        const approval = claimApprovedFill(store, ticket.id, approvalId, plan.action)
         const target = requireFillTarget(fill)
-        let receipt
-        try {
-          receipt = await fill.vault.fill({ entry, fields: plan.fields, target })
-        } catch (error) {
-          // The target may have applied some fields before failing. Mark the
-          // result unknown and never make this approval replayable.
-          persistFillOutcome(store, ticket.id, approval.id, 'unknown')
-          throw error
-        }
-        persistFillOutcome(store, ticket.id, approval.id, 'completed')
-        log(
-          `[fill] filled entry=${receipt.entry} kind=${receipt.kind} fields=${receipt.fields.join(',')}`
-          + ` target=${receipt.target} approvalId=${approval.id}`,
-        )
-        return { ...receipt, approvalId: approval.id, actionId: plan.actionId }
+        // Acquire the per-target queue before the claim so each claim sees the
+        // outcome of earlier fills on this target. Release happens via the
+        // queue wrapper even when the fill fails.
+        return withTargetQueue(target.label, async () => {
+          // Claim durably before calling a target that may apply a field and then
+          // lose its response. A crash leaves in_flight, which remains consumed.
+          const approval = claimApprovedFill(store, ticket.id, approvalId, plan.action)
+          let receipt
+          try {
+            receipt = await fill.vault.fill({ entry, fields: plan.fields, target })
+          } catch (error) {
+            // The target may have applied some fields before failing. Mark the
+            // result unknown and never make this approval replayable.
+            persistFillOutcome(store, ticket.id, approval.id, 'unknown')
+            throw error
+          }
+          persistFillOutcome(store, ticket.id, approval.id, 'completed')
+          log(
+            `[fill] filled entry=${receipt.entry} kind=${receipt.kind} fields=${receipt.fields.join(',')}`
+            + ` target=${receipt.target} approvalId=${approval.id}`,
+          )
+          return { ...receipt, approvalId: approval.id, actionId: plan.actionId }
+        })
       }),
     },
   ]

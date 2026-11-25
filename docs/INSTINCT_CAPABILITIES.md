@@ -121,7 +121,7 @@
 ## 9. 结论
 
 - **已具备（`main`）**：iMessage 通道、clock/timer routines、长期记忆与 ACL、irreversible action 的 approval hold、CLI/Feishu/GitHub 等多通道运行时，以及默认关闭的 sandbox/redaction 边界。每项都有 cited test 或文档依据。
-- **本 PR（`feat/instinct-approval-vault`）新增但未合并**：三答案 approval card（D2）和 fill-only credential/payment vault（D4）。卡片有结构化 `actionId`，绑定精确 action 文本，改写后必须重新批准；dismiss 不授权。vault 只在 owner 配置了 0600 的 `vault.json` 且注入了 form adapter 时可用，没有读回接口，支付不扣款。真实浏览器/表单验收不在本 PR。
+- **本 PR（`feat/instinct-approval-vault`）新增但未合并**：三答案 approval card（D2）和 fill-only credential/payment vault（D4）。卡片有结构化 `actionId`，绑定精确 action 文本，改写后必须重新批准；dismiss 不授权。vault 只在 owner 配置后才可用：默认读取 0600 的 `vault.json`，也可用 `DS_AGENT_VAULT_FILE` 指向 owner 指定的路径；值交给注入的 form adapter 或由 `DS_AGENT_FILL_COMMAND` 配置的 owner 本地 helper，没有读回接口，支付不扣款。真实浏览器/表单验收不在本 PR。
 - **已具备（`main`，#182/#170）**：本地执行凭据（D5），可按 Ticket 查询已持久化的输入、Assignment、reply/outbox 与受跟踪外部操作状态；输出省略正文、目标地址和凭据值，不推断未跟踪访问。owner-gated idle self-wake（A10/A12）也已进入 `main`，默认关闭；真实通道发送等待 owner。
 - **已具备（`main`，#174）**：Google Workspace connector 索引与事件唤醒（A9/B3/C1）。功能默认关闭；只在已有私聊线程、具体事件达到 usefulness 门槛且通过 admission/quiet-hours/cap 时才可能进入 `Runtime.ingest`。真实 Google OAuth 与 Workspace API 均等待 owner 实测。
 - **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、fill-only vault、cloud browser、三答案 approval card、payment、deletion surface、推荐系统。Slack/Notion 仍不列入验收（无具名来源），本 PR 也没有实现它们。

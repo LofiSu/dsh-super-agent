@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { bindRolePorts } from '../src/core/role-ports.ts'
 import { Engine } from '../src/core/engine.ts'
+import { approvalActionId } from '../src/core/collab.ts'
 import type { Host } from '../src/core/host.ts'
 import type { FillField, FillTarget } from '../src/env/index.ts'
 import { FillVault } from '../src/env/fill-vault.ts'
@@ -77,6 +78,16 @@ class BlockingTarget extends RecordingTarget {
   override async fill(field: FillField, value: string): Promise<void> {
     this.started()
     await this.blocked
+    super.fill(field, value)
+  }
+}
+
+/** Yields after each field so a second fill can interleave if not serialized. */
+class InterleavingTarget extends RecordingTarget {
+  readonly order: string[] = []
+  override async fill(field: FillField, value: string): Promise<void> {
+    this.order.push(`${field}:${value}`)
+    await new Promise(resolve => setImmediate(resolve))
     super.fill(field, value)
   }
 }
@@ -276,11 +287,60 @@ describe('fill vault tools', () => {
     }
     const first = tools.invoke({ ...call, id: 'concurrent-first' }, ctx)
     await target.startedPromise
-    await expect(tools.invoke({ ...call, id: 'concurrent-second' }, ctx)).rejects.toThrow(/in_flight fill outcome/)
+    // The second call queues behind the first on the per-target lock; once the
+    // first finishes, its approval is already consumed and the replay is refused.
+    const second = tools.invoke({ ...call, id: 'concurrent-second' }, ctx)
     target.release()
     await expect(first).resolves.toMatchObject({ entry: 'visa', fields: ['number'] })
+    await expect(second).rejects.toThrow(/already used for a fill|in_flight fill outcome/)
     expect(target.writes).toHaveLength(1)
     expect(store.getDoc<Ticket>('ticket', 'ticket_1')!.collab!.approvals![0]!.fillState).toBe('completed')
+  })
+
+  it('serializes complete fills per target so fields from two entries never interleave', async () => {
+    const target = new InterleavingTarget()
+    const { tools, engine, store } = open({ target })
+    const plan = await tools.invoke(
+      { id: 'ser-plan-a', name: 'prepare_fill', args: { entry: 'login', fields: 'username,password' } },
+      ctx,
+    ) as { action: string }
+    const r = await tools.invoke(
+      { id: 'ser-req-a', name: 'request_approval', args: { action: plan.action } },
+      ctx,
+    ) as { approvalId: string }
+    const firstApproval = r.approvalId
+    // Add a second approval bound to the same planned action text (a second
+    // owner card for an identical fill) so both calls are independently valid.
+    const ticket = store.getDoc<Ticket>('ticket', 'ticket_1')!
+    const secondId = 'approval_second'
+    ticket.collab!.approvals!.push({
+      id: secondId,
+      at: new Date().toISOString(),
+      action: plan.action,
+      actionId: approvalActionId(plan.action),
+      requestedBy: 'worker_ticket_1',
+      status: 'approved',
+    })
+    store.putDoc('ticket', ticket.id, ticket)
+    engine.decideApproval('ticket_1', firstApproval, 'approved')
+
+    const a = tools.invoke({
+      id: 'ser-fill-a', name: 'fill_credential',
+      args: { entry: 'login', fields: 'username,password', approvalId: firstApproval },
+    }, ctx)
+    const b = tools.invoke({
+      id: 'ser-fill-b', name: 'fill_credential',
+      args: { entry: 'login', fields: 'username,password', approvalId: secondId },
+    }, ctx)
+    await Promise.all([a, b])
+    // Each fill is two field writes; a correct serialization keeps each entry's
+    // username followed immediately by its password with no interleaving.
+    expect(target.order).toEqual([
+      'username:owner@example.com',
+      'password:vault-password-sentinel',
+      'username:owner@example.com',
+      'password:vault-password-sentinel',
+    ])
   })
 
   it('rejects an approval whose exact action text is for another fill', async () => {
@@ -380,6 +440,37 @@ describe('fill vault tools', () => {
       readRoots: [linkTargetRoot],
     }, system)
     expect(symlinkResult).toEqual({ reason: 'worker-readable-location' })
+  })
+
+  it('Runtime rejects a vault inside a symlinked workspace root exposure', () => {
+    const home = tempHome()
+    dirs.push(home)
+    const realRoot = path.join(home, 'real-workspaces')
+    const linkRoot = path.join(home, 'workspaces')
+    fs.mkdirSync(realRoot, { recursive: true })
+    fs.symlinkSync(realRoot, linkRoot, 'dir')
+    const vaultFile = path.join(realRoot, 'vault.json')
+    fs.writeFileSync(vaultFile, JSON.stringify({
+      fill: { login: { kind: 'password', password: 'SYNTHETIC-ALIAS-SECRET' } },
+    }), { mode: 0o600 })
+    fs.chmodSync(vaultFile, 0o600)
+    const workerRoot = path.join(linkRoot, 'worker_1')
+    fs.mkdirSync(workerRoot, { recursive: true })
+    // The vault is placed inside the worker directory so it is reachable via
+    // the sandbox's writable root, which is bound through the symlink.
+    const exposedVault = path.join(workerRoot, 'vault.json')
+    fs.writeFileSync(exposedVault, fs.readFileSync(vaultFile), { mode: 0o600 })
+    const system: SandboxSystem = {
+      platform: 'linux',
+      available: () => true,
+      exists: () => false,
+    }
+    const result = loadRuntimeFillVault(exposedVault, {
+      enabled: true,
+      readIsolation: true,
+      writableRoots: [workerRoot],
+    }, system)
+    expect(result).toEqual({ reason: 'worker-readable-location' })
   })
 
   it('loads an owner-only vault file into the Runtime and never logs a value', () => {

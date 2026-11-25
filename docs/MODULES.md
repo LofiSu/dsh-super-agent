@@ -439,9 +439,10 @@ names, kinds, field names, and a receipt but no read operation. `fill()` hands a
 value to a trusted `FillTarget` (a local helper via `DS_AGENT_FILL_COMMAND`, or
 an injected adapter), never returns it, and the Runtime adds its values to the
 redaction list at any length so `bash`/`read_file` cannot replay them. Missing,
-insecure, or malformed config means no fill. The Worker tools `list_vault_entries`,
-`prepare_fill`, and `fill_credential` require an approved card whose exact action
-matches. `seccomp.ts` wraps every worker bash: `sandbox-exec` on
+insecure, or malformed config means no fill. The Worker tool sequence is
+`list_vault_entries` → `prepare_fill` → `request_approval` → `fill_credential`:
+listing and planning are read-only and need no approval, `prepare_fill` returns
+the exact action text for `request_approval`; only `fill_credential` requires an approved card whose exact action matches. `seccomp.ts` wraps every worker bash: `sandbox-exec` on
 macOS, `bwrap` on Linux; a missing wrapper is a hard error, never a plain-bash
 fallback. `DS_AGENT_SANDBOX` no longer changes the policy. The wrapper confines
 writes and network (denied unless the policy allows it), but not reads: macOS

@@ -1,7 +1,7 @@
 import { platform } from 'node:os'
 import path from 'node:path'
 import { dirname } from 'node:path'
-import { existsSync } from 'node:fs'
+import fs, { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { UserError } from '../shared/errors.ts'
 
@@ -68,6 +68,52 @@ function strictReadRoots(policy: SandboxPolicy): readonly string[] {
   return policy.readRoots ?? []
 }
 
+/**
+ * Canonicalize a path that is expected to exist. Roots that do not exist keep
+ * their lexical form, matching the runtime's "fall back to lexical" rule.
+ */
+function canonicalRoot(root: string): string {
+  try { return fs.realpathSync(root) } catch { return path.resolve(root) }
+}
+
+/**
+ * Canonicalize a candidate that may not exist yet (e.g. a vault file): resolve
+ * its nearest existing parent and re-append the missing suffix so a canonical
+ * root still covers it.
+ */
+function canonicalCandidate(candidate: string): string {
+  const absolute = path.resolve(candidate)
+  try { return fs.realpathSync(absolute) } catch { /* resolve the parent below */ }
+  let parent = path.dirname(absolute)
+  const suffix: string[] = [path.basename(absolute)]
+  while (true) {
+    try {
+      const canonicalParent = fs.realpathSync(parent)
+      return path.join(canonicalParent, ...suffix.reverse())
+    } catch {
+      const next = path.dirname(parent)
+      if (next === parent) return absolute
+      suffix.push(path.basename(parent))
+      parent = next
+    }
+  }
+}
+
+/** True when `target` is inside `root`, comparing lexical and canonical forms. */
+function containsPath(root: string, target: string): boolean {
+  const within = (base: string): boolean => {
+    const relative = path.relative(path.resolve(base), target)
+    return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+  if (within(root)) return true
+  const canonical = canonicalRoot(root)
+  // A root whose canonical form is the filesystem root would match everything,
+  // re-creating the whole-host exposure strict mode is meant to prevent. Keep
+  // only the lexical check for such aliases.
+  if (path.resolve(canonical) === path.parse(canonical).root) return false
+  return within(canonical)
+}
+
 /** True when a path falls under a root intentionally exposed by strict mode. */
 export function strictReadIsolationIncludesPath(
   candidate: string,
@@ -88,10 +134,8 @@ export function strictReadIsolationIncludesPath(
       ? darwinReadPaths(policy, system.execPath ?? process.execPath)
       : []
   const target = path.resolve(candidate)
-  return roots.some(root => {
-    const relative = path.relative(path.resolve(root), target)
-    return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-  })
+  const canonicalTarget = canonicalCandidate(candidate)
+  return roots.some(root => containsPath(root, target) || containsPath(root, canonicalTarget))
 }
 
 function darwinReadPaths(policy: SandboxPolicy, execPath: string): string[] {

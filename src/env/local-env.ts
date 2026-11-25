@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { EnvPort, EnvRunOptions } from '../shared/ports.ts'
 import { UserError } from '../shared/errors.ts'
-import { allowlistedEnv, ENV_ALLOWLIST, redactSecrets, secretValues } from './sanitize.ts'
+import { allowlistedEnv, ENV_ALLOWLIST, redactKnownSecrets, secretValues } from './sanitize.ts'
 import type { Vault } from './vault.ts'
 import { readIsolationFromEnv, sandboxEnabledFromEnv, wrapBashCommand, type SandboxPolicy } from './seccomp.ts'
 
@@ -195,7 +195,10 @@ export class LocalEnv implements EnvPort {
   }
 
   private redact(text: string): string {
-    return redactSecrets(redactSecrets(text, this.secrets), this.strictSecrets, 1)
+    // One overlap-aware pass matches every secret against the original text and
+    // merges overlapping spans. Two sequential passes could leave a suffix when
+    // a discovered secret is a prefix of a fill-vault value.
+    return redactKnownSecrets(text, this.strictSecrets, this.secrets)
   }
 
   async writeFile(workerId: string, relativePath: string, body: string, opts?: EnvRunOptions): Promise<string> {

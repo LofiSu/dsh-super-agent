@@ -27,6 +27,22 @@ describe('approval documentation tables', () => {
   })
 })
 
+describe('fill vault documentation accuracy', () => {
+  it('documents vault path and helper alternatives without implying they are mandatory', () => {
+    const capabilities = fs.readFileSync(path.join(process.cwd(), 'docs/INSTINCT_CAPABILITIES.md'), 'utf8')
+    const line = capabilities.split('\n').find(l => l.startsWith('- **本 PR（`feat/instinct-approval-vault`）新增但未合并**'))!
+    expect(line).toContain('DS_AGENT_VAULT_FILE')
+    expect(line).toContain('DS_AGENT_FILL_COMMAND')
+    expect(line).toContain('owner')
+  })
+
+  it('documents that only fill_credential needs an approved exact-action card', () => {
+    const modules = fs.readFileSync(path.join(process.cwd(), 'docs/MODULES.md'), 'utf8')
+    expect(modules).toContain('`list_vault_entries` → `prepare_fill` → `request_approval` → `fill_credential`')
+    expect(modules).toContain('only `fill_credential` requires an approved card whose exact action matches')
+  })
+})
+
 describe('approval action-id parsing', () => {
   it('accepts equals and spaced forms, and rejects missing or mismatched ids', async () => {
     const { parseApprovalActionId } = await import('../src/cli/approval-args.ts')

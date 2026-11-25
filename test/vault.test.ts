@@ -47,6 +47,19 @@ describe('T51 vault + Store/Env boundary', () => {
       .toThrow(/bubblewrap/)
   })
 
+  it('redacts overlapping secrets in one pass without leaving a suffix', async () => {
+    const home = tempHome()
+    const env = new LocalEnv(home, {
+      env: { PATH: process.env.PATH, SECRET_TOKEN: 'synthetic-prefix-token' },
+      sandbox: { enabled: false },
+      redactValues: ['synthetic-prefix-token-tail'],
+    })
+    const result = await env.bash('w1', 'echo "synthetic-prefix-token-tail"')
+    expect(result.stdout).not.toContain('synthetic-prefix-token')
+    expect(result.stdout).not.toContain('-tail')
+    expect(result.stdout).toContain('[redacted]')
+  })
+
   it('enforces Store/Env boundary', () => {
     const env = new LocalEnv(tempHome(), { sandbox: { enabled: false } })
     expect(() => assertStoreEnvSeparation(env)).not.toThrow()
