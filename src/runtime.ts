@@ -1,5 +1,7 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import type {
+  ApprovalDecision,
   CollaborationView,
   DecideApprovalOutcome,
   InterveneInput,
@@ -23,7 +25,17 @@ import { arbitrateSubscribers } from './core/intake.ts'
 import { withSessionRole } from './core/session-role.ts'
 import { bindRolePorts } from './core/role-ports.ts'
 import type { Host } from './core/host.ts'
+import {
+  FillVault,
+  fillTargetFromEnv,
+  fillVaultPath,
+  loadFillVault,
+  type FillTarget,
+  type FillVaultLoad,
+} from './env/fill-vault.ts'
 import { LocalEnv } from './env/local-env.ts'
+import { strictReadIsolationIncludesPath } from './env/seccomp.ts'
+import type { SandboxPolicy, SandboxSystem } from './env/seccomp.ts'
 import {
   BrowserErrands,
   browserDriverSecretValues,
@@ -110,6 +122,18 @@ export interface RuntimeOptions {
   now?: () => string
   /** Environment for the LocalEnv allowlist, secret redaction, model ids, and instance settings. */
   env?: NodeJS.ProcessEnv
+  /**
+   * Fill-only credential/payment vault. Defaults to `vault.json` in `home`
+   * (or `DS_AGENT_VAULT_FILE`). Absent, malformed, or non-private means fill is
+   * unavailable. `false` disables it explicitly.
+   */
+  fillVault?: FillVault | false
+  /**
+   * Form adapter the vault types into. Defaults to a local helper configured
+   * by `DS_AGENT_FILL_COMMAND`; no browser adapter is built in. `false`
+   * disables fill even when a vault exists.
+   */
+  fillTarget?: FillTarget | false
   /**
    * External MCP servers (array or JSON array string). Overrides
    * `DS_AGENT_MCP_SERVERS`. Their tools are exposed to Workers only.
@@ -405,6 +429,11 @@ export function admissionRulesFromEnv(
   }
 }
 
+/** One-line label for a log line; adapter-supplied labels are not trusted. */
+function sanitizeLogLabel(value: string): string {
+  return value.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+}
+
 class RedactingLogger extends Logger {
   constructor(private readonly clean: (line: string) => string) {
     super()
@@ -413,6 +442,38 @@ class RedactingLogger extends Logger {
   override info(line: string): void {
     super.info(this.clean(line))
   }
+}
+
+/**
+ * Build the Runtime's redactor. Explicit secrets (browser driver credentials,
+ * fill vault values) are matched at any length; discovered secrets (env/MCP)
+ * keep the default minimum-length floor. Exported so the exact boundary can be
+ * tested without constructing a full Runtime.
+ */
+export function runtimeRedactor(secrets: {
+  discovered: readonly string[]
+  explicit: readonly string[]
+}): (text: string) => string {
+  // redactKnownSecrets keeps discovered secrets only at the default floor and
+  // matches explicit secrets at any non-zero length.
+  const explicit = [...new Set(secrets.explicit.filter(secret => secret.length > 0))]
+  const discovered = [...new Set(secrets.discovered)]
+  return (text: string) => redactKnownSecrets(text, explicit, discovered)
+}
+
+/** Load a file-backed vault only when strict worker reads can hide its source. */
+export function loadRuntimeFillVault(
+  filePath: string,
+  policy: SandboxPolicy,
+  system?: SandboxSystem,
+): FillVaultLoad {
+  let resolvedPath = filePath
+  try { resolvedPath = fs.realpathSync(filePath) } catch { /* loadFillVault reports missing/unreadable */ }
+  if (
+    strictReadIsolationIncludesPath(filePath, policy, system)
+    || strictReadIsolationIncludesPath(resolvedPath, policy, system)
+  ) return { reason: 'worker-readable-location' }
+  return loadFillVault(filePath)
 }
 
 export class Runtime {
@@ -579,24 +640,52 @@ export class Runtime {
       ? resolveGoogleCredentials(connectorConfig, opts.home, baseEnv)
       : undefined
     const mcpConfig = mcpServersFromConfig(opts.mcpServers, baseEnv)
+    // Fill-vault values never enter the environment or the Store. Redaction is
+    // defense in depth only: when a vault loads, worker shell filesystem reads
+    // are strictly confined so the source file is not readable by the worker.
+    const fillLoad: { vault?: FillVault; reason?: string } = opts.fillVault === false
+      ? { reason: 'disabled' }
+      : opts.fillVault
+        ? { vault: opts.fillVault }
+        : loadRuntimeFillVault(fillVaultPath(opts.home, baseEnv), {
+          enabled: true,
+          readIsolation: true,
+          writableRoots: [path.join(opts.home, 'workspaces')],
+        })
+    const fillVault = fillLoad.vault
+    let fillTarget: FillTarget | undefined
+    let fillTargetReason: string | undefined
+    if (opts.fillTarget === false) {
+      fillTargetReason = 'disabled'
+    } else if (opts.fillTarget) {
+      fillTarget = opts.fillTarget
+    } else {
+      try {
+        fillTarget = fillTargetFromEnv(baseEnv)
+      } catch {
+        fillTargetReason = 'invalid-config'
+      }
+    }
     const browserConfig = opts.browserErrands === false
       ? undefined
       : opts.browserErrands ?? loadBrowserErrands(opts.home, baseEnv)
-    const browserSecrets = browserDriverSecretValues(browserConfig, baseEnv)
-    // Credential material is redacted before it can reach a log or an index
-    // body. `secretValues` may not recognize every credential env name, so the
-    // resolved fields are added explicitly.
+    // A server's own env is where its credentials live, so its secret-named
+    // values join the discovered redaction list before anything logs or persists.
+    // Browser driver, connector, and fill-vault credentials are explicit so
+    // even short values are redacted; environment secret names are discovered.
+    const browserSecrets = browserDriverSecretValues(browserConfig, baseEnv).filter(secret => secret.length > 0)
     const connectorSecrets = googleCredentials
       ? [googleCredentials.clientId, googleCredentials.clientSecret, googleCredentials.refreshToken]
       : []
-    // Configured driver and connector credentials are explicit so even short
-    // values are redacted; secret-named environment values are discovered too.
-    const explicitSecrets = [...browserSecrets, ...connectorSecrets]
+    const vaultSecrets = (fillVault?.redactionValues() ?? []).filter(secret => secret.length > 0)
     const secrets = [...new Set([
       ...secretValues(baseEnv),
       ...mcpConfig.configs.flatMap(config => secretValues(config.env)),
     ])].sort((a, b) => b.length - a.length)
-    const redact = (text: string) => redactKnownSecrets(text, explicitSecrets, secrets)
+    const redact = runtimeRedactor({
+      discovered: secrets,
+      explicit: [...browserSecrets, ...connectorSecrets, ...vaultSecrets],
+    })
     const log = new RedactingLogger(redact)
     if (mcpConfig.error) log.info(`[mcp] DS_AGENT_MCP_SERVERS ignored: ${mcpConfig.error}`)
     const model = opts.model ?? createModelFromEnv(baseEnv)
@@ -618,7 +707,13 @@ export class Runtime {
     }
     const store = new Store(opts.home)
     const metrics = new Metrics(opts.home)
-    const env = new LocalEnv(path.join(opts.home, 'workspaces'), { env: baseEnv })
+    const env = new LocalEnv(path.join(opts.home, 'workspaces'), {
+      env: baseEnv,
+      ...(fillVault ? {
+        redactValues: fillVault.redactionValues(),
+        readIsolation: true,
+      } : {}),
+    })
     const now = opts.now ?? (() => new Date().toISOString())
     const connectorIndex = new ConnectorIndex(store, { redact, now: () => new Date(now()) })
     let connectorApi = opts.connectorApi
@@ -782,6 +877,10 @@ export class Runtime {
     const slowPath = resolveSlowPath(baseEnv, opts.slowPath, model, log)
     log.info(`[runtime] instance=${instanceId} meshCapacity=${meshCapacity} meshQueue=${meshQueue} shards=${routerShards.list().length}`)
     log.info(`[runtime] model=${model.name}`)
+    log.info(
+      `[fill] vault=${fillVault ? `entries=${fillVault.summary().length}` : fillLoad.reason ?? 'absent'}`
+      + ` target=${fillTarget ? sanitizeLogLabel(fillTarget.label) : fillTargetReason ?? 'none'}`,
+    )
     log.info(
       `[ingress] slow-path mode=${slowPath.mode} timeoutMs=${slowPath.timeoutMs}`
       + (slowPath.classifier ? ` policy=${slowPath.classifier.name}` : ''),
@@ -1753,6 +1852,9 @@ export class Runtime {
         if (!late.harness) throw new Error('harness is not ready')
         return late.harness.routerTurn(prompt)
       },
+      ...(fillVault
+        ? { fill: { vault: fillVault, ...(fillTarget ? { target: fillTarget } : {}) } }
+        : {}),
       nudge: (sessionId, ticketId) => {
         journal.append(sessionId, {
           role: 'user',
@@ -3167,11 +3269,13 @@ export class Runtime {
   async decideApproval(
     ticketId: string,
     approvalId: string,
-    decision: 'approved' | 'denied',
+    decision: ApprovalDecision,
     note?: string,
+    expectedActionId?: string,
   ): Promise<DecideApprovalOutcome> {
     const outcome = this.engine.decideApproval(ticketId, approvalId, decision, {
       ...(note ? { note } : {}),
+      ...(expectedActionId ? { expectedActionId } : {}),
     })
     if (!outcome.ticket.ended) await this.harness.resume(outcome.ticket)
     return {

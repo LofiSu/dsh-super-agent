@@ -136,7 +136,9 @@ describe.each([
       numPendingTests: number
       numFailedTests: number
     }
-    expect(report.numTotalTests).toBe(21)
+    expect(report.numTotalTests).toBe(22)
+    // Main's marker-publication test is platform-independent and runs (passes);
+    // the 21 Linux-only OS-fault cases are collected but skipped on this host.
     expect(report.numPendingTests).toBe(21)
     expect(report.numFailedTests).toBe(0)
     const calls = JSON.parse(fs.readFileSync(callsPath, 'utf8')) as Record<string, number>

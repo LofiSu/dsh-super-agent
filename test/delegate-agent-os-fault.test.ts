@@ -19,8 +19,8 @@ function tempHome(): string {
   return dir
 }
 
-function markerPath(home: string): string {
-  return path.join(home, '.delegate-os-ready')
+function markerPath(home: string, mode: 'seed' | 'restart'): string {
+  return path.join(home, mode === 'restart' ? '.delegate-os-recovered' : '.delegate-os-ready')
 }
 
 function spawnRecoveryChild(home: string, mode: 'seed' | 'restart', task: string): ChildProcess {
@@ -45,8 +45,12 @@ function spawnRecoveryChild(home: string, mode: 'seed' | 'restart', task: string
   return child
 }
 
-async function waitForMarker(home: string, timeoutMs = 45_000): Promise<Record<string, unknown>> {
-  const file = markerPath(home)
+async function waitForMarker(
+  home: string,
+  mode: 'seed' | 'restart',
+  timeoutMs = 45_000,
+): Promise<Record<string, unknown>> {
+  const file = markerPath(home, mode)
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (fs.existsSync(file)) {
@@ -109,7 +113,8 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
     expect(supervisor.group_absent).toBe(true)
     expect(supervisor.reaped_pids).toContain(supervisor.delegate_pid)
     expect(supervisor.reaped_delegate_pid).toBe(true)
-    const during = JSON.parse(fs.readFileSync(markerPath(home), 'utf8')) as Record<string, unknown>
+    spawnRecoveryChild(home, 'seed', task)
+    const during = await waitForMarker(home, 'seed')
     expect(during.phase).toBe('delegating')
     expect(during.delegateActive).toBe(1)
     expect(during.delegateOperationPhase).toBe('started')
@@ -126,9 +131,8 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
       store.close()
     }
 
-    fs.unlinkSync(markerPath(home))
     const second = spawnRecoveryChild(home, 'restart', task)
-    const after = await waitForMarker(home)
+    const after = await waitForMarker(home, 'restart')
     expect(after.phase).toBe('post-recovery')
     expect(after.recoveryOutcome).toBe('completed')
     expect(after.assignmentCount).toBe(1)
@@ -137,8 +141,7 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
     expect(after.unknownApprovals).toBeGreaterThanOrEqual(1)
     second.kill('SIGTERM')
     await waitForExit(second)
-  }, 90_000)
-
+  }, 120_000)
   it('fails closed when the launching worker exits before supervisor parent-death setup', async () => {
     const home = tempHome()
     const raceHarness = spawn(

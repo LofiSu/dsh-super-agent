@@ -15,6 +15,27 @@ import { Store } from '../src/store/sqlite.ts'
 import { delegateOsSupervisorSupported, runDelegateOsSupervisor } from './helpers/delegate-os-supervisor.ts'
 import { runDelegateCapabilityProbe } from './helpers/delegate-os-capability-probe.ts'
 
+import { readCompleteMarker } from './helpers/marker-io.ts'
+
+describe('marker publication across processes', () => {
+  it('publishes markers atomically and never observes a partial JSON record', async () => {
+    const { publishMarker, readCompleteMarker } = await import('./helpers/marker-io.ts')
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-marker-'))
+    try {
+      const marker = path.join(home, 'marker.json')
+      publishMarker(marker, { phase: 'delegating', n: 1 })
+      expect(readCompleteMarker(marker)).toEqual({ phase: 'delegating', n: 1 })
+      // A partial write at the destination is not a completed record.
+      fs.writeFileSync(marker, '{"phase":"par')
+      expect(readCompleteMarker(marker)).toBeUndefined()
+      // Re-publishing replaces the partial record atomically.
+      publishMarker(marker, { phase: 'delegating', n: 2 })
+      expect(readCompleteMarker(marker)).toEqual({ phase: 'delegating', n: 2 })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+})
 const osFaultDescribe = delegateOsSupervisorSupported() ? describe : describe.skip
 
 osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
@@ -522,6 +543,30 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     expect(report.cleanup_succeeded).toBe(true)
   }, 60_000)
 
+  function markerPath(home: string, mode: 'seed' | 'restart'): string {
+    return path.join(home, mode === 'restart' ? '.delegate-os-recovered' : '.delegate-os-ready')
+  }
+
+  async function waitForMarker(
+    home: string,
+    mode: 'seed' | 'restart',
+    timeoutMs = 45_000,
+  ): Promise<Record<string, unknown>> {
+    const file = markerPath(home, mode)
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const marker = readCompleteMarker(file)
+      if (marker) return marker
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    throw new Error(`timed out waiting for ${file}`)
+  }
+
+  async function waitForExit(child: ChildProcess): Promise<void> {
+    if (child.exitCode !== null || child.signalCode !== null) return
+    await once(child, 'exit')
+  }
+
   it('SIGKILL during delegate_agent queues UNKNOWN-OUTCOME approval and skips auto recovery replay', async () => {
     const home = tempHome()
     fs.writeFileSync(
@@ -530,6 +575,7 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
         agents: [{
           id: 'ipc-hold',
           command: process.execPath,
+          // Specialists run in a Worker workspace, so resolve the fixture from the repo root.
           args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
           env: ['DS_AGENT_TEST_DELEGATE_PID_FILE'],
           timeoutMs: 60_000,
@@ -544,9 +590,9 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     expect(supervisor.group_absent).toBe(true)
     expect(supervisor.reaped_pids).toContain(supervisor.delegate_pid)
     expect(supervisor.reaped_delegate_pid).toBe(true)
-    const marker = path.join(home, '.delegate-os-ready')
-    const during = JSON.parse(fs.readFileSync(marker, 'utf8')) as Record<string, unknown>
-    expect(during.durableStarted).toBe(true)
+    const during = await waitForMarker(home, 'seed')
+    expect(during.phase).toBe('delegating')
+    expect(during.delegateActive).toBe(1)
     expect(during.delegateOperationPhase).toBe('started')
 
     const restart = spawn(
@@ -566,15 +612,12 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
       },
     )
     trackChild(restart)
-    fs.unlinkSync(marker)
-    const deadline = Date.now() + 45_000
-    while (Date.now() < deadline) {
-      if (fs.existsSync(marker)) break
-      await new Promise(r => setTimeout(r, 25))
-    }
-    expect(fs.existsSync(marker)).toBe(true)
+    const after = await waitForMarker(home, 'restart')
+    expect(after.phase).toBe('post-recovery')
+    expect(after.recoveryOutcome).toBe('completed')
+    expect(after.unknownApprovals).toBeGreaterThanOrEqual(1)
     restart.kill('SIGTERM')
-    await waitForClose(restart)
+    await waitForExit(restart)
 
     const store = new Store(home)
     try {
@@ -590,5 +633,5 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     } finally {
       store.close()
     }
-  }, 90_000)
+  }, 120_000)
 })
