@@ -594,6 +594,7 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     expect(during.phase).toBe('delegating')
     expect(during.delegateActive).toBe(1)
     expect(during.delegateOperationPhase).toBe('started')
+    expect(during.durableStarted).toBe(true)
 
     const restart = spawn(
       process.execPath,
