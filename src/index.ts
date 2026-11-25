@@ -25,6 +25,19 @@ export {
   type FillReceipt,
   type FillTarget,
 } from './env/fill-vault.ts'
+export {
+  BROWSER_ERRAND_ACTIONS,
+  BROWSER_PROTOCOL,
+  BrowserErrands,
+  IRREVERSIBLE_BROWSER_ACTIONS,
+  createBrowserDriver,
+  loadBrowserErrands,
+  normalizeBrowserErrands,
+  type BrowserDriver,
+  type BrowserDriverConfig,
+  type BrowserErrandConfig,
+  type BrowserErrandResult,
+} from './env/browser-errands.ts'
 export { A2ARouter, type A2ADelivery, type A2AEnvelope } from './channels/a2a.ts'
 export { LocalA2ATransport, type A2ATransport } from './channels/a2a-transport.ts'
 export { LifecycleBus, type LifecycleEvent } from './core/lifecycle.ts'

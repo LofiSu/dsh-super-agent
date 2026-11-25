@@ -86,10 +86,10 @@
 | # | 能力项 | Instinct 公开证据 | 等级 | ds-agent 状态 | 本仓库路径 / 验收依据 |
 |---|---|---|---|---|---|
 | D1 | cloud browser errands（leased cloud browser，可用已保存登录） | S4/S5：browser work 走 leased cloud browser，不是本机 Chrome | teardown | `missing` / `environment-blocked` | 无 hosted browser。可接受的等价方向是本地/远程 browser adapter + 明确 approval；需要托管浏览器或用户本机权限 |
-| D2 | approval card：approve / deny / dismiss，绑定“屏幕上显示的原文” | S4/S5：三答案；绑定 exact text；改写后要重新批准；没有 editable plan view | teardown | `PR-only`（本 PR，未合并；`main` 仍只有 approve/deny） | `src/core/collab.ts` 的 `approvalActionId` 对清洗后的精确 action 文本做 SHA-256，存成 `act_*`；`decideApproval` 每次重算并拒绝被改写的文本，CLI `--action-id` 可再校验；`src/core/approval-card.ts` 渲染 approve/deny/dismiss 三答案；`ds-agent approve|deny|dismiss`；`test/approvals.test.ts` 覆盖三答案、改写拒绝、聊天文本不能伪造。仍是 CLI-only，无 editable plan view |
+| D2 | approval card：approve / deny / dismiss，绑定“屏幕上显示的原文” | S4/S5：三答案；绑定 exact text；改写后要重新批准；没有 editable plan view | teardown | `PR-only`（本 PR，未合并；`main` 仍只有 approve/deny） | `src/core/collab.ts` 的 `approvalActionId` 对清洗后的精确 action 文本做 SHA-256，存成 `act_*`；`decideApproval` 每次重算并拒绝被改写的文本，CLI `--action-id` 可再校验；`src/core/approval-card.ts` 渲染 approve/deny/dismiss 三答案；`ds-agent approve\|deny\|dismiss`；`test/approvals.test.ts` 覆盖三答案、改写拒绝、聊天文本不能伪造。仍是 CLI-only，无 editable plan view |
 | D3 | irreversible actions 必须走 approval，模型不能自行批准 | S4/S5；S3 的 external send / payment 条款 | official/teardown | `main` | `src/harness/tools.ts` 的 `request_approval` + `src/core/collab.ts` 的 pending hold；`test/approvals.test.ts` 覆盖 approve/deny、审批等待不被 watchdog 误杀、决策不可由聊天文本伪造 |
 | D4 | payment / credential vault 可填不可读 | S4/S5 | teardown | `PR-only`（本 PR，未合并） | `src/env/fill-vault.ts`：独立 fill-only store，只暴露 entry 名、kind、字段名和 receipt；`fill()` 把值交给 owner 配置的 form adapter，永不返回；`prepare_fill` / `fill_credential` 必须匹配一张 owner 已批准且 action 文本完全一致的卡；缺文件、文件权限含 group/world 位、JSON 损坏都表示“不能填”；浏览器 adapter 不在本仓库范围。`test/fill-vault.test.ts`、`test/fill-tools.test.ts` |
-| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `missing` | 有 lifecycle event、session journal、metrics，但没有面向用户的 receipt 产品面。fill receipt 只是单次 fill 的凭据，不是 D5 的全局 receipt |
+| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `main`（#182 已合并） | `pnpm ds-agent receipt <ticketId> [--json]` 从本地持久 Ticket/Assignment、reply/outbox 与受跟踪 external-op 生成只读凭据；输出省略正文、目标地址、原始错误和凭据值。只证明已记录输入，不声称模型确实注意到它们；未跟踪的工具读取/副作用不作“未触碰”断言。离线 CLI 重启测试覆盖成功/失败/未知与隔离；没有真实外部服务验收，详见 `docs/EXECUTION_RECEIPTS.md`。fill receipt 只是单次 fill 的凭据，不是 D5 的全局 receipt |
 | D6 | deletion surface：storage / training / location / desktop indexing | S4/S5 | teardown | `missing` | 本仓库有 backup/restore 与本地 SQLite 文件，但不是 Instinct 那种跨 store 删除面 |
 
 ## 7. 等价边界（不做相同克隆）
@@ -114,6 +114,7 @@
 | P4 | native controlled evolution | #168 | `PR-only` | 自改进/策略演化；不是本清单的 Instinct inventory 项 |
 | P5 | 三答案 approval card + exact-text 绑定（D2） | 本 PR（`feat/instinct-approval-vault`，stacked on `feat/instinct-idle-proactive`） | `PR-only` | CLI-only；`actionId` 是完整性句柄，不是 approval token；真实通道回复仍不能直接批准 |
 | P6 | fill-only credential/payment vault（D4） | 同上 | `PR-only` | 默认无 vault 文件即不能填；没有内置浏览器 adapter；真实表单/商户验收未做；支付只做 fill + approval，不扣款 |
+| P7 | 本地可查询执行凭据（D5） | #182（已合并入 `main`） | `main` | `ds-agent receipt <ticketId>` 只读本地已持久化证据；不新增发送权限，不能证明未跟踪的模型/工具读取或副作用；没有真实外部服务验收 |
 
 > #166、#164、#163 也是 open PR（longitudinal harness、recovery boundary、sandbox health），但没有改变本清单的 `main` 状态；不把它们当作已合并能力。
 
@@ -122,6 +123,7 @@
 - **已具备（`main`）**：iMessage 通道、clock/timer routines、长期记忆与 ACL、irreversible action 的 approval hold、CLI/Feishu/GitHub 等多通道运行时，以及默认关闭的 sandbox/redaction 边界。每项都有 cited test 或文档依据。
 - **本 PR（`feat/instinct-approval-vault`）新增但未合并**：三答案 approval card（D2）和 fill-only credential/payment vault（D4）。卡片有结构化 `actionId`，绑定精确 action 文本，改写后必须重新批准；dismiss 不授权。vault 只在 owner 配置了 0600 的 `vault.json` 且注入了 form adapter 时可用，没有读回接口，支付不扣款。真实浏览器/表单验收不在本 PR。
 - **基分支 PR 新增但未验收**：owner-gated idle self-wake（A10/A12）。它默认关闭，只在已有私聊线程里、有具体新事实时才可能发一条短消息；真实通道发送等待 owner。
-- **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、connector event wake、Google Workspace/Slack/Notion connector、connector data index、cloud browser、payment 扣款、用户级 receipt、deletion surface、推荐系统。
+- **已具备（`main`，#182）**：本地执行凭据（D5），可按 Ticket 查询已持久化的输入、Assignment、reply/outbox 与受跟踪外部操作状态；输出省略正文、目标地址和凭据值，不推断未跟踪访问。离线端到端已测，真实服务验收未做。
+- **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、connector event wake、Google Workspace/Slack/Notion connector、connector data index、cloud browser、payment 扣款、跨系统全局使用 receipt、deletion surface、推荐系统。
 - **不能靠代码等价**：hosted identity、电话网络、merchant partnerships、用户 Mac/iMessage 账号。它们被标为 `environment-blocked`，不冒充完成。
 - **不猜测**：Instinct 的 27-section instruction body、main agent host、model id、control-plane schema、desktop app 与四个 policy section 没有公开正文；本仓库不复制、不假装对齐。

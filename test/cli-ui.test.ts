@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -46,6 +47,15 @@ afterEach(async () => {
 
 function tempHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-ui-'))
+}
+
+function databaseFiles(home: string): string[] {
+  return ['ds-agent.db', 'ds-agent.db-wal', 'ds-agent.db-shm']
+    .filter(file => fs.existsSync(path.join(home, file)))
+}
+
+function databaseHash(home: string): string {
+  return createHash('sha256').update(fs.readFileSync(path.join(home, 'ds-agent.db'))).digest('hex')
 }
 
 interface Response {
@@ -266,6 +276,53 @@ async function startSeeded(): Promise<{
 }
 
 describe('local UI server', () => {
+  it('runUi fails closed on an empty home without creating database files', async () => {
+    const home = tempHome()
+    cleanup.push(() => { fs.rmSync(home, { recursive: true, force: true }) })
+
+    await expect(runUi(home, { port: 0, token: TOKEN })).rejects.toThrow(
+      /local state database does not exist/,
+    )
+    expect(databaseFiles(home)).toEqual([])
+  })
+
+  it('fails closed on an empty home without starting or creating database files', async () => {
+    const home = tempHome()
+    cleanup.push(() => { fs.rmSync(home, { recursive: true, force: true }) })
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'ui', '--port', '0'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DS_AGENT_HOME: home,
+        DS_AGENT_UI_TOKEN: TOKEN,
+        NODE_NO_WARNINGS: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', chunk => { stdout += chunk })
+    child.stderr.on('data', chunk => { stderr += chunk })
+
+    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
+      const timer = setTimeout(() => {
+        child.kill('SIGTERM')
+      }, 2_000)
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer)
+        resolve({ code, signal })
+      })
+    })
+
+    expect(result.code, `stdout: ${stdout}\\nstderr: ${stderr}`).toBe(1)
+    expect(result.signal).toBeNull()
+    expect(stderr).toContain('local state database does not exist')
+    expect(stdout).not.toContain('listening on')
+    expect(databaseFiles(home)).toEqual([])
+  })
+
   it('renders escaped HTML with no external assets or message bodies', async () => {
     const { base } = await startSeeded()
     const logs: string[] = []
@@ -590,6 +647,9 @@ describe('local UI server', () => {
 
   it('never logs the token and shuts down on SIGTERM', async () => {
     const home = tempHome()
+    const initialized = new Store(home)
+    initialized.close()
+    const before = databaseHash(home)
     cleanup.push(() => { fs.rmSync(home, { recursive: true, force: true }) })
     const entry = new URL('../src/cli/ui.ts', import.meta.url).href
     const script = `import { runUi } from ${JSON.stringify(entry)}; await runUi(process.env.DS_AGENT_UI_HOME, { port: 0 })`
@@ -627,5 +687,6 @@ describe('local UI server', () => {
     expect(stdout).toContain('listening on')
     expect(stdout).not.toContain(TOKEN)
     expect(stderr).not.toContain(TOKEN)
+    expect(databaseHash(home)).toBe(before)
   })
 })

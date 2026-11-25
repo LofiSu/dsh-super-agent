@@ -3,19 +3,99 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { LifecycleEvent } from '../core/lifecycle.ts'
 import type { DomainEventName } from '../shared/events.ts'
+import { UserError } from '../shared/errors.ts'
 import type { JobRow, ObjectRef, OutboxRow, ReplyRow, SessionRow } from '../shared/types.ts'
-import { migrate } from './schema.ts'
+import { LATEST_SCHEMA_VERSION, migrate } from './schema.ts'
+
+function readSchemaVersion(db: DatabaseSync): number {
+  const ledger = db.prepare(
+    "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'",
+  ).get()
+  if (!ledger) return 0
+
+  const rows = db.prepare(
+    'SELECT version FROM schema_migrations',
+  ).all() as { version: unknown }[]
+  if (rows.length === 0) {
+    throw new UserError('database schema ledger contains an invalid version')
+  }
+  let version = 0
+  for (const row of rows) {
+    if (typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 1) {
+      throw new UserError('database schema ledger contains an invalid version')
+    }
+    version = Math.max(version, row.version)
+  }
+  if (version > LATEST_SCHEMA_VERSION) {
+    throw new UserError(
+      `database schema version ${version} is newer than this build supports (${LATEST_SCHEMA_VERSION}); ` +
+      'upgrade ds-agent before opening this store',
+    )
+  }
+  return version
+}
+
+export function supportsReadOnlyDatabaseSync(version = process.versions.node): boolean {
+  const [major = 0, minor = 0] = version.split('.').map(Number)
+  return major > 23 ||
+    (major === 23 && minor >= 2) ||
+    (major === 22 && minor >= 12)
+}
+
+export interface ReceiptTicket {
+  id: string
+  createdAt?: string
+  ended?: { at?: string; outcome: string; by?: string }
+  channels: Array<{ source: string }>
+  inputs: Array<{ id: string; kind: string; at?: string }>
+  assignments: Array<{
+    id: string
+    state: string
+    startedAt?: string
+    endedAt?: string
+    report?: { kind: string; at?: string }
+  }>
+}
+
+export interface ReceiptExternalOperation {
+  id: string
+  kind: string
+  phase: string
+  assignmentId?: string
+  updatedAt?: string
+}
 
 export class Store {
   readonly path: string
   private readonly db: DatabaseSync
+  private readonly readOnly: boolean
   private depth = 0
   private closed = false
   private schemaVersionValue = 0
 
-  constructor(home: string) {
-    fs.mkdirSync(home, { recursive: true })
+  static openReadOnly(home: string): Store {
+    return new Store(home, { readOnly: true })
+  }
+
+  constructor(home: string, options: { readOnly?: boolean } = {}) {
     this.path = path.join(home, 'ds-agent.db')
+    this.readOnly = options.readOnly === true
+    if (this.readOnly) {
+      if (!supportsReadOnlyDatabaseSync()) {
+        throw new Error('read-only SQLite access requires Node.js 22.12+ or 23.2+')
+      }
+      if (!fs.existsSync(this.path)) throw new Error('local state database does not exist')
+      this.db = new DatabaseSync(this.path, { readOnly: true })
+      try {
+        this.schemaVersionValue = readSchemaVersion(this.db)
+      } catch (error) {
+        this.db.close()
+        throw error
+      }
+      return
+    }
+
+    fs.mkdirSync(home, { recursive: true })
     this.db = new DatabaseSync(this.path)
     try {
       this.schemaVersionValue = migrate(this.db)
@@ -41,9 +121,13 @@ export class Store {
     return !this.closed
   }
 
+  private assertWritable(): void {
+    if (this.readOnly) throw new Error('store is open read-only')
+  }
+
   close(): void {
     if (this.closed) return
-    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    if (!this.readOnly) this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
     this.db.close()
     this.closed = true
   }
@@ -55,6 +139,7 @@ export class Store {
   }
 
   atomic<T>(work: () => T): T {
+    this.assertWritable()
     if (this.depth > 0) return work()
     this.depth += 1
     try {
@@ -75,6 +160,7 @@ export class Store {
   }
 
   nextId(prefix: string): string {
+    this.assertWritable()
     const row = this.db.prepare(
       `INSERT INTO id_seq(prefix, n) VALUES(?, 1)
        ON CONFLICT(prefix) DO UPDATE SET n = n + 1
@@ -84,6 +170,7 @@ export class Store {
   }
 
   putDoc(kind: string, id: string, value: unknown): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO documents(kind, id, payload) VALUES(?, ?, ?)
        ON CONFLICT(kind, id) DO UPDATE SET payload = excluded.payload`,
@@ -97,6 +184,86 @@ export class Store {
     return row ? JSON.parse(row.payload) as T : undefined
   }
 
+  /** Read only allowlisted Ticket fields used by the execution receipt. */
+  getReceiptTicket(id: string): ReceiptTicket | undefined {
+    const row = this.db.prepare(
+      'SELECT json_valid(payload) AS is_valid FROM documents WHERE kind = ? AND id = ?',
+    ).get('ticket', id) as { is_valid: number } | undefined
+    if (!row) return undefined
+    if (row.is_valid !== 1) throw new SyntaxError('ticket payload is malformed JSON')
+
+    const projected = this.db.prepare(`
+      SELECT json_object(
+        'id', json_extract(payload, '$.id'),
+        'createdAt', json_extract(payload, '$.createdAt'),
+        'ended', CASE WHEN json_type(payload, '$.ended') = 'object' THEN
+          json_object('at', json_extract(payload, '$.ended.at'),
+                      'outcome', json_extract(payload, '$.ended.outcome'),
+                      'by', json_extract(payload, '$.ended.by'))
+          ELSE NULL END,
+        'channels', json(COALESCE((
+          SELECT json_group_array(json_object('source', json_extract(channel.value, '$.source')))
+          FROM json_each(payload, '$.channels') AS channel
+        ), '[]')),
+        'inputs', json(COALESCE((
+          SELECT json_group_array(json_object(
+            'id', json_extract(input.value, '$.id'),
+            'kind', json_extract(input.value, '$.kind'),
+            'at', json_extract(input.value, '$.at')))
+          FROM json_each(payload, '$.inputs') AS input
+        ), '[]')),
+        'assignments', json(COALESCE((
+          SELECT json_group_array(json_object(
+            'id', json_extract(assignment.value, '$.id'),
+            'state', json_extract(assignment.value, '$.state'),
+            'startedAt', json_extract(assignment.value, '$.startedAt'),
+            'endedAt', json_extract(assignment.value, '$.endedAt'),
+            'report', CASE WHEN json_type(assignment.value, '$.report') = 'object' THEN
+              json_object('kind', json_extract(assignment.value, '$.report.kind'),
+                          'at', json_extract(assignment.value, '$.report.at'))
+              ELSE NULL END))
+          FROM json_each(payload, '$.assignments') AS assignment
+        ), '[]'))
+      ) AS payload
+      FROM documents WHERE kind = ? AND id = ?
+    `).get('ticket', id) as { payload: string }
+    return JSON.parse(projected.payload) as ReceiptTicket
+  }
+
+  /** Read external-operation receipt metadata without loading private details. */
+  listReceiptExternalOperations(ticketId: string): ReceiptExternalOperation[] {
+    const rows = this.db.prepare(`
+      SELECT id,
+             json_extract(payload, '$.kind') AS kind,
+             json_extract(payload, '$.phase') AS phase,
+             json_extract(payload, '$.assignmentId') AS assignment_id,
+             json_extract(payload, '$.updatedAt') AS updated_at
+      FROM documents
+      WHERE kind = ? AND CASE WHEN json_valid(payload)
+        THEN json_extract(payload, '$.ticketId') END = ?
+      ORDER BY rowid
+    `).all('external_op', ticketId) as {
+      id: string; kind: string; phase: string; assignment_id: string | null; updated_at: string | null
+    }[]
+    return rows.map(row => ({
+      id: row.id,
+      kind: row.kind,
+      phase: row.phase,
+      ...(row.assignment_id !== null ? { assignmentId: row.assignment_id } : {}),
+      ...(row.updated_at !== null ? { updatedAt: row.updated_at } : {}),
+    }))
+  }
+
+  /** Return at most two matching keys to resolve an exact or unique prefix. */
+  listDocIdsByPrefix(kind: string, prefix: string): string[] {
+    const rows = this.db.prepare(
+      `SELECT id FROM documents
+       WHERE kind = ? AND instr(id, ?) = 1
+       ORDER BY id LIMIT 2`,
+    ).all(kind, prefix) as { id: string }[]
+    return rows.map(row => row.id)
+  }
+
   listDocs<T>(kind: string): T[] {
     const rows = this.db.prepare(
       'SELECT payload FROM documents WHERE kind = ? ORDER BY rowid',
@@ -104,11 +271,24 @@ export class Store {
     return rows.map(row => JSON.parse(row.payload) as T)
   }
 
+  /** Read only documents whose JSON payload belongs to one Ticket. */
+  listDocsForTicket<T>(kind: string, ticketId: string): T[] {
+    const rows = this.db.prepare(
+      `SELECT payload FROM documents
+       WHERE kind = ?
+         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.ticketId') END = ?
+       ORDER BY rowid`,
+    ).all(kind, ticketId) as { payload: string }[]
+    return rows.map(row => JSON.parse(row.payload) as T)
+  }
+
   deleteDoc(kind: string, id: string): void {
+    this.assertWritable()
     this.db.prepare('DELETE FROM documents WHERE kind = ? AND id = ?').run(kind, id)
   }
 
   addEvent(type: DomainEventName, payload: unknown): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO events(type, payload, created_at) VALUES(?, ?, ?)',
     ).run(type, JSON.stringify(payload), new Date().toISOString())
@@ -132,6 +312,7 @@ export class Store {
    * read model returned by `recentLifecycleEvents`.
    */
   appendLifecycleEvent(event: LifecycleEvent, keep?: number): void {
+    this.assertWritable()
     this.atomic(() => {
       this.db.prepare(
         'INSERT INTO lifecycle_events(at, kind, payload) VALUES(?, ?, ?)',
@@ -154,6 +335,7 @@ export class Store {
 
   /** Keep only the newest `keep` lifecycle rows; older rows are deleted. */
   pruneLifecycleEvents(keep: number): void {
+    this.assertWritable()
     if (!Number.isSafeInteger(keep) || keep < 1) {
       throw new Error('lifecycle retention must be a positive integer')
     }
@@ -164,6 +346,7 @@ export class Store {
   }
 
   addReply(row: ReplyRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO replies(id, ticket_id, channel, purpose, text, status, created_at)
        VALUES(?, ?, ?, ?, ?, ?, ?)`,
@@ -171,10 +354,11 @@ export class Store {
   }
 
   markReplySent(id: string): void {
+    this.assertWritable()
     this.db.prepare(`UPDATE replies SET status = 'sent' WHERE id = ?`).run(id)
   }
 
-    listReplies(): ReplyRow[] {
+  listReplies(): ReplyRow[] {
     const rows = this.db.prepare(
       'SELECT id, ticket_id, channel, purpose, text, status, created_at FROM replies ORDER BY rowid',
     ).all() as Record<string, string>[]
@@ -189,7 +373,21 @@ export class Store {
     }))
   }
 
+  /** Receipt metadata for one Ticket, deliberately excluding reply bodies. */
+  listReceiptReplies(ticketId: string): Pick<ReplyRow, 'id' | 'channel' | 'status' | 'createdAt'>[] {
+    const rows = this.db.prepare(
+      `SELECT id, channel, status, created_at FROM replies WHERE ticket_id = ? ORDER BY rowid`,
+    ).all(ticketId) as { id: string; channel: string; status: string; created_at: string }[]
+    return rows.map(row => ({
+      id: row.id,
+      channel: row.channel,
+      status: row.status as ReplyRow['status'],
+      createdAt: row.created_at,
+    }))
+  }
+
   enqueueOutbox(row: OutboxRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO outbox(
          id, reply_id, ticket_id, channel, thread, target, text, status,
@@ -219,6 +417,28 @@ export class Store {
     return rows.map(outboxFromRow)
   }
 
+  /** Receipt metadata for one Ticket, excluding body, target, and error fields. */
+  listReceiptOutbox(
+    ticketId: string,
+  ): Pick<OutboxRow, 'id' | 'channel' | 'status' | 'createdAt' | 'sentAt'>[] {
+    const rows = this.db.prepare(
+      `SELECT id, channel, status, created_at, sent_at FROM outbox WHERE ticket_id = ? ORDER BY rowid`,
+    ).all(ticketId) as {
+      id: string
+      channel: string
+      status: string
+      created_at: string
+      sent_at: string | null
+    }[]
+    return rows.map(row => ({
+      id: row.id,
+      channel: row.channel,
+      status: row.status as OutboxRow['status'],
+      createdAt: row.created_at,
+      ...(row.sent_at ? { sentAt: row.sent_at } : {}),
+    }))
+  }
+
   /** Pending rows whose backoff has elapsed. */
   listDueOutbox(now = new Date().toISOString()): OutboxRow[] {
     const rows = this.db.prepare(
@@ -232,6 +452,7 @@ export class Store {
 
   /** Atomically claim a row so two flushers cannot send it twice. */
   claimOutbox(id: string): boolean {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'sending' WHERE id = ? AND status = 'pending'`,
     ).run(id)
@@ -239,18 +460,21 @@ export class Store {
   }
 
   markOutboxSent(id: string, externalId?: string): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'sent', external_id = ?, sent_at = ?, next_attempt_at = NULL WHERE id = ?`,
     ).run(externalId ?? null, new Date().toISOString(), id)
   }
 
   markOutboxRetry(id: string, error: string, nextAttemptAt: string, attempts: number): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'pending', error = ?, next_attempt_at = ?, attempts = ? WHERE id = ?`,
     ).run(error, nextAttemptAt, attempts, id)
   }
 
   markOutboxFailed(id: string, error: string): void {
+    this.assertWritable()
     this.db.prepare(
       `UPDATE outbox SET status = 'failed', error = ?, next_attempt_at = NULL WHERE id = ?`,
     ).run(error, id)
@@ -258,6 +482,7 @@ export class Store {
 
   /** Mid-send rows after a crash: unknown outcome until the owner releases retry. */
   markSendingOutboxUnknownOutcome(): number {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'unknown_outcome', error = COALESCE(error, 'interrupted while sending') WHERE status = 'sending'`,
     ).run()
@@ -266,6 +491,7 @@ export class Store {
 
   /** After UNKNOWN-OUTCOME approval: return rows to pending for idempotent drain. */
   requeueUnknownOutcomeOutbox(ticketId: string): number {
+    this.assertWritable()
     const result = this.db.prepare(
       `UPDATE outbox SET status = 'pending', next_attempt_at = NULL WHERE status = 'unknown_outcome' AND ticket_id = ?`,
     ).run(ticketId)
@@ -274,6 +500,7 @@ export class Store {
 
   /** Release only the named uncertain rows after an effect-scoped decision. */
   requeueUnknownOutcomeOutboxIds(ticketId: string, ids: readonly string[]): number {
+    this.assertWritable()
     if (ids.length === 0) return 0
     const placeholders = ids.map(() => '?').join(', ')
     const result = this.db.prepare(
@@ -286,6 +513,7 @@ export class Store {
 
   /** Record an operator's decision that an uncertain delivery already happened. */
   acknowledgeUnknownOutcomeOutboxIds(ticketId: string, ids: readonly string[]): number {
+    this.assertWritable()
     if (ids.length === 0) return 0
     const placeholders = ids.map(() => '?').join(', ')
     const result = this.db.prepare(
@@ -300,10 +528,12 @@ export class Store {
    * @deprecated Uncertain sends use `unknown_outcome`; operator must approve before requeue.
    */
   requeueSending(): number {
+    this.assertWritable()
     return this.markSendingOutboxUnknownOutcome()
   }
 
   addSubscription(threadKey: string, ticketId: string, at: string): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO subscriptions(thread_key, ticket_id, created_at) VALUES(?, ?, ?)
        ON CONFLICT(thread_key, ticket_id) DO NOTHING`,
@@ -318,6 +548,7 @@ export class Store {
   }
 
   putSpill(body: string, refs: readonly ObjectRef[] = []): string {
+    this.assertWritable()
     const id = this.nextId('spill')
     this.db.prepare('INSERT INTO spills(id, body, refs, created_at) VALUES(?, ?, ?, ?)')
       .run(id, body, JSON.stringify(refs), new Date().toISOString())
@@ -343,6 +574,7 @@ export class Store {
 
   /** Upsert a spill by id. Used by long-term memory so a ticket keeps one stable body. */
   replaceSpill(id: string, body: string, refs?: readonly ObjectRef[]): void {
+    this.assertWritable()
     if (refs === undefined) {
       this.db.prepare(
         `INSERT INTO spills(id, body, refs, created_at) VALUES(?, ?, '[]', ?)
@@ -358,6 +590,7 @@ export class Store {
 
   /** Delete a spill body and every grant that pointed at it, in one transaction. */
   deleteSpill(id: string): void {
+    this.assertWritable()
     this.atomic(() => {
       this.db.prepare('DELETE FROM spill_grants WHERE spill_id = ?').run(id)
       this.db.prepare('DELETE FROM spills WHERE id = ?').run(id)
@@ -365,6 +598,7 @@ export class Store {
   }
 
   grantSpill(spillId: string, grantee: string): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO spill_grants(spill_id, grantee) VALUES(?, ?) ON CONFLICT(spill_id, grantee) DO NOTHING',
     ).run(spillId, grantee)
@@ -378,6 +612,7 @@ export class Store {
   }
 
   createJob(input: { sessionId: string; ticketId: string; name: string }): JobRow {
+    this.assertWritable()
     const row: JobRow = {
       id: this.nextId('job'),
       sessionId: input.sessionId,
@@ -394,6 +629,7 @@ export class Store {
   }
 
   completeJob(id: string, status: JobRow['status'] = 'succeeded'): void {
+    this.assertWritable()
     this.db.prepare(
       "UPDATE jobs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'",
     ).run(status, new Date().toISOString(), id)
@@ -431,6 +667,7 @@ export class Store {
   }
 
   upsertSession(row: SessionRow): void {
+    this.assertWritable()
     this.db.prepare(
       `INSERT INTO sessions(id, role, ticket_id, status, heartbeat, created_at)
        VALUES(?, ?, ?, ?, ?, ?)
@@ -457,6 +694,7 @@ export class Store {
   }
 
   appendMessage(sessionId: string, role: string, body: string): void {
+    this.assertWritable()
     this.db.prepare(
       'INSERT INTO messages(session_id, role, body, created_at) VALUES(?, ?, ?, ?)',
     ).run(sessionId, role, body, new Date().toISOString())
@@ -474,6 +712,7 @@ export class Store {
   }
 
   addArtifact(ticketId: string, filePath: string): string {
+    this.assertWritable()
     const id = this.nextId('art')
     this.db.prepare(
       'INSERT INTO artifacts(id, ticket_id, path, created_at) VALUES(?, ?, ?, ?)',
