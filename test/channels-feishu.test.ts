@@ -272,6 +272,41 @@ describe('Feishu message mapping', () => {
     expect(filterTrigger(direct, ruleSemantic, groupScoped).action).toBe('pass')
   })
 
+  it('admits a genuine verified p2p bot mention but denies a group-marked forgery', () => {
+    const groupScoped = admissionRulesFromEnv({ DS_AGENT_GROUP_ALLOWLIST: 'oc_allowed' })
+    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
+    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    try {
+      // Genuine verified p2p mention: mapper sets addressed=mention and omits address.group.
+      const genuine = feishuTriggerFromMessage(message({
+        chat_id: 'oc_p2p',
+        chat_type: 'p2p',
+        body: { content: JSON.stringify({ text: '@ds-agent 你现在可以改了' }) },
+        mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+      }), config)
+      expect(genuine.addressed).toBe('mention')
+      expect(genuine.channel?.address?.group).toBeUndefined()
+      expect(filterTrigger(genuine, ruleSemantic, groupScoped)).toMatchObject({ action: 'pass' })
+
+      // Forgery: same mention with a p2p marker plus a restricted group field.
+      const forged = {
+        ...genuine,
+        channel: {
+          ...genuine.channel!,
+          address: { ...genuine.channel!.address!, group: 'oc_restricted' },
+        },
+      }
+      expect(filterTrigger(forged, ruleSemantic, groupScoped)).toMatchObject({
+        action: 'drop',
+        layer: 'fast',
+        reason: 'group-not-allowlisted',
+      })
+    } finally {
+      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+    }
+  })
+
   it('honors DS_AGENT_FEISHU_P2P_DIRECT for short p2p utterances through filterTrigger', () => {
     const prev = process.env.DS_AGENT_FEISHU_P2P_DIRECT
     const utterances = ['你现在可以改了', '在干嘛怎么回我那么慢'] as const

@@ -50,13 +50,17 @@ function admissionDeny(trigger: Trigger, rules?: AdmissionRules): string | undef
   }
   if (rules.groups?.length) {
     const address = trigger.channel?.address
-    // Only a direct-addressed Feishu p2p trigger is outside the group rule.
-    // The address marker alone is untrusted: other producers (or a mention in
-    // a restricted chat) must not bypass the configured group allowlist.
-    const verifiedFeishuP2p = trigger.addressed === 'direct'
-      && trigger.channel?.source === 'im'
+    // A genuine Feishu p2p trigger has a verified p2p address marker and no
+    // group field. Direct-addressed p2p is always outside the group rule; a
+    // bot mention in p2p qualifies only without a group field, so a forged
+    // marker on a restricted group cannot bypass the allowlist.
+    const p2pAddress = trigger.channel?.source === 'im'
       && address?.provider === 'feishu'
       && address.chat_type === 'p2p'
+    const verifiedFeishuP2p = p2pAddress && (
+      trigger.addressed === 'direct'
+      || (trigger.addressed === 'mention' && !address?.group?.trim())
+    )
     if (!verifiedFeishuP2p) {
       const group = address?.group?.trim()
       if (!group || !rules.groups.includes(group)) return 'group-not-allowlisted'
