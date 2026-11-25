@@ -68,7 +68,7 @@ export async function runUi(home: string, options: UiCommandOptions = {}): Promi
 
   let store: Store
   try {
-    store = new Store(home)
+    store = Store.openReadOnly(home)
   } catch (error) {
     throw new Error(`ds-agent ui: cannot open store at ${home}: ${errorMessage(error)}`)
   }

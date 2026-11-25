@@ -89,7 +89,7 @@
 | D2 | approval card：approve / deny / dismiss，绑定“屏幕上显示的原文” | S4/S5：三答案；绑定 exact text；改写后要重新批准；没有 editable plan view | teardown | `missing`（状态机是 `main`，卡片不是） | `docs/APPROVALS.md`、`src/core/collab.ts`：现有流程是 Worker `request_approval` → hold → CLI `approve/deny`；没有 dismiss、没有结构化 action id、没有“绑定 exact text”的卡片 |
 | D3 | irreversible actions 必须走 approval，模型不能自行批准 | S4/S5；S3 的 external send / payment 条款 | official/teardown | `main` | `src/harness/tools.ts` 的 `request_approval` + `src/core/collab.ts` 的 pending hold；`test/approvals.test.ts` 覆盖 approve/deny、审批等待不被 watchdog 误杀、决策不可由聊天文本伪造 |
 | D4 | payment / credential vault 可填不可读 | S4/S5 | teardown | `missing` | 无 vault、无支付 adapter |
-| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `missing` | 有 lifecycle event、session journal、metrics，但没有面向用户的 receipt 产品面 |
+| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `PR-only`（本 PR，未合并） | `pnpm ds-agent receipt <ticketId> [--json]` 从本地持久 Ticket/Assignment、reply/outbox 与受跟踪 external-op 生成只读凭据；输出省略正文、目标地址、原始错误和凭据值。只证明已记录输入，不声称模型确实注意到它们；未跟踪的工具读取/副作用不作“未触碰”断言。离线 CLI 重启测试覆盖成功/失败/未知与隔离；没有真实外部服务验收，详见 `docs/EXECUTION_RECEIPTS.md`。 |
 | D6 | deletion surface：storage / training / location / desktop indexing | S4/S5 | teardown | `missing` | 本仓库有 backup/restore 与本地 SQLite 文件，但不是 Instinct 那种跨 store 删除面 |
 
 ## 7. 等价边界（不做相同克隆）
@@ -111,14 +111,16 @@
 | P2 | remote mesh runtime placement / assignment results | #165 | `PR-only` | 多节点 Worker 放置；不是 Instinct 的 cloud browser 或 hosted identity |
 | P3 | deployment docs / loopback sandbox probes | #167 | `PR-only` | 部署与安全探测；不是 Instinct connector 能力 |
 | P4 | native controlled evolution | #168 | `PR-only` | 自改进/策略演化；不是本清单的 Instinct inventory 项 |
-| P5 | Google Workspace connectors + connector index + event wake | #174（`feat/instinct-connectors-index` → `main`） | `PR-only` | 七个 Google Workspace 只读映射；`connectors.json` 由 owner 启用，缺失即关闭；独立 connector 索引不写 LTM；wake 复用 Daemon pulse 与 `Runtime.ingest`。只做离线 fake API/OAuth 测试；**真实 Google 账号、OAuth 同意、Workspace API 未验收** |
+| P5 | 本地可查询执行凭据（D5） | #182 | `main` | `ds-agent receipt <ticketId>` 只读本地已持久化证据；不新增发送权限，不能证明未跟踪的模型/工具读取或副作用；没有真实外部服务验收 |
+| P6 | Google Workspace connectors + connector index + event wake | #174（`feat/instinct-connectors-index` → `main`） | `PR-only`（本 PR） | 七个 Google Workspace 只读映射；`connectors.json` 由 owner 启用，缺失即关闭；独立 connector 索引不写 LTM；wake 复用 Daemon pulse 与 `Runtime.ingest`。只做离线 fake API/OAuth 测试；**真实 Google 账号、OAuth 同意、Workspace API 未验收** |
 
 > #166、#164、#163 也是 open PR（longitudinal harness、recovery boundary、sandbox health），但没有改变本清单的 `main` 状态；不把它们当作已合并能力。
 
 ## 9. 结论
 
 - **已具备（`main`）**：iMessage 通道、clock/timer routines、长期记忆与 ACL、irreversible action 的 approval hold、CLI/Feishu/GitHub 等多通道运行时，以及默认关闭的 sandbox/redaction 边界。每项都有 cited test 或文档依据。
+- **已具备（`main`，#182）**：本地执行凭据（D5），可按 Ticket 查询已持久化的输入、Assignment、reply/outbox 与受跟踪外部操作状态；输出省略正文、目标地址和凭据值，不推断未跟踪访问。离线端到端已测，真实服务验收未做。owner-gated idle self-wake（A10/A12）已由 #170 进入 `main`，默认关闭；真实通道发送等待 owner。
 - **本 PR 新增但未验收**：Google Workspace connector 索引与事件唤醒（A9/B3/C1）。功能默认关闭；只在已有私聊线程、具体事件达到 usefulness 门槛且通过 admission/quiet-hours/cap 时才可能进入 `Runtime.ingest`。真实 Feishu/iMessage 发送、Google OAuth 与 Workspace API 均等待 owner 实测。
-- **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、fill-only vault、cloud browser、三答案 approval card、payment、receipt、deletion surface、推荐系统。Slack/Notion 仍不列入验收（无具名来源），本 PR 也没有实现它们。
+- **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、fill-only vault、cloud browser、三答案 approval card、payment、deletion surface、推荐系统。Slack/Notion 仍不列入验收（无具名来源），本 PR 也没有实现它们。
 - **不能靠代码等价**：hosted identity、电话网络、merchant partnerships、用户 Mac/iMessage 账号。它们被标为 `environment-blocked`，不冒充完成。
 - **不猜测**：Instinct 的 27-section instruction body、main agent host、model id、control-plane schema、desktop app 与四个 policy section 没有公开正文；本仓库不复制、不假装对齐。
