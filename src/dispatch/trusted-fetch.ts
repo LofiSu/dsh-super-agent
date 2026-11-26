@@ -51,16 +51,17 @@ function isPrivateIp(ip: string): boolean {
   if (net.isIPv4(ip)) {
     const n = ipv4ToNum(ip)
     if (n === undefined) return false
-    if ((n & 0xff000000) === 0x00000000) return true // 0.0.0.0/8
-    if ((n & 0xff000000) === 0x7f000000) return true // 127.0.0.0/8
-    if ((n & 0xff000000) === 0x0a000000) return true // 10.0.0.0/8
-    if ((n & 0xfff00000) === 0xac100000) return true // 172.16.0.0/12
-    if ((n & 0xffff0000) === 0xc0a80000) return true // 192.168.0.0/16
-    if ((n & 0xffff0000) === 0xa9fe0000) return true // 169.254.0.0/16 link-local
+    if (((n & 0xff000000) >>> 0) === 0x00000000) return true // 0.0.0.0/8
+    if (((n & 0xff000000) >>> 0) === 0x7f000000) return true // 127.0.0.0/8
+    if (((n & 0xff000000) >>> 0) === 0x0a000000) return true // 10.0.0.0/8
+    if (((n & 0xfff00000) >>> 0) === 0xac100000) return true // 172.16.0.0/12
+    if (((n & 0xffff0000) >>> 0) === 0xc0a80000) return true // 192.168.0.0/16
+    if (((n & 0xffff0000) >>> 0) === 0xa9fe0000) return true // 169.254.0.0/16 link-local
     return false
   }
 
-  if (lower.startsWith('fe80:')) return true
+  const firstHextet = lower.split(':', 1)[0] ?? ''
+  if (/^fe[89ab][0-9a-f]$/.test(firstHextet) && (Number.parseInt(firstHextet, 16) & 0xffc0) === 0xfe80) return true
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true // unique-local fc00::/7
   return false
 }

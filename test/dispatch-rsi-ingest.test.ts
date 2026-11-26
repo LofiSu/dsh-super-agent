@@ -96,6 +96,27 @@ describe('trusted-fetch SSRF', () => {
     })).rejects.toThrow(/private|blocked/i)
   })
 
+  it.each([
+    ['172.16.0.1', '172.16.0.1'],
+    ['192.168.1.1', '192.168.1.1'],
+    ['169.254.169.254', '169.254.169.254'],
+    ['IPv4-mapped 172.16.0.1', '[::ffff:ac10:1]'],
+    ['IPv4-mapped 192.168.1.1', '[::ffff:c0a8:101]'],
+    ['IPv4-mapped 169.254.169.254', '[::ffff:a9fe:a9fe]'],
+  ])('refuses private IPv4 range %s when allowlisted', async (_name, host) => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('ok'))
+    await expect(trustedFetch(`https://${host}/`, { allowHosts: [host], fetchImpl: fetchImpl as typeof fetch }))
+      .rejects.toThrow(/private|blocked/i)
+  })
+
+  it('refuses IPv6 link-local fe81::1 when allowlisted', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('ok'))
+    await expect(trustedFetch('https://[fe81::1]/', {
+      allowHosts: ['fe81::1'],
+      fetchImpl: fetchImpl as typeof fetch,
+    })).rejects.toThrow(/private|blocked/i)
+  })
+
   it('refuses 0.1.2.3 in 0.0.0.0/8 when allowlisted', async () => {
     await expect(trustedFetch('https://0.1.2.3/', { allowHosts: ['0.1.2.3'] }))
       .rejects.toThrow(/private|blocked/i)
@@ -108,6 +129,14 @@ describe('trusted-fetch SSRF', () => {
 })
 
 describe('RSI gap pool', () => {
+  it('extracts a backtick-wrapped test path while failing closed on unsafe evidence', () => {
+    expect(acceptanceFromInstinctEvidenceColumn('`test/dispatch-rsi-ingest.test.ts`'))
+      .toBe('Offline test file test/dispatch-rsi-ingest.test.ts passes in CI holdout.')
+    expect(acceptanceFromInstinctEvidenceColumn('n/a')).toBe('')
+    expect(acceptanceFromInstinctEvidenceColumn('No test path supplied')).toBe('')
+    expect(acceptanceFromInstinctEvidenceColumn('不是验收标准；`test/dispatch-rsi-ingest.test.ts`')).toBe('')
+  })
+
   it('ingests sourced gaps; high risk stays proposal and duplicate PR keeps tick idle', async () => {
     const home = tempHome()
     const store = new Store(home)

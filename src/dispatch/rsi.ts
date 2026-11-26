@@ -160,13 +160,14 @@ const INSTINCT_ACCEPTANCE_DISCLAIMER =
 
 /** Extract testable acceptance from 验收/依据 column — fail-closed; no length heuristics. */
 export function acceptanceFromInstinctEvidenceColumn(evidenceCell: string): string {
-  const raw = stripMd(evidenceCell)
-  if (!raw) return ''
-  if (/^无|^n\/a$/i.test(raw)) return ''
-  if (INSTINCT_ACCEPTANCE_DISCLAIMER.test(raw)) return ''
+  const raw = evidenceCell.trim()
+  const normalized = stripMd(raw)
+  if (!normalized) return ''
+  if (/^无|^n\/a$/i.test(normalized)) return ''
+  if (INSTINCT_ACCEPTANCE_DISCLAIMER.test(normalized)) return ''
   const testFile = raw.match(/`([^`]+\.test\.ts)`/)?.[1]
   if (testFile) return `Offline test file ${testFile} passes in CI holdout.`
-  const bareTest = raw.match(/(test\/[\w./-]+\.test\.ts)/)
+  const bareTest = normalized.match(/(test\/[\w./-]+\.test\.ts)/)
   if (bareTest) return `Offline test ${bareTest[1]} passes.`
   return ''
 }
