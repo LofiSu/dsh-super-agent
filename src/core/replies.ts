@@ -59,10 +59,18 @@ export class Replies {
     if (ref?.source === 'im' && ref.address?.provider === 'feishu') {
       const key = makeThreadKey({ source: ref.source, id: ref.thread })
       const storedThread = this.host.repo.getDoc<Thread>('thread', key)
+      const triggerBelongsToSelectedThread = (trigger: Trigger): boolean => {
+        const refs = trigger.threads.length > 0
+          ? trigger.threads
+          : trigger.channel ? [{ source: trigger.channel.source, id: trigger.channel.thread }] : []
+        return refs.some(triggerRef => makeThreadKey(triggerRef) === key)
+      }
       const stopRequested = ticket.inputs.some(input => {
         if (input.human !== true || !input.triggerId) return false
         const trigger = this.host.repo.getDoc<Trigger>('trigger', input.triggerId)
-        return trigger?.human === true && /别用回复|不要引用|别引用|(?:don't|dont|stop)\s+quot(?:e|ing)\b/i.test(trigger.text)
+        return trigger?.human === true
+          && triggerBelongsToSelectedThread(trigger)
+          && /别用回复|不要引用|别引用|(?:don't|dont|stop)\s+quot(?:e|ing)\b/i.test(trigger.text)
       })
       const stopQuoting = storedThread?.meta?.feishuStopQuoting === true || stopRequested
       if (stopRequested && storedThread) {
@@ -75,7 +83,7 @@ export class Replies {
         const latestHuman = ticket.inputs
           .filter(input => input.human === true && input.triggerId)
           .map(input => this.host.repo.getDoc<Trigger>('trigger', input.triggerId!))
-          .filter((trigger): trigger is Trigger => trigger?.human === true)
+          .filter((trigger): trigger is Trigger => trigger?.human === true && triggerBelongsToSelectedThread(trigger))
           .sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
           .at(-1)
         const latestMessageId = latestHuman?.channel?.address?.message_id
