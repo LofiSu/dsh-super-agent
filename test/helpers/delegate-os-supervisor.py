@@ -605,11 +605,24 @@ def run(mode, home, repo_root, task, expected_parent_pid):
         # A wrapper deadline can interrupt the polling loop immediately after
         # the helper atomically publishes its spawn PID. Attest that durable
         # handoff before killing the helper, even if the normal path did not
-        # reach it yet.
-        if delegate_pid is None and helper is not None and owner_file.is_file():
+        # reach it yet. The signal can also land after wait_for_owned_spawn()
+        # returns but before its tuple assignment and report update complete;
+        # reconcile any unpinned report from the durable handoff in that case.
+        if (not report['creation_identity_pinned'] and helper is not None
+                and owner_file.is_file()):
             try:
-                delegate_pid, delegate_start_time, delegate_pidfd = wait_for_owned_spawn(
+                attested_pid, attested_start_time, attested_pidfd = wait_for_owned_spawn(
                     owner_file, helper, fixture, timeout_s=1.0,
+                )
+                if (delegate_pid is not None and delegate_pid != attested_pid
+                        or delegate_start_time is not None
+                        and delegate_start_time != attested_start_time):
+                    os.close(attested_pidfd)
+                    raise RuntimeError('delegate identity changed during interrupted ownership handoff')
+                if delegate_pidfd is not None:
+                    os.close(delegate_pidfd)
+                delegate_pid, delegate_start_time, delegate_pidfd = (
+                    attested_pid, attested_start_time, attested_pidfd,
                 )
                 report['delegate_pid'] = delegate_pid
                 report['delegate_pgid'] = delegate_pid
