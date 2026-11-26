@@ -6,6 +6,7 @@ import {
   FeishuSource,
   decryptFeishuPayload,
   feishuConfigFromEnv,
+  feishuMaxMessageAgeMs,
   feishuTriggerFromMessage,
   flattenFeishuMessage,
   parseFeishuWebhook,
@@ -88,6 +89,12 @@ const ruleSemantic = {
 }
 
 describe('Feishu config', () => {
+  it('uses a positive finite message-age override and otherwise defaults to one hour', () => {
+    expect(feishuMaxMessageAgeMs({ FEISHU_MAX_MESSAGE_AGE_MS: '1234' })).toBe(1234)
+    expect(feishuMaxMessageAgeMs({ FEISHU_MAX_MESSAGE_AGE_MS: '0' })).toBe(60 * 60_000)
+    expect(feishuMaxMessageAgeMs({ FEISHU_MAX_MESSAGE_AGE_MS: 'Infinity' })).toBe(60 * 60_000)
+  })
+
   it('is absent when no app credentials are set', () => {
     expect(feishuConfigFromEnv({})).toBeNull()
   })
@@ -421,11 +428,34 @@ describe('Feishu webhook parser', () => {
           create_time: '1761958800000',
         },
       },
-    }, config)
+    }, config, { now: () => 1761958900000 })
     expect(result.trigger?.id).toBe('feishu_om_webhook')
     expect(result.trigger?.actor.id).toBe('ou_alice')
     expect(result.trigger?.threads[0]?.id).toBe('feishu:oc_chat')
     expect(result.trigger?.channel?.address?.chat_type).toBe('p2p')
+  })
+
+  it('skips stale webhook messages and keeps messages at the age boundary', () => {
+    const now = 1761966000000
+    const logs: string[] = []
+    const parse = (createTime: string) => parseFeishuWebhook({
+      schema: '2.0',
+      header: { event_type: 'im.message.receive_v1' },
+      event: {
+        message: {
+          message_id: `om_${createTime}`,
+          chat_id: 'oc_chat',
+          msg_type: 'text',
+          content: JSON.stringify({ text: 'hello' }),
+          create_time: createTime,
+        },
+      },
+    }, config, { now: () => now, maxMessageAgeMs: 60 * 60_000, log: line => logs.push(line) })
+
+    expect(parse(String(now - 60 * 60_000)).trigger?.text).toBe('hello')
+    expect(parse(String(now - 60 * 60_000 - 1))).toEqual({ ignored: 'stale-message' })
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toContain('skip stale')
   })
 
   it('fails closed for missing or unknown webhook chat types', () => {
@@ -442,7 +472,7 @@ describe('Feishu webhook parser', () => {
           create_time: '1761958800000',
         },
       },
-    }, config).trigger
+    }, config, { now: () => 1761958900000 }).trigger
     const group = parse('group')
     const visibility = parse('private')
     const missing = parse()
@@ -469,7 +499,7 @@ describe('Feishu webhook parser', () => {
       },
     })
     expect(decryptFeishuPayload(encrypt(plain, 'encrypt-key'), 'encrypt-key')).toBe(plain)
-    const result = parseFeishuWebhook({ encrypt: encrypt(plain, 'encrypt-key') }, config)
+    const result = parseFeishuWebhook({ encrypt: encrypt(plain, 'encrypt-key') }, config, { now: () => 1761958900000 })
     expect(result.trigger?.text).toBe('@ds-agent encrypted hello')
   })
 
@@ -545,7 +575,7 @@ describe('Feishu client and outbox', () => {
       }
     })
     const client = new FeishuClient(config, fn)
-    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config })
+    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
     const triggers = await source.pull()
     expect(triggers.map(trigger => trigger.id)).toEqual(['feishu_om_a', 'feishu_om_b'])
     expect(triggers[0]?.channel?.address?.chat_type).toBe('p2p')
@@ -563,6 +593,7 @@ describe('Feishu client and outbox', () => {
     const logs: string[] = []
     const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
       sinceMs: 1761958000000,
+      now: () => 1761958900000,
       config,
       log: line => logs.push(line),
     })
@@ -597,7 +628,7 @@ describe('Feishu client and outbox', () => {
       return { body: { code: 999, msg: `unexpected ${url}` } }
     })
     const client = new FeishuClient(config, fn)
-    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config })
+    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
     const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
     process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
     try {
@@ -629,6 +660,7 @@ describe('Feishu client and outbox', () => {
     })
     const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
       sinceMs: 1761958000000,
+      now: () => 1761958900000,
       config,
     })
     const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
@@ -662,7 +694,7 @@ describe('Feishu client and outbox', () => {
       return { body: { code: 999, msg: `unexpected ${url}` } }
     })
     const client = new FeishuClient(config, fn)
-    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config })
+    const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
     const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
     process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
     try {
@@ -707,6 +739,7 @@ describe('Feishu client and outbox', () => {
     const logs: string[] = []
     const source = new FeishuSource(client, 'oc_chat', {
       sinceMs: 1761958000000,
+      now: () => 1761958900000,
       config,
       log: line => logs.push(line),
     })
@@ -772,6 +805,7 @@ describe('Feishu client and outbox', () => {
     const logs: string[] = []
     const source = new FeishuSource(client, 'oc_chat', {
       sinceMs: 1761958000000,
+      now: () => 1761958900000,
       config,
       log: line => logs.push(line),
     })
@@ -804,6 +838,67 @@ describe('Feishu client and outbox', () => {
     }
   })
 
+  it('skips stale poll messages while advancing the cursor past them', async () => {
+    const now = 1761966000000
+    const staleAt = now - 2 * 60 * 60_000
+    const freshAt = now - 60 * 60_000
+    const { fn } = fakeFetch(url => {
+      if (url.includes('tenant_access_token')) return tokenHandler(url)
+      if (url.includes('/im/v1/chats/')) return { body: { code: 0, data: { chat_mode: 'p2p' } } }
+      return {
+        body: {
+          code: 0,
+          data: {
+            has_more: false,
+            items: [
+              message({ message_id: 'om_stale', create_time: String(staleAt) }),
+              message({ message_id: 'om_fresh', create_time: String(freshAt) }),
+            ],
+          },
+        },
+      }
+    })
+    const logs: string[] = []
+    const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
+      sinceMs: staleAt - 1,
+      config,
+      now: () => now,
+      log: line => logs.push(line),
+    })
+
+    const triggers = await source.pull()
+    expect(triggers.map(trigger => trigger.id)).toEqual(['feishu_om_fresh'])
+    expect(source.cursorMs).toBe(freshAt)
+    expect(logs.some(line => line.includes('skip stale message_id=om_stale'))).toBe(true)
+  })
+
+  it('advances the poll cursor when every pulled message is stale', async () => {
+    const now = 1761966000000
+    const staleAt = now - 2 * 60 * 60_000
+    const { fn } = fakeFetch(url => {
+      if (url.includes('tenant_access_token')) return tokenHandler(url)
+      if (url.includes('/im/v1/chats/')) return { body: { code: 0, data: { chat_mode: 'p2p' } } }
+      return {
+        body: {
+          code: 0,
+          data: {
+            has_more: false,
+            items: [message({ message_id: 'om_old', create_time: String(staleAt) })],
+          },
+        },
+      }
+    })
+    const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
+      sinceMs: staleAt - 1,
+      config,
+      now: () => now,
+    })
+
+    const triggers = await source.pull()
+    expect(triggers).toEqual([])
+    expect(source.cursorMs).toBe(staleAt)
+  })
+
   it('bounds a hung official chat-mode lookup and honors shutdown abort', async () => {
     let chatStarted!: () => void
     const started = new Promise<void>(resolve => { chatStarted = resolve })
@@ -820,7 +915,7 @@ describe('Feishu client and outbox', () => {
       }
       return new Response(JSON.stringify({ code: 0, data: { items: [message()], has_more: false } }))
     }
-    const timedSource = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', { sinceMs: 1761958000000, config })
+    const timedSource = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
     const startedAt = Date.now()
     const timedTriggers = await timedSource.pull()
     expect(Date.now() - startedAt).toBeLessThan(6_500)
@@ -828,7 +923,7 @@ describe('Feishu client and outbox', () => {
     await started
 
     chatSignal = undefined
-    const abortSource = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', { sinceMs: 1761958000000, config })
+    const abortSource = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
     const controller = new AbortController()
     const pulling = abortSource.pull(controller.signal)
     await started
@@ -878,6 +973,7 @@ describe('Feishu client and outbox', () => {
       const source = new FeishuSource(new FeishuClient(config, fn), 'oc_chat', {
         sinceMs: 1761958000000,
         config,
+        now: () => 1761958900000,
         log: line => logs.push(line),
       })
       const [trigger] = await source.pull()

@@ -100,6 +100,20 @@ type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 /** Bound every Open Platform call so a hung DNS/proxy cannot stall poll or outbox. */
 export const FEISHU_FETCH_TIMEOUT_MS = 8_000
 
+export const DEFAULT_FEISHU_MAX_MESSAGE_AGE_MS = 60 * 60_000
+
+export function feishuMaxMessageAgeMs(env: NodeJS.ProcessEnv = process.env): number {
+  const configured = Number(env.FEISHU_MAX_MESSAGE_AGE_MS)
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_FEISHU_MAX_MESSAGE_AGE_MS
+}
+
+function isStaleFeishuMessage(message: FeishuMessage, nowMs: number, maxAgeMs: number): boolean {
+  const createdAt = Number(message.create_time)
+  return Number.isFinite(createdAt) && nowMs - createdAt > maxAgeMs
+}
+
 export class FeishuApiError extends Error {
   constructor(readonly code: number, message: string, readonly path: string) {
     super(`Feishu ${path} failed code=${code}: ${message}`)
@@ -393,6 +407,8 @@ export class FeishuSource {
       pageSize?: number
       config?: FeishuConfig
       log?: (line: string) => void
+      now?: () => number
+      maxMessageAgeMs?: number
     } = {},
   ) {
     this.cursorMsValue = options.sinceMs ?? Date.now() - 5 * 60_000
@@ -400,12 +416,16 @@ export class FeishuSource {
     this.pageSize = options.pageSize
     this.config = options.config
     this.log = options.log ?? (() => undefined)
+    this.now = options.now ?? Date.now
+    this.maxMessageAgeMs = options.maxMessageAgeMs ?? feishuMaxMessageAgeMs()
   }
 
   private readonly threadId?: string
   private readonly pageSize?: number
   private readonly config?: FeishuConfig
   private readonly log: (line: string) => void
+  private readonly now: () => number
+  private readonly maxMessageAgeMs: number
 
   private warnChatModeLookupOnce(chatId: string, category: string): void {
     if (this.warnedChatModeLookupChatIds.has(chatId)) return
@@ -491,8 +511,15 @@ export class FeishuSource {
     }
     if (signal?.aborted) return []
     const triggers: Trigger[] = []
+    const nowMs = this.now()
     for (const item of items) {
       if (this.threadId && item.thread_id !== this.threadId) continue
+      const at = Number(item.create_time)
+      if (Number.isFinite(at) && at > this.cursorMsValue) this.cursorMsValue = at
+      if (isStaleFeishuMessage(item, nowMs, this.maxMessageAgeMs)) {
+        this.log(`[feishu] skip stale message_id=${item.message_id}`)
+        continue
+      }
       // Resolve other chat ids defensively when direct mode is enabled; cached
       // results and one warning per chat keep repeated pulls quiet.
       let chatType = resolvedTypes.get(item.chat_id)
@@ -508,8 +535,6 @@ export class FeishuSource {
         ...(chatType ? { chat_type: chatType } : { chat_type: undefined }),
       }
       triggers.push(feishuTriggerFromMessage(message, this.config))
-      const at = Number(item.create_time)
-      if (Number.isFinite(at) && at > this.cursorMsValue) this.cursorMsValue = at
     }
     return triggers
   }
@@ -539,7 +564,11 @@ export interface FeishuWebhookResult {
  * envelopes, and `im.message.receive_v1`. Verification tokens are enforced
  * when `FEISHU_VERIFICATION_TOKEN` is configured.
  */
-export function parseFeishuWebhook(payload: unknown, config: FeishuConfig): FeishuWebhookResult {
+export function parseFeishuWebhook(
+  payload: unknown,
+  config: FeishuConfig,
+  options: { now?: () => number; maxMessageAgeMs?: number; log?: (line: string) => void } = {},
+): FeishuWebhookResult {
   let body = payload
   if (body && typeof body === 'object' && typeof (body as { encrypt?: unknown }).encrypt === 'string') {
     body = JSON.parse(decryptFeishuPayload((body as { encrypt: string }).encrypt, config.encryptKey ?? '')) as unknown
@@ -568,6 +597,14 @@ export function parseFeishuWebhook(payload: unknown, config: FeishuConfig): Feis
   } | undefined
   const message = event?.message
   if (!message?.message_id || !message.chat_id) return { ignored: 'no-message' }
+  if (isStaleFeishuMessage(
+    message as FeishuMessage,
+    (options.now ?? Date.now)(),
+    options.maxMessageAgeMs ?? feishuMaxMessageAgeMs(),
+  )) {
+    options.log?.(`[feishu] skip stale message_id=${message.message_id}`)
+    return { ignored: 'stale-message' }
+  }
   const sender = event?.sender
   const senderId = sender?.sender_id?.open_id ?? sender?.sender_id?.user_id ?? sender?.sender_id?.union_id
   return {
