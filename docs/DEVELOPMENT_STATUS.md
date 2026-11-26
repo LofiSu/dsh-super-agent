@@ -1,17 +1,74 @@
 # Development status
 
-> Checkpoint: 2026-11-04 · baseline `main` = `661e56d` (final integration cycle)
-> Source of truth: `git`, GitHub PRs/checks, and the evidence in
-> `docs/PROJECT_AUDIT.md`. Do not trust this file without re-verifying; later
-> merges after this baseline are not reflected. The cycle-9 tables below are
-> retained as history, not as the current state.
+> **Current checkpoint:** 2026-11-26 (Asia/Shanghai) · `main` = `d616dbd1820ca6a31e44e2fa233a53864e36df4e`
+> Repo: `LofiSu/dsh-super-agent`. Source of truth: `git`, GitHub PRs/checks, and cited CI runs. Re-verify before relying on this file.
 
-## Final integration checkpoint (2026-11-04)
+## Current integration checkpoint (2026-11-26)
 
-The owner-directed program is integrated on `main`: semantic long-term memory,
+`main` is at **0.1.0** with no GitHub Release and no tag. Required check **`typecheck and test`** is green on this SHA: [Actions run 45687952739](https://github.com/LofiSu/dsh-super-agent/actions/runs/45687952739) (success). Capabilities below are **merged and covered by offline tests / CI** unless noted; **real channel, real Google, real browser/form, and real iMessage send remain operator-gated and largely unvalidated**.
+
+| Field | Value |
+|-------|-------|
+| `main` | `d616dbd` — `feat(env): writable Peanut workspace and host-side PR-only publish` (#175) |
+| Version | `0.1.0` (`package.json`) |
+| Release | none |
+| Required check | `typecheck and test` — green at `d616dbd` (run above) |
+
+### Recently on `main` (merged; not “production-validated” on live accounts)
+
+- **#171** — Muse-style prompt stack: 33 ordered sections + nine runtime files (`docs/PROMPTS.md`).
+- **#175** — Writable Peanut workspace; host may open/update `peanut/` branches and open PRs to `main` only (no merge, force-push, or tag; owner token not injected into sandbox).
+- **#174** — Owner-gated Google Workspace connectors (calendar/gmail/drive/docs/sheets/slides/tasks), connector index, event wake; **default off**; real Google OAuth/API not accepted.
+- **#173** — Three-answer approval cards (`approve` / `deny` / `dismiss`) with `actionId` bound to exact action text; fill-only credential/payment vault (no read-back; no payment capture). **CLI-only** — channel replies cannot approve. Real browser/form not validated.
+- **#182** — Local execution receipts (`pnpm ds-agent receipt`); read-only, redacted.
+- **#172** — Owner-gated browser errand adapter (local command or remote HTTP; not Instinct leased cloud browser); **default off**; real browser not validated.
+- **#168** — Native controlled evolution (deliver-gate strategy v1); **not** a full product RSI loop.
+- **#170** — Owner-gated idle self-wake; **default off**; live channel send waits on owner.
+- **#167** — Deployment docs and loopback security probes.
+- **#166** — T48 longitudinal measurement harness (month-scale protocol documented earlier; **month-scale measurement still not done**).
+- **#165** — Remote mesh runtime placement / assignment results; no default Runtime listener.
+- **#164** — Recovery boundaries.
+- **#163** — Sandbox wrapper health reporting.
+- **#176** — RSI / open-PR integration **plan documentation only** (not implemented RSI closure).
+- **Earlier `main`:** Router/Worker, CLI / GitHub / Feishu poll / iMessage / A2A, sandbox, routines, memory, read-only local UI (`ds-agent ui`, `docs/UI.md`).
+
+### Not on `main` (do not treat as shipped)
+
+| Item | Notes |
+|------|--------|
+| [#180](https://github.com/LofiSu/dsh-super-agent/pull/180) | Feishu: honor `DS_AGENT_FEISHU_P2P_DIRECT` for p2p short messages — **OPEN**, mergeable, CI green; **not** “Feishu instant reply done” or live send validated. |
+| [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | Dispatch: ingest Instinct/competitive-gap RSI **proposals** + bounded scheduler tick — **OPEN**, mergeable, CI green; infrastructure only, not product RSI shipped. |
+| [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) | Dispatch: owner GitHub issue poll queue and bounded RSI — **OPEN**, **CONFLICTING**, stale base; do not treat as merge-ready. |
+| Conversation-first | Not in this repository. |
+| Full RSI closure | No living gap list → evaluate conversations → land improvements on `main`. |
+| Standalone conversational desktop UI | UI is **read-only** dashboard; no second-sidebar chat product. `src/dispatch` not on `main`. |
+| Default GitHub @ dispatch / issue poll queue | Not on `main` (broader work was on expired #177). `github-source` recognizing `@ds-agent` in issue text ≠ default dispatch live. |
+| Formal release | No tag/release workflow product cut yet. |
+
+### Honest limits (current)
+
+- Real Feishu send, real Google accounts, real iMessage send, real form fill: **operator-gated**, mostly **not** accepted in this doc’s sense.
+- Local UI: loopback, token-gated, **read-only** — not a full desktop chat shell.
+- No **conversation-first**, no weekday stock-morning-report config in tree.
+- Semantic/month-scale memory: harness and protocol exist; **month-scale bake-off not completed**.
+
+### Next actions
+
+1. Review and consider merging **#180** and **#183** after independent review; do not treat **#177** as a clean merge target.
+2. Schedule **real-channel / real-connector** acceptance with owner credentials (Feishu, Google, iMessage, browser errands, vault fill) and record evidence.
+3. Product work still open: **full RSI loop**, **standalone conversational desktop**, **default GitHub @ issue poll dispatch**.
+4. Keep `.super-agent/state.json` and this checkpoint truthful when the orchestrator updates state.
+
+---
+
+## Historical: final integration checkpoint (2026-11-04)
+
+> Retained for history only — **not** the current tree.
+
+The owner-directed program through 2026-11-04 integrated on `main` at `661e56d`: semantic long-term memory,
 read isolation, store migrations, A2A with peer auth, model slow path, cross-host
 mesh registry/inbox, local UI, backup/restore and release checks, and combined
-Feishu/iMessage serving. The remaining items are owner-gated or evidence-bound,
+Feishu/iMessage serving. The remaining items at that time were owner-gated or evidence-bound,
 not missing implementation.
 
 | Field | Value |
@@ -24,9 +81,9 @@ not missing implementation.
 | Main CI | green after each merge (post-merge `main` runs `41848077717` at `661e56d`, `41847695711` at `af6b011`); #140 head `69a243c` green, #139 head `50cf9d1` green, #134 head `56cb001` green, #132 head `21cc421` green, #138 head `33b0941` run `41845978818`, #135 head `096e83c` run `41845266705`, #136 head `740c61c` run `41844155920`, #129 head `ab73604` run `41829844125` |
 | Local offline gate on #135 merged head | `tsc --noEmit` clean; `pnpm lint` ok (268 files); CI-equivalent full suite 75 files / 724 tests: 709 passed, 15 skipped, 0 failed |
 | UI gate | `test/cli-ui.test.ts` 12/12; `test/cli-command-wiring.test.ts` 4/4; CI `typecheck and test` green on `ab73604` (run `41829844125`). A separate bare local full-suite run on `ab73604` had 3 long `test/subscription.test.ts` failures under concurrent load; that file passes 19/19 when run alone, and CI's CI-env full run passed. |
-| Open high-risk PRs | none; #141 is documentation-only. The #132 owner gate was bypassed outside this session (see above). |
+| Open high-risk PRs (at 2026-11-04) | none; #141 documentation-only. The #132 owner gate was bypassed outside this session (see above). |
 
-### Task status
+### Task status (2026-11-04 snapshot)
 
 - **Complete:** M0–M10 core, M11 CLI/demo, T01–T46, T49 (local UI),
   T50 (A2A plus authenticated HTTP transport), T51 (credential boundaries).
@@ -41,7 +98,7 @@ not missing implementation.
 - **External/operator:** live bake-off measurement, real Feishu credentials,
   remote mesh exposure, release publishing, and any production infrastructure.
 
-### Known gaps and honest limits
+### Known gaps and honest limits (2026-11-04)
 
 - No live bake-off was run in this program; offline fixtures and CI only.
 - Feishu credentials are absent in this environment; iMessage is configured on
@@ -83,7 +140,7 @@ credential is present. The last full live suite available at this checkpoint was
 run by peer session sulin-5f on `5e5a28b` (476 passed / 3 skipped, exit 0); no
 live suite was run on `f6e5972`.
 
-## Active workstreams
+## Active workstreams (cycle 9 — historical)
 
 | Task | Priority | Branch | Owner | State |
 |------|----------|--------|-------|-------|
@@ -112,7 +169,7 @@ live suite was run on `f6e5972`.
 - Every merge was based on a reviewed head with green `typecheck and test`;
   branch protection was not bypassed.
 
-## Blockers
+## Blockers (cycle 9 — historical)
 
 - This session used no model credentials and performed no Feishu network call;
   live Feishu acceptance remains operator-only. `serve --imessage` still needs
@@ -138,9 +195,9 @@ live suite was run on `f6e5972`.
 - The session has exceeded the automatic four-cycle budget under the owner's
   explicit continuation; the override is recorded in state.
 
-## Next actions
+## Next actions (cycle 9 — historical, 2026-11-04 era)
 
-1. Land this cycle-9 checkpoint after CI.
+1. Land the cycle-9 checkpoint after CI.
 2. Implement ADR-010's lexical normalization + tag-only retrieval + one-hop tag
    expansion, with at least 10 held-out queries and a 1000-entry fixture.
 3. Draft the optional `--rotate-token` operator flag only if the owner asks.
