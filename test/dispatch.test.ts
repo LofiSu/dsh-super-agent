@@ -716,6 +716,97 @@ describe('rsi implementer fixture', () => {
     store.close()
   })
 
+  it('bounds a long gap approval body and keeps its identifying fields', async () => {
+    const root = tempHome()
+    const bare = path.join(root, 'remote.git')
+    execSync(`git init --bare -b main ${JSON.stringify(bare)}`, { stdio: 'ignore' })
+    const origin = path.join(root, 'origin')
+    fs.mkdirSync(origin)
+    execSync('git init -b main', { cwd: origin, env: { GIT_CONFIG_NOSYSTEM: '1' } })
+    execSync('git config user.email t@t.com && git config user.name t', { cwd: origin })
+    fs.writeFileSync(path.join(origin, 'package.json'), JSON.stringify({
+      name: 't',
+      scripts: { typecheck: 'exit 0', test: 'exit 0' },
+    }) + '\n')
+    execSync('git add -A && git commit -m seed', { cwd: origin })
+    execSync(`git remote add origin ${JSON.stringify(bare)}`, { cwd: origin })
+    execSync('git push -u origin main', { cwd: origin, env: { GIT_CONFIG_NOSYSTEM: '1' } })
+
+    let prBody = ''
+    const gh = vi.fn(async (args: string[]) => {
+      if (args[1] === 'create') {
+        const i = args.indexOf('--body')
+        if (i >= 0) prBody = args[i + 1] ?? ''
+      }
+      if (args[1] === 'list') return '[]'
+      if (args[1] === 'create') return 'https://github.com/o/r/pull/12\\n'
+      if (args[1] === 'view') return JSON.stringify({ number: 12, url: 'https://github.com/o/r/pull/12' })
+      return ''
+    })
+    let coderRan = false
+    const runner = createClaudeDispatchJobRunner({
+      github: {
+        enabled: true,
+        repo: REPO,
+        authorizedActors: ['LofiSu'],
+        pollIntervalMs: 60_000,
+        sourceRepo: origin,
+        implementer: 'claude',
+      },
+      gh,
+      pushRemote: bare,
+      holdout: () => undefined,
+      runRsiCoder: async ({ workspace }) => {
+        coderRan = true
+        fs.writeFileSync(path.join(workspace, 'rsi-fix.txt'), 'gap\\n')
+      },
+    })
+    const longGap: DispatchGapDoc = {
+      id: 'gap_long',
+      title: 'Stabilize detached supervisor handoffs',
+      description: 'Ensure resilience during temporary process visibility gaps.',
+      acceptance: 'Supervisor handoff remains stable when /proc is briefly empty and the report write is interrupted.',
+      risk: 'low',
+      priority: 10,
+      sourceUrl: 'https://github.com/LofiSu/dsh-super-agent/issues/12',
+      fetchedAt: '2026-11-27T01:00:00.000Z',
+      manusCue: 'unknown',
+      status: 'open',
+      dedupeKey: 'k-long',
+    }
+    const unclamped = [
+      `RSI gap: ${longGap.title}`,
+      `sourceUrl: ${longGap.sourceUrl}`,
+      `fetchedAt: ${longGap.fetchedAt}`,
+      'manusCue: unknown',
+      'Acceptance:',
+      longGap.acceptance,
+      'Coding delegated to Claude Code; orchestration is peanut/dispatch.',
+      'Coding delegated to Claude Code via dispatch implementer; orchestration is peanut/dispatch.',
+    ].join(' ').replace(/\s+/g, ' ').trim()
+    expect(unclamped.length).toBeGreaterThan(400)
+
+    const home = tempHome()
+    const store = new Store(home)
+    store.putDoc('dispatch_gap', longGap.id, longGap)
+    store.putDoc('dispatch_job', 'rsi-long', {
+      id: 'rsi-long',
+      type: 'rsi_implement',
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+      commentId: 'gap-impl-gap_long',
+      gapId: longGap.id,
+    } satisfies DispatchJobDoc)
+    await drainDispatchQueue({ store, runner })
+    expect(coderRan).toBe(true)
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'rsi-long')?.status).toBe('completed')
+    const collapsed = prBody.replace(/\s+/g, ' ').trim()
+    expect(collapsed.length).toBeLessThanOrEqual(400)
+    expect(collapsed.match(/Coding delegated to Claude Code via dispatch implementer; orchestration is peanut\/dispatch\./g)).toHaveLength(1)
+    expect(collapsed).toContain(longGap.title)
+    store.close()
+  })
+
   it('holdout failure leaves job failed without publish', async () => {
     const root = tempHome()
     const origin = path.join(root, 'origin')

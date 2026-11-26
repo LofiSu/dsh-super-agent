@@ -215,6 +215,23 @@ async function workspaceHasPublishableChanges(workspace: string, baseHead: strin
   return Number.isFinite(n) && n > 0
 }
 
+function buildApprovalBody(body: string): string {
+  const normalized = body
+    .replace(/\s*Coding delegated to Claude Code; orchestration is peanut\/dispatch\.?$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const suffix = CODING_DELEGATION_NOTE
+  const available = 400 - suffix.length - 1
+  if (normalized.length <= available) return `${normalized} ${suffix}`
+
+  const acceptanceAt = normalized.indexOf(' Acceptance: ')
+  if (acceptanceAt >= 0 && acceptanceAt < available) {
+    const prefix = normalized.slice(0, acceptanceAt + ' Acceptance: '.length)
+    return `${prefix}${normalized.slice(acceptanceAt + ' Acceptance: '.length, available)} ${suffix}`
+  }
+  return `${normalized.slice(0, available).trimEnd()} ${suffix}`
+}
+
 function commitAll(workspace: string, message: string): void {
   spawnSync('git', ['add', '-A'], { cwd: workspace, stdio: 'ignore', env: GIT_LOCAL_ENV })
   const commit = spawnSync('git', ['commit', '-m', message, '-m', CODING_DELEGATION_NOTE], {
@@ -248,6 +265,7 @@ async function runIsolatedImplementPublish(
   const repo = parseRepo(deps.github.repo)
   const gh = deps.gh ?? runGh
   const holdout = deps.holdout ?? defaultHoldout
+  const publishBody = buildApprovalBody(input.prBody)
 
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-dispatch-'))
   const workspace = path.join(tmpRoot, 'ws')
@@ -289,7 +307,7 @@ async function runIsolatedImplementPublish(
     const publishInput = {
       workerId: input.workerId,
       title: input.prTitle,
-      body: `${input.prBody}\n\n${CODING_DELEGATION_NOTE}`,
+      body: publishBody,
       branch: input.branch,
     }
     const binding = await publisher.prepare(publishInput)
@@ -348,8 +366,6 @@ export function createClaudeRsiImplementRunner(deps: ClaudeGithubFixRunnerDeps):
       '',
       'Acceptance:',
       gap.acceptance,
-      '',
-      'Coding delegated to Claude Code; orchestration is peanut/dispatch.',
     ].join('\n')
 
     return runIsolatedImplementPublish(deps, {
