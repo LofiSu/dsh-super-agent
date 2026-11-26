@@ -11,13 +11,37 @@ export const OFFLINE_VITEST_EXCLUDE = [
   'test/demos-real-channels.test.ts',
 ] as const
 
+export const OFFLINE_HOLDOUT_API_KEYS = [
+  'DS_AGENT_API_BASE',
+  'DS_AGENT_API_KEY',
+  'DS_AGENT_PROVIDER',
+  'DEEPSEEK_API_KEY',
+  'OPENAI_API_KEY',
+  'OPENROUTER_API_KEY',
+  'XAI_API_KEY',
+  'GROK_API_KEY',
+  'MOONSHOT_API_KEY',
+  'KIMI_API_KEY',
+  'ZHIPU_API_KEY',
+  'GLM_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'ANTHROPIC_API_KEY',
+] as const
+
+export function buildOfflineHoldoutEnv(parentEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...parentEnv, CI: 'true', DS_AGENT_ALLOW_MOCK_FIXTURE: '1' }
+  for (const key of OFFLINE_HOLDOUT_API_KEYS) env[key] = ''
+  return env
+}
+
 const GIT_LOCAL_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } as const
 
 function runHostCommand(args: string[], cwd: string): { ok: boolean; output: string } {
   const r = spawnSync('pnpm', args, {
     cwd,
     encoding: 'utf8',
-    env: process.env,
+    env: buildOfflineHoldoutEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const output = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().slice(0, 12_000)
@@ -30,7 +54,7 @@ function ensureNodeModules(workspace: string): void {
   const install = spawnSync('pnpm', ['install', '--frozen-lockfile'], {
     cwd: workspace,
     encoding: 'utf8',
-    env: process.env,
+    env: buildOfflineHoldoutEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (install.status !== 0) {

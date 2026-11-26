@@ -18,6 +18,7 @@ import { apiPollAdapter, createDefaultPollAdapter, processGithubPoll } from '../
 import { hasOpenPeanutPrForRepo } from '../src/dispatch/github-peanut.ts'
 import { createClaudeDispatchJobRunner } from '../src/dispatch/implementer.ts'
 import { createJobRunner, IMPLEMENTER_NOT_CONFIGURED } from '../src/dispatch/job-runner.ts'
+import { buildOfflineHoldoutEnv, OFFLINE_HOLDOUT_API_KEYS, OFFLINE_VITEST_EXCLUDE } from '../src/dispatch/holdout.ts'
 import { drainDispatchQueue } from '../src/dispatch/queue.ts'
 import {
   recoverInterruptedJobs,
@@ -34,6 +35,23 @@ import { Store } from '../src/store/sqlite.ts'
 import { tempHome } from './fixtures.ts'
 
 const REPO = 'LofiSu/deepseek-super-agent'
+
+describe('implementer holdout environment', () => {
+  it('forces the offline CI recipe and clears live API credentials', () => {
+    const parentEnv = Object.fromEntries(OFFLINE_HOLDOUT_API_KEYS.map(key => [key, `live-${key}`]))
+    const env = buildOfflineHoldoutEnv(parentEnv)
+
+    expect(env.CI).toBe('true')
+    expect(env.DS_AGENT_ALLOW_MOCK_FIXTURE).toBe('1')
+    for (const key of OFFLINE_HOLDOUT_API_KEYS) expect(env[key]).toBe('')
+    expect(OFFLINE_VITEST_EXCLUDE).toEqual([
+      'test/live-demo.test.ts',
+      'test/live-e2e.test.ts',
+      'test/team-live.test.ts',
+      'test/demos-real-channels.test.ts',
+    ])
+  })
+})
 
 function issue(n: number, extra: Partial<GithubIssue> = {}): GithubIssue & { pull_request?: unknown } {
   return {
