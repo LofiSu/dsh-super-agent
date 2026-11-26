@@ -48,6 +48,16 @@ import { runSetupCommand } from './setup.ts'
 import { readPackageVersion } from './version.ts'
 import { runEvolutionCommand } from './evolution.ts'
 import { parseApprovalActionId } from './approval-args.ts'
+import {
+  dispatchLoadRequested,
+  startDispatchLoopIfConfigured,
+  type StartedDispatchLoop,
+} from './dispatch-integration.ts'
+import { loadDispatchOwnerConfig } from '../dispatch/config.ts'
+import {
+  formatDispatchStatus,
+  runDispatchCancel,
+} from '../dispatch/cli.ts'
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -173,7 +183,9 @@ function help(): void {
   pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
   pnpm ds-agent status
   pnpm ds-agent health
-  pnpm ds-agent serve [--imessage] [--feishu] [--handle <id>] [--chat <id>]
+  pnpm ds-agent dispatch status
+  pnpm ds-agent dispatch cancel <jobId>   # local queue only; no GitHub comments
+  pnpm ds-agent serve [--imessage] [--feishu] [--github-dispatch] [--handle <id>] [--chat <id>]
                             [--allow-any] [--allow-groups] [--interval <ms>]
                             [--since <epoch-ms>] [--once]
                             # daemon timer over persisted state; optional inbound iMessage
@@ -399,6 +411,7 @@ async function serve(home: string): Promise<void> {
   // Independent loops: each channel owns its AbortController and Outbox, but
   // both run over this one Runtime and SQLite store.
   let channels: ReturnType<typeof startServeChannels> | undefined
+  let dispatchLoop: StartedDispatchLoop | undefined
   let stopping = false
   const shutdown = (signal: NodeJS.Signals): void => {
     if (stopping) {
@@ -408,6 +421,7 @@ async function serve(home: string): Promise<void> {
     stopping = true
     // Stop polling first so no new Trigger is ingested while finish() drains.
     channels?.abort()
+    dispatchLoop?.abort()
     runtime.log.info(`[serve] shutdown signal=${signal}; draining (send again to force exit)`)
     void (async () => {
       // The loops own their outbox and cursor writes; let both finish before
@@ -415,6 +429,9 @@ async function serve(home: string): Promise<void> {
       if (channels) {
         await channels.wait()
         channels.close()
+      }
+      if (dispatchLoop) {
+        await dispatchLoop.wait()
       }
       await runtime.finish()
     })()
@@ -450,7 +467,9 @@ async function serve(home: string): Promise<void> {
     runtime.start({ assessPending: canAssess, routines: true, proactive: true, connectors: true })
   } catch (error) {
     channels?.abort()
+    dispatchLoop?.abort()
     channels?.close()
+    await dispatchLoop?.wait().catch(() => undefined)
     await runtime.finish().catch(() => undefined)
     throw error
   }
@@ -477,6 +496,22 @@ async function serve(home: string): Promise<void> {
     } catch (error) {
       channels?.abort()
       channels?.close()
+      await runtime.finish().catch(() => undefined)
+      throw error
+    }
+  }
+  if (!stopping && dispatchLoadRequested()) {
+    try {
+      const dispatchCfg = await loadDispatchOwnerConfig(home, { verifyMentions: true })
+      dispatchLoop = await startDispatchLoopIfConfigured(home, runtime, {
+        verifyGh: true,
+        config: dispatchCfg ?? undefined,
+      })
+    } catch (error) {
+      channels?.abort()
+      dispatchLoop?.abort()
+      channels?.close()
+      await dispatchLoop?.wait().catch(() => undefined)
       await runtime.finish().catch(() => undefined)
       throw error
     }
@@ -599,6 +634,24 @@ async function main(): Promise<void> {
     for (const line of report.lines) console.log(line)
     process.exitCode = report.code
     return
+  }
+  if (cmd === 'dispatch') {
+    const store = new Store(home)
+    try {
+      if (sub === 'status') {
+        console.log(formatDispatchStatus(store))
+        return
+      }
+      if (sub === 'cancel') {
+        const jobId = bare(3)[0]
+        if (!jobId) throw new Error('dispatch cancel needs a job id: ds-agent dispatch cancel <jobId>')
+        console.log(runDispatchCancel(store, jobId))
+        return
+      }
+      throw new Error('dispatch needs "status" or "cancel": ds-agent dispatch status | cancel <jobId>')
+    } finally {
+      store.close()
+    }
   }
   if (cmd === 'serve') {
     await serve(home)
