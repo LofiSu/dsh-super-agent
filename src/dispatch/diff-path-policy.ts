@@ -39,28 +39,28 @@ const RSI_EXTRA_FORBIDDEN: readonly { re: RegExp; reason: string }[] = [
   { re: /^pnpm-lock\.yaml$/, reason: 'lockfile' },
 ]
 
-function gitNameOnlyLines(workspace: string, args: readonly string[]): string[] {
+function gitNameOnlyPaths(workspace: string, args: readonly string[]): string[] {
   const r = spawnSync('git', [...args], {
     cwd: workspace,
-    encoding: 'utf8',
     env: GIT_LOCAL_ENV,
   })
   if (r.status !== 0) {
     throw new UserError('implementer: could not diff against baseline ref')
   }
-  return (r.stdout ?? '')
-    .split(/\r?\n/)
-    .map(s => s.trim())
+  const output = Buffer.isBuffer(r.stdout) ? r.stdout : Buffer.from(r.stdout ?? '')
+  return output
+    .toString('utf8')
+    .split('\0')
     .filter(Boolean)
 }
 
 /** Paths that differ from baseline (commits, staged, and working tree). */
 export function changedPathsSinceRef(workspace: string, baseHead: string): string[] {
   const names = new Set<string>()
-  for (const rel of gitNameOnlyLines(workspace, ['diff', '--name-only', baseHead])) {
+  for (const rel of gitNameOnlyPaths(workspace, ['diff', '-z', '--name-only', '--no-renames', baseHead])) {
     names.add(rel)
   }
-  for (const rel of gitNameOnlyLines(workspace, ['diff', '--cached', '--name-only', baseHead])) {
+  for (const rel of gitNameOnlyPaths(workspace, ['diff', '--cached', '-z', '--name-only', '--no-renames', baseHead])) {
     names.add(rel)
   }
   return [...names]

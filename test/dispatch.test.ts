@@ -563,6 +563,35 @@ describe('implementer diff path policy', () => {
     expect(() => assertImplementerDiffPolicy(ws, base, 'github_fix')).toThrow(/forbidden/i)
   })
 
+  it('refuses renaming a forbidden admission path to a harmless path', async () => {
+    const { assertImplementerDiffPolicy } = await import('../src/dispatch/diff-path-policy.ts')
+    const root = tempHome()
+    const ws = path.join(root, 'ws')
+    fs.mkdirSync(path.join(ws, 'src/dispatch'), { recursive: true })
+    execSync('git init -b main', { cwd: ws, env: { GIT_CONFIG_NOSYSTEM: '1' } })
+    execSync('git config user.email t@t.com && git config user.name t', { cwd: ws })
+    fs.writeFileSync(path.join(ws, 'src/dispatch/admission.ts'), 'export const x = 1\n')
+    execSync('git add -A && git commit -m seed', { cwd: ws })
+    const base = execSync('git rev-parse HEAD', { cwd: ws, encoding: 'utf8' }).trim()
+    execSync('git mv src/dispatch/admission.ts src/harmless.ts && git commit -m rename', { cwd: ws })
+    expect(() => assertImplementerDiffPolicy(ws, base, 'github_fix')).toThrow(/forbidden|admission/i)
+  })
+
+  it('refuses C-quoted unusual names under a forbidden prefix', async () => {
+    const { assertImplementerDiffPolicy } = await import('../src/dispatch/diff-path-policy.ts')
+    const root = tempHome()
+    const ws = path.join(root, 'ws')
+    fs.mkdirSync(path.join(ws, 'src/vault'), { recursive: true })
+    execSync('git init -b main', { cwd: ws, env: { GIT_CONFIG_NOSYSTEM: '1' } })
+    execSync('git config user.email t@t.com && git config user.name t', { cwd: ws })
+    fs.writeFileSync(path.join(ws, 'x.txt'), '1\n')
+    execSync('git add -A && git commit -m seed', { cwd: ws })
+    const base = execSync('git rev-parse HEAD', { cwd: ws, encoding: 'utf8' }).trim()
+    fs.writeFileSync(path.join(ws, 'src/vault/key\t.pem'), 'secret\n')
+    execSync('git add -A && git commit -m vault', { cwd: ws })
+    expect(() => assertImplementerDiffPolicy(ws, base, 'github_fix')).toThrow(/forbidden|vault/i)
+  })
+
   it('refuses RSI lockfile and docs-only diffs', async () => {
     const { assertImplementerDiffPolicy } = await import('../src/dispatch/diff-path-policy.ts')
     const root = tempHome()
