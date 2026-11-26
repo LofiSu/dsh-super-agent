@@ -51,95 +51,66 @@ export function escapeHtml(value: unknown): string {
   })
 }
 
-function table(headers: readonly string[], rows: readonly (readonly string[])[], empty: string): string {
-  if (rows.length === 0) return `<p class="empty">${escapeHtml(empty)}</p>`
-  const head = headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')
-  const body = rows
-    .map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`)
-    .join('')
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
-}
-
-function code(value: unknown): string {
-  return `<code>${escapeHtml(value)}</code>`
-}
-
-function ticketRows(tickets: readonly SnapshotTicket[]): string[][] {
-  return tickets.map(ticket => [
+/** Render all snapshot sections with one implementation for SSR and SSE updates. */
+export function renderSnapshotContent(snapshot: UiSnapshot): string {
+  const escape = (value: unknown): string => String(value ?? '').replace(/[&<>"']/gu, char => {
+    switch (char) {
+      case '&': return '&amp;'
+      case '<': return '&lt;'
+      case '>': return '&gt;'
+      case '"': return '&quot;'
+      case "'": return '&#39;'
+      default: return char
+    }
+  })
+  const code = (value: unknown): string => `<code>${escape(value)}</code>`
+  const table = (headers: readonly string[], rows: readonly (readonly string[])[], empty: string): string => {
+    if (rows.length === 0) return `<p class="empty">${escape(empty)}</p>`
+    const head = headers.map(header => `<th>${escape(header)}</th>`).join('')
+    const body = rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')
+    return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+  }
+  const ticketRows = (tickets: readonly SnapshotTicket[]): string[][] => tickets.map(ticket => [
     code(ticket.id),
-    `<span class="wrap">${escapeHtml(ticket.title)}</span>`,
+    `<span class="wrap">${escape(ticket.title)}</span>`,
     code(ticket.stage),
     ticket.ended ? 'yes' : 'no',
     ticket.paused ? 'yes' : 'no',
     code(ticket.createdAt),
   ])
-}
-
-function threadRows(threads: readonly SnapshotThread[]): string[][] {
-  return threads.map(thread => [
+  const threadRows = (threads: readonly SnapshotThread[]): string[][] => threads.map(thread => [
     code(thread.key),
     thread.subscriptions.length === 0 ? '<span class="empty">none</span>' : thread.subscriptions.map(code).join(', '),
     String(thread.pending),
     thread.deferred ? 'yes' : 'no',
     thread.lastAt ? code(thread.lastAt) : '<span class="empty">-</span>',
   ])
-}
-
-function outboxRows(outbox: readonly SnapshotOutbox[]): string[][] {
-  return outbox.map(row => [
-    code(row.id),
-    code(row.status),
-    code(row.channel),
-    code(row.thread),
-    code(row.ticketId),
-    String(row.attempts),
-    code(row.createdAt),
+  const outboxRows = (outbox: readonly SnapshotOutbox[]): string[][] => outbox.map(row => [
+    code(row.id), code(row.status), code(row.channel), code(row.thread), code(row.ticketId),
+    String(row.attempts), code(row.createdAt),
   ])
-}
-
-function eventRows(events: readonly SnapshotEvent[]): string[][] {
-  return events.map(event => [
-    code(event.kind),
-    `<span class="wrap">${escapeHtml(JSON.stringify(event.payload) ?? '')}</span>`,
+  const eventRows = (events: readonly SnapshotEvent[]): string[][] => events.map(event => [
+    code(event.kind), `<span class="wrap">${escape(JSON.stringify(event.payload) ?? '')}</span>`,
   ])
-}
-
-/** Server-rendered read-only page. All dynamic text is escaped. */
-export function renderHtml(snapshot: UiSnapshot): string {
   const counters = Object.entries(snapshot.metrics.counters)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, value]) => [code(name), String(value)])
   const latency = snapshot.metrics.modelLatencyMs
   const healthRows = [
-    [code('store'), escapeHtml(snapshot.health.store)],
-    [code('vault'), escapeHtml(snapshot.health.vaultMode)],
+    [code('store'), escape(snapshot.health.store)],
+    [code('vault'), escape(snapshot.health.vaultMode)],
     [code('machines online'), String(snapshot.health.machinesOnline)],
     [code('watchdog idle'), snapshot.health.watchdogIdle ? 'yes' : 'no'],
   ]
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ds-agent local ui</title>
-<style>${PAGE_STYLE}</style>
-</head>
-<body>
-<header>
-  <h1>ds-agent local ui</h1>
-  <span class="sub">generated ${code(snapshot.generatedAt)}</span>
-  <span class="sub">stream <span class="live" id="live">connecting</span></span>
-</header>
-<main>
-<section>
+  return `<section>
   <h2>Health</h2>
   ${table(['check', 'value'], healthRows, 'no health data')}
 </section>
 <section>
   <h2>Metrics<span class="count">${counters.length} counters</span></h2>
   ${table(['counter', 'value'], counters, 'no counters')}
-  <p class="sub">model latency: count ${escapeHtml(latency.count)} · sum ${escapeHtml(latency.sum)} ms · max ${escapeHtml(latency.max)} ms · last ${escapeHtml(latency.last)} ms</p>
+  <p class="sub">model latency: count ${escape(latency.count)} · sum ${escape(latency.sum)} ms · max ${escape(latency.max)} ms · last ${escape(latency.last)} ms</p>
 </section>
 <section>
   <h2>Tickets<span class="count">${snapshot.tickets.length}</span></h2>
@@ -156,15 +127,97 @@ export function renderHtml(snapshot: UiSnapshot): string {
 <section>
   <h2>Lifecycle events<span class="count">${snapshot.events.length}</span></h2>
   ${table(['kind', 'payload'], eventRows(snapshot.events), 'no lifecycle events')}
-</section>
-</main>
-<script>
-(() => {
+</section>`
+}
+
+/** Reject malformed JSON values before the renderer or visible page is changed. */
+export function isUiSnapshot(value: unknown): value is UiSnapshot {
+  if (value === null || typeof value !== 'object') return false
+  const snapshot = value as Record<string, unknown>
+  const isRecord = (item: unknown): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item)
+  if (typeof snapshot.generatedAt !== 'string' || !Array.isArray(snapshot.tickets)
+    || !Array.isArray(snapshot.threads) || !Array.isArray(snapshot.outbox) || !Array.isArray(snapshot.events)
+    || !isRecord(snapshot.health) || !isRecord(snapshot.metrics)) return false
+  const health = snapshot.health
+  const metrics = snapshot.metrics
+  if (typeof health.store !== 'string' || typeof health.vaultMode !== 'string'
+    || typeof health.machinesOnline !== 'number' || typeof health.watchdogIdle !== 'boolean'
+    || !isRecord(metrics.counters) || !isRecord(metrics.modelLatencyMs)) return false
+  const latency = metrics.modelLatencyMs
+  if (typeof latency.count !== 'number' || typeof latency.sum !== 'number'
+    || typeof latency.max !== 'number' || typeof latency.last !== 'number') return false
+  return snapshot.tickets.every(item => isRecord(item) && typeof item.id === 'string'
+    && typeof item.title === 'string' && typeof item.stage === 'string' && typeof item.ended === 'boolean'
+    && typeof item.paused === 'boolean' && typeof item.createdAt === 'string')
+    && snapshot.threads.every(item => isRecord(item) && typeof item.key === 'string'
+      && Array.isArray(item.subscriptions) && item.subscriptions.every(id => typeof id === 'string')
+      && typeof item.pending === 'number' && typeof item.deferred === 'boolean'
+      && (item.lastAt === undefined || typeof item.lastAt === 'string'))
+    && snapshot.outbox.every(item => isRecord(item) && typeof item.id === 'string' && typeof item.ticketId === 'string'
+      && typeof item.status === 'string' && typeof item.channel === 'string' && typeof item.thread === 'string'
+      && typeof item.attempts === 'number' && typeof item.createdAt === 'string')
+    && snapshot.events.every(item => isRecord(item) && typeof item.kind === 'string' && isRecord(item.payload))
+    && Object.values(metrics.counters).every(count => typeof count === 'number')
+}
+
+/** Apply a valid snapshot atomically; malformed frames preserve the last view. */
+export function applySnapshot(
+  snapshot: unknown,
+  content: { innerHTML: string },
+  generated: { textContent: string | null },
+): boolean {
+  try {
+    if (!isUiSnapshot(snapshot)) return false
+    const rendered = renderSnapshotContent(snapshot)
+    content.innerHTML = rendered
+    generated.textContent = `generated ${snapshot.generatedAt}`
+    return true
+  } catch {
+    return false
+  }
+}
+
+function browserApplyScript(): string {
+  return `(() => {
+  const isUiSnapshot = ${isUiSnapshot.toString()};
+  const renderSnapshotContent = ${renderSnapshotContent.toString()};
+  const applySnapshot = ${applySnapshot.toString()};
+  const content = document.getElementById('snapshot-content');
+  const generated = document.getElementById('generated');
   const status = document.getElementById('live');
   const source = new EventSource('/api/events');
   source.addEventListener('open', () => { if (status) status.textContent = 'live'; });
   source.addEventListener('error', () => { if (status) status.textContent = 'reconnecting'; });
-})();
+  source.addEventListener('message', event => {
+    try {
+      const snapshot = JSON.parse(event.data);
+      if (content && generated) applySnapshot(snapshot, content, generated);
+    } catch {
+      // Ignore malformed frames and retain the last good snapshot.
+    }
+  });
+})();`
+}
+
+/** Server-rendered read-only page. All dynamic text is escaped. */
+export function renderHtml(snapshot: UiSnapshot): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ds-agent local ui</title>
+<style>${PAGE_STYLE}</style>
+</head>
+<body>
+<header>
+  <h1>ds-agent local ui</h1>
+  <span class="sub" id="generated">generated ${escapeHtml(snapshot.generatedAt)}</span>
+  <span class="sub">stream <span class="live" id="live">connecting</span></span>
+</header>
+<main id="snapshot-content">${renderSnapshotContent(snapshot)}</main>
+<script>
+${browserApplyScript()}
 </script>
 </body>
 </html>

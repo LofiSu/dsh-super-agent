@@ -13,7 +13,9 @@ import {
   HTML_CSP,
   startUiServer,
   type UiServerHandle,
+  type UiSnapshot,
 } from '../src/ui/server.ts'
+import { applySnapshot, renderHtml, renderSnapshotContent } from '../src/ui/render.ts'
 
 const TOKEN = 'ui-test-token-0123456789abcdef'
 const OTHER_TOKEN = 'ui-other-token-0123456789abcd'
@@ -353,6 +355,39 @@ describe('local UI server', () => {
     expect(response.body).not.toContain('http://')
     expect(response.body).not.toContain('https://')
     expect(logs.join('\n')).not.toContain(TOKEN)
+  })
+
+  it('applies later snapshots with shared rendering and preserves the last view on malformed data', async () => {
+    const { base } = await startSeeded()
+    const response = await request(`${base}/api/snapshot`)
+    const first = JSON.parse(response.body) as UiSnapshot
+    const initialHtml = renderHtml(first)
+    expect(initialHtml).toContain(renderSnapshotContent(first))
+
+    const second = {
+      ...first,
+      generatedAt: '2026-11-26T12:34:56.000Z',
+      tickets: [{ ...first.tickets[0]!, id: 'tkt_new', title: '<img src=x onerror=alert(1)> & "new"', paused: true }],
+      threads: [],
+      outbox: [],
+      events: [],
+    }
+    const content = { innerHTML: renderSnapshotContent(first) }
+    const generated = { textContent: `generated ${first.generatedAt}` }
+
+    expect(applySnapshot(second, content, generated)).toBe(true)
+    expect(content.innerHTML).toContain('tkt_new')
+    expect(content.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;new&quot;')
+    expect(content.innerHTML).not.toContain('tkt_ui_1')
+    expect(content.innerHTML).not.toContain('<img src=x')
+    expect(generated.textContent).toBe('generated 2026-11-26T12:34:56.000Z')
+
+    const previousContent = content.innerHTML
+    const previousGenerated = generated.textContent
+    expect(applySnapshot({ ...second, tickets: 'not-an-array' }, content, generated)).toBe(false)
+    expect(applySnapshot({ malformed: true }, content, generated)).toBe(false)
+    expect(content.innerHTML).toBe(previousContent)
+    expect(generated.textContent).toBe(previousGenerated)
   })
 
   it('serves the same read model through /api/snapshot without bodies or speculation', async () => {
