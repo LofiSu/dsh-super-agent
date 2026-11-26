@@ -155,6 +155,16 @@ export async function filterTriggerWithPolicy(
       semantic: 'skip:fast-drop',
     }
   }
+  if (trigger.addressed === 'direct') {
+    return {
+      action: 'pass',
+      layer: 'fast',
+      strength: 'explicit',
+      reason: fast.reason,
+      fast: fastLabel,
+      semantic: 'skip:direct',
+    }
+  }
   // `model` is the synchronous rules classifier used when no policy is wired.
   const semantic = policy ? await policy.classify(trigger) : model.classify(trigger)
   const semanticLabel = `${semantic.pass ? 'pass' : 'drop'}:${semantic.reason}`

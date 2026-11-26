@@ -275,7 +275,7 @@ export async function runFeishuLoop(options: FeishuLoopOptions): Promise<FeishuL
             }
           }
         }
-        await runtime.jobsSettled().catch(error => {
+        void runtime.jobsSettled().catch(error => {
           log(`[feishu] settle error ${messageOf(error)}`)
         })
         await outbox.flush().catch(error => {

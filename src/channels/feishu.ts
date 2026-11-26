@@ -97,6 +97,9 @@ export interface FeishuListOptions {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
+/** Bound every Open Platform call so a hung DNS/proxy cannot stall poll or outbox. */
+export const FEISHU_FETCH_TIMEOUT_MS = 8_000
+
 export class FeishuApiError extends Error {
   constructor(readonly code: number, message: string, readonly path: string) {
     super(`Feishu ${path} failed code=${code}: ${message}`)
@@ -111,16 +114,23 @@ export class FeishuClient {
   constructor(
     private readonly config: FeishuConfig,
     private readonly fetchImpl: FetchLike = fetch,
+    private readonly timeoutMs: number = FEISHU_FETCH_TIMEOUT_MS,
   ) {}
+
+  private fetchInit(init: RequestInit = {}): RequestInit {
+    const timeout = AbortSignal.timeout(this.timeoutMs)
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    return { ...init, signal }
+  }
 
   async accessToken(signal?: AbortSignal): Promise<string> {
     if (this.token && Date.now() < this.token.expiresAt) return this.token.value
-    const response = await this.fetchImpl(`${this.config.baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, {
+    const response = await this.fetchImpl(`${this.config.baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, this.fetchInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_id: this.config.appId, app_secret: this.config.appSecret }),
       ...(signal ? { signal } : {}),
-    })
+    }))
     const json = await response.json() as {
       code?: number
       msg?: string
@@ -142,7 +152,7 @@ export class FeishuClient {
       if (value !== undefined) params.set(key, String(value))
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : ''
-    const response = await this.fetchImpl(`${this.config.baseUrl}${path}${suffix}`, {
+    const response = await this.fetchImpl(`${this.config.baseUrl}${path}${suffix}`, this.fetchInit({
       method: init.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -150,7 +160,7 @@ export class FeishuClient {
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       ...(init.signal ? { signal: init.signal } : {}),
-    })
+    }))
     const json = await response.json() as { code?: number; msg?: string; data?: T }
     if (!response.ok || json.code !== 0) {
       throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path)

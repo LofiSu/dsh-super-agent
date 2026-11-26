@@ -231,6 +231,28 @@ describe('Runtime ingestAsync with a model policy', () => {
     expect(calls).toHaveLength(0)
   })
 
+
+  it('skips the model policy for a 1:1 direct chat so ingest is not delayed', async () => {
+    const { policy, calls } = recordingPolicy({ pass: true, strength: 'explicit', reason: 'model-pass' })
+    const runtime = makeRuntime({
+      mode: 'model',
+      timeoutMs: 3_000,
+      policy: {
+        ...policy,
+        classifyPolicy: () => new Promise<never>(() => undefined),
+      },
+    })
+    const trigger = {
+      ...imTrigger({ id: 'direct-chat', thread: 'feishu:oc_chat', text: '在吗' }),
+      addressed: 'direct' as const,
+    }
+    const started = Date.now()
+    expect(await runtime.ingestAsync(trigger)).toBe('stored')
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(calls).toHaveLength(0)
+    expect(runtime.store.getDoc<Disposition>('disposition', 'direct-chat')?.filtered).toBeUndefined()
+  })
+
   it('honors a runtime timeout and falls back to the rule verdict', async () => {
     const runtime = makeRuntime({
       mode: 'model',

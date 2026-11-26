@@ -7,7 +7,8 @@ import type { Model, ModelMessage } from './model.ts'
 import type { SkillInfo } from '../env/skills.ts'
 import { systemPrompt, type PromptFiles } from './prompts.ts'
 import type { LocalAgentInfo } from '../env/local-agents.ts'
-import { directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
+import { directChatRouterShard, directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
+import { isConversationTicket } from '../core/conversation.ts'
 import { isProactiveTicket } from './proactive.ts'
 import { isConnectorWakeTicket } from '../connectors/wake.ts'
 import { TeamRegistry } from './team.ts'
@@ -140,6 +141,23 @@ export function routerPromptFor(ticket: Ticket, extraLines: readonly string[] = 
   ].join('\n')
 }
 
+export function conversationPromptFor(envelope: Ticket, trigger: Trigger, extraLines: readonly string[] = []): string {
+  const directChat = directChatThread(envelope)
+  return [
+    'CONVERSATION_INBOUND',
+    `conversationTicketId=${envelope.id}`,
+    `triggerId=${trigger.id}`,
+    `message=${trigger.text}`,
+    ...(directChat ? [
+      'direct-chat=true',
+      'Reply first with reply_user when the owner spoke. Casual chat needs no work ticket.',
+      'For real deliverable work, reply_user in the owner\'s language explaining what you will do, then call dispatch_work with this triggerId, title, and scope.',
+      'Never end the conversation envelope with assess_trigger stop; it stays open across messages.',
+    ] : []),
+    ...extraLines,
+  ].join('\n')
+}
+
 export class Harness {
   private readonly chains = new Map<string, Promise<void>>()
   private inflight: Promise<void>[] = []
@@ -238,6 +256,23 @@ export class Harness {
     return this.enqueue(routerSessionId(shard), work)
   }
 
+  conversationTurn(envelope: Ticket, trigger: Trigger): Promise<void> {
+    const held = this.pauseReason(envelope.id)
+    if (held) {
+      this.opts.log(`[collab] conversation held ticketId=${envelope.id} reason=${held}`)
+      return Promise.resolve()
+    }
+    const shard = directChatRouterShard(envelope) ?? 'default'
+    const prompt = conversationPromptFor(envelope, trigger, this.memoryLines(envelope, 'router'))
+    this.opts.log(`[harness] conversation turn ticketId=${envelope.id} triggerId=${trigger.id} shard=${shard}`)
+    return this.track(this.routerExclusive(shard, () => this.run(
+      routerSessionId(shard),
+      'router',
+      undefined,
+      `${this.withRouterHistory(shard, prompt)}\nshard=${shard}`,
+    )))
+  }
+
   private withRouterHistory(shard: string, prompt: string): string {
     const history = this.routerHistory(shard, 6)
     if (!history.length) return prompt
@@ -279,6 +314,10 @@ export class Harness {
         const kind = isConnectorWakeTicket(ticket) ? 'connector-message' : 'proactive-message'
         this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=${kind}`)
         if (!latest?.ended) this.opts.stopProactiveTicket?.(ticket, `${kind} turn complete`)
+        return undefined
+      }
+      if (isConversationTicket(ticket)) {
+        this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=conversation-envelope`)
         return undefined
       }
       // A direct chat the Router already answered is finished. Give the

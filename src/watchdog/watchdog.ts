@@ -132,9 +132,10 @@ export class Watchdog {
     // A human pause and an owner approval wait are both intentional idle time.
     // The stale running session row on either must not be nudged every tick.
     const idleTickets = new Set(
-      this.opts.store.listDocs<Ticket>('ticket')
+      tickets
         .filter(ticket =>
-          ticket.collab?.paused
+          ticket.ended
+          || ticket.collab?.paused
           || ticket.collab?.approvals?.some(approval => approval.status === 'pending'))
         .map(ticket => ticket.id),
     )

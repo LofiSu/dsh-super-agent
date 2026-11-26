@@ -13,12 +13,18 @@ import {
   type Trigger,
   type TriggerTrust,
 } from '../shared/types.ts'
+import {
+  attachInboundToEnvelope,
+  ensureConversationEnvelope,
+  isDirectConversationIngress,
+} from './conversation.ts'
 import type { Host } from './host.ts'
 
 interface IntakeRoutingPlan {
   fanout: string[]
   context: string[]
   needsEval: boolean
+  conversationEnvelope?: string
 }
 
 export class Intake {
@@ -77,7 +83,26 @@ export class Intake {
           addInput(this.host, ticket, owned, kind, at)
         }
         this.repairThreadActivity(trigger)
-        if (plan.needsEval) this.queueForEval(trigger)
+        if (plan.conversationEnvelope) {
+          const thread = this.ensure(trigger.threads[0]!)
+          const envelope = this.host.repo.getDoc<Ticket>('ticket', plan.conversationEnvelope)
+          if (envelope && !envelope.ended) {
+            attachInboundToEnvelope(this.host, envelope, owned)
+            const primaryKey = thread.key
+            this.host.repo.afterCommit(() => {
+              try {
+                this.host.onDirectConversation?.(envelope, owned, primaryKey)
+              } catch (error) {
+                this.host.log(
+                  `[hook] hook=direct-conversation ticketId=${envelope.id} error=${
+                    error instanceof Error ? error.message : String(error)}`,
+                )
+              }
+            })
+          }
+        } else if (plan.needsEval) {
+          this.queueForEval(trigger)
+        }
         this.host.repo.deleteDoc('intake_recovery', trigger.id)
         const disposition: Disposition = {
           fanout: plan.fanout,
@@ -176,11 +201,35 @@ export class Intake {
       })
     }
 
+    let conversationEnvelope: string | undefined
+    if (!command && primary && isDirectConversationIngress(owned) && fanout.length === 0) {
+      const envelope = ensureConversationEnvelope(this.host, primary, owned)
+      attachInboundToEnvelope(this.host, envelope, owned)
+      conversationEnvelope = envelope.id
+      const primaryKey = primary.key
+      this.host.repo.afterCommit(() => {
+        try {
+          this.host.onDirectConversation?.(envelope, owned, primaryKey)
+        } catch (error) {
+          this.host.log(
+            `[hook] hook=direct-conversation ticketId=${envelope.id} error=${
+              error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      })
+    }
+
     // Human follow-ups that reached an actionable subscriber do not need Eval.
     // Bot/CI events and context-only subscriptions still become new-work candidates.
-    const needsEval = command != null || trigger.human === false || fanout.length === 0
+    const needsEval = command != null || trigger.human === false
+      || (fanout.length === 0 && conversationEnvelope === undefined)
     if (needsEval) this.queueForEval(trigger)
-    this.host.repo.putDoc('intake_route_plan', trigger.id, { fanout, context, needsEval } satisfies IntakeRoutingPlan)
+    this.host.repo.putDoc('intake_route_plan', trigger.id, {
+      fanout,
+      context,
+      needsEval,
+      ...(conversationEnvelope ? { conversationEnvelope } : {}),
+    } satisfies IntakeRoutingPlan)
     const disposition: Disposition = {
       fanout,
       context,
@@ -267,6 +316,7 @@ export function bypassEligible(
   if (ticket.ended) return false
   // A direct chat is a conversation, not a running mandate: a follow-up
   // belongs to the Router (its own thread session), never to this Worker.
+  if (trigger.addressed === 'direct') return false
   if (ticket.channels.some(channel => channel.source === 'imessage' && !channel.address?.group)) return false
   if (subscription?.contextOnly === true) return false
   const scope = ticket.mandate?.scope
@@ -278,6 +328,7 @@ export function bypassEligible(
 /** A live Ticket with a non-empty Mandate can receive Trigger context. */
 export function subscriptionEligible(ticket: Ticket): boolean {
   if (ticket.ended) return false
+  if (ticket.conversation === true) return false
   const scope = ticket.mandate?.scope
   return typeof scope === 'string' && scope.trim().length > 0
 }

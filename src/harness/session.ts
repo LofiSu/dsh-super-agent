@@ -32,21 +32,30 @@ export function directChatRouterShard(ticket: Ticket): string | undefined {
   return thread ? `thread:${thread}` : undefined
 }
 
-/** The iMessage thread a ticket belongs to, when it is a 1:1 direct chat. */
+/** The direct 1:1 thread a ticket belongs to (iMessage handle or Feishu P2P IM). */
 export function directChatThread(ticket: Ticket): string | undefined {
-  return ticket.channels.find(channel =>
-    channel.source === 'imessage'
-    && channel.thread
-    // A 1:1 address always carries the sender handle. A group address carries
-    // `group` when the chat row is known, and otherwise has neither: a
-    // group-rowid or unknown-group thread must never take the direct-chat path.
-    && Boolean(channel.address?.handle)
-    && !channel.address?.group)?.thread
+  for (const channel of ticket.channels) {
+    if (!channel.thread) continue
+    if (channel.source === 'imessage'
+      && Boolean(channel.address?.handle)
+      && !channel.address?.group) {
+      return channel.thread
+    }
+    if (channel.source === 'im') {
+      if (channel.address?.group) continue
+      const provider = channel.address?.provider
+      if (provider === 'feishu' || channel.address?.chat_id) return channel.thread
+    }
+  }
+  return undefined
 }
 
-/** True when both tickets belong to the same direct iMessage thread. */
+/** True when both tickets belong to the same direct chat thread. */
 export function sharesDirectChatThread(ticket: Ticket, thread: string): boolean {
-  return ticket.channels.some(channel => channel.source === 'imessage' && channel.thread === thread)
+  return ticket.channels.some(channel =>
+    (channel.source === 'imessage' || channel.source === 'im')
+    && channel.thread === thread
+    && directChatThread(ticket) === thread)
 }
 
 /**

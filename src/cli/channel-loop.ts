@@ -204,7 +204,7 @@ export async function runImessageLoop(options: ImessageLoopOptions): Promise<Ime
           cursor = pulled.lastRowId
           runtime.store.putDoc('imessage_cursor', 'cursor', { rowId: cursor })
         }
-        await runtime.jobsSettled().catch(error => {
+        void runtime.jobsSettled().catch(error => {
           log(`[imessage] settle error ${messageOf(error)}`)
         })
         await outbox.flush().catch(error => {

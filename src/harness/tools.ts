@@ -56,6 +56,8 @@ export interface ToolDeps {
   log: (line: string) => void
   scheduleJob: (job: { id: string; sessionId: string; ticketId: string }) => void
   routerTurn: (prompt: string) => Promise<void>
+  /** Start a Worker for a ticket the Router just opened. */
+  launchWork?: (ticketId: string) => void
   /** Append a nudge to the worker session journal (same effect as Watchdog.nudge). */
   nudge?: (sessionId: string, ticketId: string) => void
   teams?: TeamRegistry
@@ -108,7 +110,7 @@ export class ToolRegistry {
     const { store, log, metrics } = deps
     this.tools = [
       listTasks(store),
-      ...mainAgentTools(deps.ports.router, { store, log }),
+      ...mainAgentTools(deps.ports.router, deps, store, log),
       ...executorTools(deps.ports.worker, {
         store,
         env: deps.env,
@@ -198,7 +200,7 @@ function assertShardOwner(
 ): void {
   const ticket = call.ticketId ? store.getDoc<Ticket>('ticket', call.ticketId) : undefined
   if (call.ticketId && !ticket) throw new UserError(`unknown ticket ${call.ticketId}`)
-  if (call.triggerId && ticket && ticket.originTriggerId !== call.triggerId) {
+  if (call.triggerId && ticket && ticket.originTriggerId !== call.triggerId && ticket.conversation !== true) {
     throw new UserError(
       `trigger ${call.triggerId} does not belong to ticket ${call.ticketId}; `
       + 'refusing cross-trigger shard ownership',
@@ -233,9 +235,10 @@ function assertShardOwner(
 /** Main Agent tools close over Route-level ports. That is the only session allowed to speak. */
 function mainAgentTools(
   ports: RolePortFor<'router'>,
-  deps: { store: Store; log: (line: string) => void },
+  deps: ToolDeps,
+  store: Store,
+  log: (line: string) => void,
 ): ToolDef[] {
-  const { store, log } = deps
   return [
     {
       name: 'create_worker',
@@ -340,6 +343,42 @@ function mainAgentTools(
           return { decision: decision.kind }
         }
         throw new UserError('assess_trigger kind must be stop or unavailable after the Gate accepted')
+      }),
+    },
+    {
+      name: 'dispatch_work',
+      description:
+        'Open a work ticket for deliverable work from a conversation turn. Reply first, then dispatch. Workers must report via report_to_router only.',
+      parameters: schema({
+        triggerId: { type: 'string' },
+        conversationTicketId: { type: 'string' },
+        title: { type: 'string' },
+        scope: { type: 'string' },
+        thread: { type: 'string', description: 'Direct thread key (source:id) to subscribe context-only.' },
+      }),
+      roles: ['router'],
+      run: guard('router', 'dispatch_work', async (args, ctx) => {
+        const triggerId = String(args.triggerId ?? '')
+        const conversationTicketId = String(args.conversationTicketId ?? '')
+        const title = String(args.title ?? '').trim()
+        const scope = String(args.scope ?? title).trim()
+        const thread = String(args.thread ?? '')
+        if (!triggerId) throw new UserError('dispatch_work needs triggerId')
+        if (!conversationTicketId) throw new UserError('dispatch_work needs conversationTicketId')
+        if (!title) throw new UserError('dispatch_work needs title')
+        assertShardOwner(store, ctx.sessionId, { ticketId: conversationTicketId, triggerId })
+        const decision = ports.decide(triggerId, {
+          kind: 'accept',
+          title,
+          scope,
+          strength: 'explicit',
+          reason: 'router-dispatch',
+        })
+        const workId = decision.ticketId
+        if (workId && thread) ports.subscribe(workId, thread, { contextOnly: true })
+        if (workId) deps.launchWork?.(workId)
+        log(`[harness] dispatch_work workTicketId=${workId ?? '-'} conversation=${conversationTicketId}`)
+        return { decision: decision.kind, ticketId: workId, conversationTicketId }
       }),
     },
   ]

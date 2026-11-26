@@ -369,6 +369,24 @@ describe('Feishu message mapping', () => {
     expect(trigger.human).toBe(false)
     expect(trigger.addressed).toBe('mention')
   })
+
+  it('aborts a hung Open Platform call so poll and outbox cannot stall', async () => {
+    const hanging = (_url: string, init?: RequestInit): Promise<Response> => new Promise((_resolve, reject) => {
+      const signal = init?.signal
+      if (!signal) return
+      const fail = () => reject(signal.reason ?? new Error('aborted'))
+      if (signal.aborted) {
+        fail()
+        return
+      }
+      signal.addEventListener('abort', fail)
+    })
+    const client = new FeishuClient(config, hanging, 30)
+    const started = Date.now()
+    await expect(client.accessToken()).rejects.toThrow()
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
 })
 
 describe('Feishu webhook parser', () => {
