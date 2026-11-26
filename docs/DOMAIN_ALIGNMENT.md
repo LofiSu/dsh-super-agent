@@ -68,7 +68,7 @@
 现在：
 - `failed` / `blocked` / `waiting` 只结束当前 Assignment；Ticket 保持 open，可 `retryTicket()` 创建新的 Assignment（同 Ticket、同 Session、同目录）。
 - `ready` / `dropped` 仍结束 Ticket（这是本仓暂未实现“待收尾 PR”的已知缺口）。
-- `executionState()` 输出 Open/Pending/Working/Waiting for a Trigger/Awaiting answer/Awaiting review/Blocked/Ended；Panel 会把 outbox 的 pending/sent/failed 单独显示。
+- `executionState()` 输出 Open/Pending/Working/Waiting for a Trigger/Awaiting answer/Awaiting review/Awaiting approval/Paused/Blocked/Ended。人工暂停是独立的 `paused`，与 Worker 报告 `blocked` 分开；`tasks` 仍显示 `person/paused`。Panel 会把 outbox 的 pending/sent/failed 单独显示。
 
 ### 2.5 Outbox 必须能重试且不重复
 
