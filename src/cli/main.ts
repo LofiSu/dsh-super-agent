@@ -658,7 +658,7 @@ async function main(): Promise<void> {
         return
       }
       if (sub === 'cancel') {
-        const jobId = bare(3)[0]
+        const jobId = bare(4)[0]
         if (!jobId) throw new Error('dispatch cancel needs a job id: ds-agent dispatch cancel <jobId>')
         console.log(runDispatchCancel(store, jobId))
         return
