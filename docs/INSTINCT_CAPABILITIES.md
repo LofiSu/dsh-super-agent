@@ -70,6 +70,8 @@
 | B4 | fill-only credential vault | S4/S5：可把密码/卡号填进表单，但不能读回；密码不经过消息通道 | teardown | `main`（#173） | `src/env/fill-vault.ts`：fill-only store；`prepare_fill` / `fill_credential` 须与已批准卡及精确 action 文本一致；无读回接口；**真实表单填充未验收** |
 | B5 | 每日 reconciliation / 记忆整理 | S5/S11：约每日一次 | teardown | `missing` | 无定时 reconciliation；LTM 只有写入、召回、retention pruning |
 
+**B4 配置（可选，非必需）**：仅在 owner 配置时启用 fill-only vault；默认文件位置为 `DS_AGENT_HOME/vault.json`，权限为 `0600`，也可用 `DS_AGENT_VAULT_FILE` 指定路径。填充值交给注入的表单 adapter，或 owner 本地配置的 `DS_AGENT_FILL_COMMAND` helper；不提供读回，支付只填表、不扣款。
+
 ## 5. Connectors（只列有来源支持的名字）
 
 | # | Connector | Instinct 公开证据 | 等级 | ds-agent 状态 | 备注 |
