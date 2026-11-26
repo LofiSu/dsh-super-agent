@@ -804,6 +804,38 @@ describe('rsi implementer fixture', () => {
     expect(collapsed.length).toBeLessThanOrEqual(400)
     expect(collapsed.match(/Coding delegated to Claude Code via dispatch implementer; orchestration is peanut\/dispatch\./g)).toHaveLength(1)
     expect(collapsed).toContain(longGap.title)
+
+    const suffix = 'Coding delegated to Claude Code via dispatch implementer; orchestration is peanut/dispatch.'
+    const available = 400 - suffix.length - 1
+    const boundaryGap: DispatchGapDoc = {
+      ...longGap,
+      id: 'gap_boundary',
+      title: 'Boundary identifying title ' + 'x'.repeat(
+        available - 1 -
+          `RSI gap: Boundary identifying title `.length -
+          ` sourceUrl: ${longGap.sourceUrl} fetchedAt: ${longGap.fetchedAt} manusCue: unknown`.length,
+      ),
+      acceptance: 'Acceptance must be discarded before overflow.',
+      dedupeKey: 'k-boundary',
+    }
+    const boundaryBodyPrefix = `RSI gap: ${boundaryGap.title} sourceUrl: ${boundaryGap.sourceUrl} fetchedAt: ${boundaryGap.fetchedAt} manusCue: unknown Acceptance: ${boundaryGap.acceptance}`
+    expect(boundaryBodyPrefix.indexOf(' Acceptance: ')).toBe(available - 1)
+    store.putDoc('dispatch_gap', boundaryGap.id, boundaryGap)
+    store.putDoc('dispatch_job', 'rsi-boundary', {
+      id: 'rsi-boundary',
+      type: 'rsi_implement',
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+      commentId: 'gap-impl-gap_boundary',
+      gapId: boundaryGap.id,
+    } satisfies DispatchJobDoc)
+    await drainDispatchQueue({ store, runner })
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'rsi-boundary')?.status).toBe('completed')
+    const boundaryCollapsed = prBody.replace(/\s+/g, ' ').trim()
+    expect(boundaryCollapsed.length).toBeLessThanOrEqual(400)
+    expect(boundaryCollapsed.match(/Coding delegated to Claude Code via dispatch implementer; orchestration is peanut\/dispatch\./g)).toHaveLength(1)
+    expect(boundaryCollapsed).toContain('RSI gap: Boundary identifying title')
+    expect(boundaryCollapsed).not.toContain('Acceptance:')
     store.close()
   })
 

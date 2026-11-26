@@ -224,12 +224,14 @@ function buildApprovalBody(body: string): string {
   const available = 400 - suffix.length - 1
   if (normalized.length <= available) return `${normalized} ${suffix}`
 
-  const acceptanceAt = normalized.indexOf(' Acceptance: ')
-  if (acceptanceAt >= 0 && acceptanceAt < available) {
-    const prefix = normalized.slice(0, acceptanceAt + ' Acceptance: '.length)
-    return `${prefix}${normalized.slice(acceptanceAt + ' Acceptance: '.length, available)} ${suffix}`
-  }
-  return `${normalized.slice(0, available).trimEnd()} ${suffix}`
+  const acceptanceLabel = ' Acceptance: '
+  const acceptanceAt = normalized.indexOf(acceptanceLabel)
+  const head = normalized.slice(0, available)
+  const boundedHead =
+    acceptanceAt >= 0 && acceptanceAt + acceptanceLabel.length > available
+      ? normalized.slice(0, Math.min(acceptanceAt, available)).trimEnd()
+      : head.trimEnd()
+  return `${boundedHead} ${suffix}`
 }
 
 function commitAll(workspace: string, message: string): void {
