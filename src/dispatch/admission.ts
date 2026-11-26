@@ -42,16 +42,35 @@ const MENTION_COMMAND_RE =
 
 /** Strip fenced blocks, inline code, and blockquotes before command detection. */
 export function stripNonCommandRegions(body: string): string {
-  let text = body
-  text = text.replace(/```[\s\S]*?```/g, '\n')
-  text = text.replace(/`[^`\n]*`/g, ' ')
-  const lines: string[] = []
-  for (const line of text.split(/\r?\n/)) {
+  const lines = body.split(/\r?\n/)
+  const activeLines: string[] = []
+  let fence: { character: '`' | '~'; length: number } | undefined
+
+  for (const line of lines) {
+    if (fence) {
+      const closing = new RegExp(`^ {0,3}${fence.character}{${fence.length},}[ \\t]*$`)
+      if (closing.test(line)) fence = undefined
+      activeLines.push('')
+      continue
+    }
+
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+    if (opening) {
+      fence = { character: opening[1]![0] as '`' | '~', length: opening[1]!.length }
+      activeLines.push('')
+      continue
+    }
+    activeLines.push(line)
+  }
+
+  const text = activeLines.join('\n').replace(/`[^`\n]*`/g, ' ')
+  const commandLines: string[] = []
+  for (const line of text.split('\n')) {
     const trimmed = line.trimStart()
     if (trimmed.startsWith('>')) continue
-    lines.push(line)
+    commandLines.push(line)
   }
-  return lines.join('\n')
+  return commandLines.join('\n')
 }
 
 function mentionAllowed(handle: string, mentionHandles: readonly string[] | undefined): boolean {

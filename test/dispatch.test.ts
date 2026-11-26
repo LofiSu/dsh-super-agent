@@ -136,6 +136,48 @@ describe('dispatch admission', () => {
     store.close()
   })
 
+  it('keeps commands inside tilde and unclosed fences inactive', () => {
+    const base = {
+      configuredRepo: REPO,
+      authorizedActors: ['LofiSu'],
+      repoFullFromPayload: REPO,
+      issue: issue(2),
+    }
+    const closedTilde = '~~~text\n/ds-agent fix\n~~~'
+    const unclosedBacktick = '```typescript\n/ds-agent fix\n'
+    const unclosedTilde = '~~~~text\n@LofiSu fix\n'
+
+    expect(parseDispatchCommand(closedTilde)).toBeUndefined()
+    expect(admitDispatchComment({ ...base, comment: comment(7, closedTilde) })).toEqual({
+      ok: false,
+      reason: 'no allowed command',
+    })
+    expect(parseDispatchCommand(unclosedBacktick)).toBeUndefined()
+    expect(admitDispatchComment({ ...base, comment: comment(8, unclosedBacktick) })).toEqual({
+      ok: false,
+      reason: 'no allowed command',
+    })
+    expect(parseDispatchCommand(unclosedTilde, ['LofiSu'])).toBeUndefined()
+    expect(admitDispatchComment({
+      ...base,
+      mentionHandles: ['LofiSu'],
+      comment: comment(10, unclosedTilde),
+    })).toEqual({ ok: false, reason: 'no allowed command' })
+  })
+
+  it('ignores tilde fenced examples before an active command', () => {
+    const body = '~~~\n/ds-agent cancel\n~~~\n\n/ds-agent fix'
+    expect(parseDispatchCommand(body)).toBe('fix')
+    const result = admitDispatchComment({
+      configuredRepo: REPO,
+      authorizedActors: ['LofiSu'],
+      repoFullFromPayload: REPO,
+      issue: issue(2),
+      comment: comment(9, body),
+    })
+    expect(result).toEqual({ ok: true, command: 'fix', actorLogin: 'LofiSu' })
+  })
+
   it('rejects outsider, wrong repo, PR, fence, bot, historical replay fields', () => {
     const base = {
       configuredRepo: REPO,
