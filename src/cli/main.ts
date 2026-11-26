@@ -239,6 +239,16 @@ pause freezes Router/Worker turns, reports, and outbound replies.
 stop ends a ticket for good (an operator veto); pause is for a resumable hold.
 intervene records guidance and pauses by default, so the note lands before more work.
 resume clears the pause and continues with the unseen guidance in the next turn.
+tasks prints one tab-separated line per ticket: <id> <stage> <title>.
+panel prints Mandate, Executor Session, directory, report, and Outbox
+pending/sent/failed counts. A paused ticket is person/paused in tasks and
+paused in panel. The Watchdog does not nudge or fail it, and the pause is
+still there after a process restart. chat returns after its ticket ends, so
+pause an in-progress ticket from a second terminal that shares DS_AGENT_HOME.
+Pausing an already-paused ticket prints "already paused" and keeps the
+original pause. Resuming a ticket that is not paused prints "not paused" and
+does not rewrite it. An unknown id exits with an error and leaves other
+tickets unchanged.
 demo/retry/resume/approve/deny/dismiss need a live model; chat may use MockModel.
 pause/intervene/collab/team/teams/approvals are offline.
 
@@ -258,11 +268,16 @@ FEISHU_APP_ID/FEISHU_APP_SECRET and FEISHU_CHAT_ID or --chat <id>, validates the
 before SQLite is opened, and stores its cursor in SQLite as
 { chatId, lastCreateTimeMs }. --since <epoch-ms> overrides the stored cursor for
 one start; otherwise the stored cursor for that chat seeds the poll, otherwise
-the source starts at now-5min. Feishu triggers keep the chat id in
-channel.address.group, so DS_AGENT_GROUP_ALLOWLIST admits by chat; only a real
-bot mention sets addressed=mention, and group messages are never marked direct. Connector wake polling also
-requires im:chat:readonly to resolve trusted chat_mode (im:chat:read or im:chat
-also satisfy this scope), regardless of whether direct mode is enabled.
+the source starts at now-5min. Feishu group messages keep the chat id in
+channel.address.group, so DS_AGENT_GROUP_ALLOWLIST admits by chat. Set
+DS_AGENT_FEISHU_P2P_DIRECT=1 to mark messages whose Feishu chat_mode is verified
+as p2p as direct, allowing short 1:1 messages through the noise filter; only a
+real bot mention otherwise sets addressed=mention. Connector wake polling requires
+im:chat:readonly to resolve trusted chat_mode (im:chat:read or im:chat also
+satisfy this scope), regardless of whether direct mode is enabled; lookup failures
+keep messages conservative, not direct. The group allowlist applies to groups;
+actor allowlists still apply to P2P senders. Group and unknown chat modes keep
+their group identity and are not promoted to direct.
 --imessage and --feishu may be combined: both configurations are resolved before
 Runtime.create, one Runtime/SQLite store is shared, and each loop keeps its own
 AbortController, cursor, and outbox. If either configuration is absent or
@@ -299,10 +314,10 @@ Automation.
 Feishu setup: create a custom app with the Bot capability, add scopes im:message,
 im:message:send_as_bot, im:message:readonly, im:message.group_msg (for group
 history), and im:chat:readonly (required for connector wake chat_mode lookup even
-when direct mode is off; im:chat:read or im:chat also work). Publish an app
-version, add the bot to exactly one target chat, copy
-its oc_... chat id, then set FEISHU_APP_ID, FEISHU_APP_SECRET, and
-FEISHU_CHAT_ID (or pass --chat). Inbound CLI delivery is one-chat polling only;
+when direct mode is off; im:chat:read or im:chat also work; DS_AGENT_FEISHU_P2P_DIRECT
+also needs it to resolve chat_mode). Publish an app version, add the bot to exactly
+one target chat, copy its oc_... chat id, then set FEISHU_APP_ID, FEISHU_APP_SECRET,
+and FEISHU_CHAT_ID (or pass --chat). Inbound CLI delivery is one-chat polling only;
 webhook servers and long-connection/WebSocket delivery are not implemented.
 
 State lives in DS_AGENT_HOME or ./.ds-agent (SQLite).

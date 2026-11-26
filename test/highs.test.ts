@@ -160,6 +160,16 @@ describe('watchdog tick', () => {
       60_000,
     ).map(hit => hit.reason)).toEqual(['failed-jobs'])
   })
+
+  it('does not nudge a leftover session after the ticket has ended', () => {
+    runtime = freshRuntime({ stuckMs: 1_000 })
+    const ticket = runningTicket('ticket_ended', '2020-01-01T00:00:00.000Z')
+    ticket.ended = { at: '2020-01-01T00:01:00.000Z', outcome: 'stopped', by: 'human' }
+    runtime.store.putDoc('ticket', ticket.id, ticket)
+    runtime.watchdog.tick()
+    expect(runtime.log.text()).not.toContain('ticketId=ticket_ended')
+    expect(runtime.store.listEvents().some(event => event.type === 'watchdog.nudge')).toBe(false)
+  })
 })
 
 describe('spill ACL', () => {

@@ -7,6 +7,7 @@
  * `Runtime`, while tests pass fakes.
  */
 
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import {
   DEFAULT_IMESSAGE_INTERVAL_MS,
   ImessageOutboxAdapter,
@@ -85,8 +86,8 @@ export function coalesceTriggers(triggers: readonly Trigger[]): Trigger[] {
     const previous = merged.at(-1)
     if (
       previous
-      && trigger.addressed === 'direct'
-      && previous.addressed === 'direct'
+      && isDirectConversationIngress(trigger)
+      && isDirectConversationIngress(previous)
       && trigger.actor.id === previous.actor.id
       && trigger.channel?.thread === previous.channel?.thread
       && trigger.channel?.address?.group == null
@@ -204,7 +205,7 @@ export async function runImessageLoop(options: ImessageLoopOptions): Promise<Ime
           cursor = pulled.lastRowId
           runtime.store.putDoc('imessage_cursor', 'cursor', { rowId: cursor })
         }
-        await runtime.jobsSettled().catch(error => {
+        void runtime.jobsSettled().catch(error => {
           log(`[imessage] settle error ${messageOf(error)}`)
         })
         await outbox.flush().catch(error => {

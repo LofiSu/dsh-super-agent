@@ -7,7 +7,8 @@ import type { Model, ModelMessage } from './model.ts'
 import type { SkillInfo } from '../env/skills.ts'
 import { systemPrompt, type PromptFiles } from './prompts.ts'
 import type { LocalAgentInfo } from '../env/local-agents.ts'
-import { directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
+import { directChatRouterShard, directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
+import { isConversationTicket } from '../core/conversation.ts'
 import { isProactiveTicket } from './proactive.ts'
 import { isConnectorWakeTicket } from '../connectors/wake.ts'
 import { TeamRegistry } from './team.ts'
@@ -140,9 +141,27 @@ export function routerPromptFor(ticket: Ticket, extraLines: readonly string[] = 
   ].join('\n')
 }
 
+export function conversationPromptFor(envelope: Ticket, trigger: Trigger, extraLines: readonly string[] = []): string {
+  const directChat = directChatThread(envelope)
+  return [
+    'CONVERSATION_INBOUND',
+    `conversationTicketId=${envelope.id}`,
+    `triggerId=${trigger.id}`,
+    `message=${trigger.text}`,
+    ...(directChat ? [
+      'direct-chat=true',
+      'Reply first with reply_user when the owner spoke. Casual chat needs no work ticket.',
+      'For real deliverable work, reply_user in the owner\'s language explaining what you will do, then call dispatch_work with this triggerId, title, and scope.',
+      'Never end the conversation envelope with assess_trigger stop; it stays open across messages.',
+    ] : []),
+    ...extraLines,
+  ].join('\n')
+}
+
 export class Harness {
   private readonly chains = new Map<string, Promise<void>>()
   private inflight: Promise<void>[] = []
+  private settling?: Promise<void>
   private readonly running = new Set<string>()
   private readonly pendingJobs: Promise<void>[] = []
   private readonly routersReady = new Set<string>()
@@ -238,6 +257,23 @@ export class Harness {
     return this.enqueue(routerSessionId(shard), work)
   }
 
+  conversationTurn(envelope: Ticket, trigger: Trigger): Promise<void> {
+    const held = this.pauseReason(envelope.id)
+    if (held) {
+      this.opts.log(`[collab] conversation held ticketId=${envelope.id} reason=${held}`)
+      return Promise.resolve()
+    }
+    const shard = directChatRouterShard(envelope) ?? 'default'
+    const prompt = conversationPromptFor(envelope, trigger, this.memoryLines(envelope, 'router'))
+    this.opts.log(`[harness] conversation turn ticketId=${envelope.id} triggerId=${trigger.id} shard=${shard}`)
+    return this.track(this.routerExclusive(shard, () => this.run(
+      routerSessionId(shard),
+      'router',
+      undefined,
+      `${this.withRouterHistory(shard, prompt)}\nshard=${shard}`,
+    )))
+  }
+
   private withRouterHistory(shard: string, prompt: string): string {
     const history = this.routerHistory(shard, 6)
     if (!history.length) return prompt
@@ -281,15 +317,17 @@ export class Harness {
         if (!latest?.ended) this.opts.stopProactiveTicket?.(ticket, `${kind} turn complete`)
         return undefined
       }
-      // A direct chat the Router already answered is finished. Give the
-      // conversation no Worker even when the Router forgot assess_trigger
-      // stop: a conversational reply is the whole deliverable.
-      const directChat = directChatThread(ticket) !== undefined
-      if (directChat && this.opts.repliedTo?.(ticket.id)) {
-        const latest = this.opts.store.getDoc<Ticket>('ticket', ticket.id)
-        this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=answered-direct-chat`)
-        if (!latest?.ended) {
-          this.opts.stopAnsweredDirectChat?.(ticket, 'direct-chat answered by Router')
+      if (isConversationTicket(ticket)) {
+        // A replied-to conversation envelope is complete without a Worker.
+        // Work tickets dispatched from that conversation still need their Worker.
+        if (directChatThread(ticket) !== undefined && this.opts.repliedTo?.(ticket.id)) {
+          const latest = this.opts.store.getDoc<Ticket>('ticket', ticket.id)
+          this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=answered-direct-chat`)
+          if (!latest?.ended) {
+            this.opts.stopAnsweredDirectChat?.(ticket, 'direct-chat answered by Router')
+          }
+        } else {
+          this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=conversation-envelope`)
         }
         return undefined
       }
@@ -874,7 +912,20 @@ export class Harness {
     this.opts.log(`[mesh] mesh.queue_drained count=${pending.length}`)
   }
 
-  async jobsSettled(): Promise<void> {
+  jobsSettled(): Promise<void> {
+    // Poll loops may start a settle without awaiting it. Share that drain with
+    // shutdown so a second caller cannot mistake its spliced batches for idle.
+    if (this.settling) return this.settling
+    const settling = this.settleJobs()
+    this.settling = settling
+    void settling.then(
+      () => { if (this.settling === settling) this.settling = undefined },
+      () => { if (this.settling === settling) this.settling = undefined },
+    )
+    return settling
+  }
+
+  private async settleJobs(): Promise<void> {
     for (let wave = 0; wave < 20; wave += 1) {
       // Settle, do not drain: queued Workers must get their turn as capacity
       // frees. Only the explicit shutdown path clears the queue.

@@ -12,12 +12,15 @@ export type ExecutionState =
   | 'awaiting-answer'
   | 'awaiting-review'
   | 'awaiting-approval'
+  | 'paused'
   | 'blocked'
   | 'ended'
 
 export function executionState(ticket: Ticket): ExecutionState {
   if (ticket.ended) return 'ended'
-  if (ticket.collab?.paused) return 'blocked'
+  // A human pause is its own state. Collapsing it into `blocked` made Panel
+  // look the same as a Worker report of kind `blocked`.
+  if (ticket.collab?.paused) return 'paused'
   if (ticket.collab?.approvals?.some(item => item.status === 'pending')) return 'awaiting-approval'
   const assignment = ticket.assignments.at(-1)
   if (!assignment) return 'open'
