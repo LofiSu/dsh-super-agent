@@ -126,9 +126,17 @@ Inbound paths:
   succeeds; it must pass normal ingress and admission. This needs no cursor reset
   and does not weaken the private-target check.
 
+Inbound age contract: polling and `parseFeishuWebhook` skip messages older than
+one hour by default. `FEISHU_MAX_MESSAGE_AGE_MS` overrides the limit when set to
+a positive finite number of milliseconds. Polling advances its cursor past stale
+messages so a backfill does not retry them.
+
 Outbound: `FeishuOutboxAdapter` replies in-thread with
 `/open-apis/im/v1/messages/:message_id/reply` when the source message is known,
-otherwise sends to the chat with `/open-apis/im/v1/messages`.
+otherwise sends to the chat with `/open-apis/im/v1/messages`. Feishu replies use
+the latest human inbound message on the selected thread as their quote target. When a user
+asks to stop quoting/replying on that thread, that preference is saved there and later messages
+are sent directly to the chat without a `message_id`.
 
 ### Inbound poll loop from `serve --feishu`
 
