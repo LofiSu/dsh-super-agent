@@ -304,9 +304,9 @@ export function normalizeFeishuChatMode(mode: unknown): 'p2p' | 'group' | undefi
   return undefined
 }
 
-/** Chat-information API `chat_mode`: `p2p` and `private` are one-to-one chats. */
+/** Chat-information API `chat_mode` recognizes only its documented modes. */
 export function normalizeFeishuChatModeForDirect(mode: unknown): 'p2p' | 'group' | undefined {
-  if (mode === 'p2p' || mode === 'private') return 'p2p'
+  if (mode === 'p2p') return 'p2p'
   if (mode === 'group' || mode === 'topic') return 'group'
   return undefined
 }

@@ -118,9 +118,12 @@ Inbound paths:
   `Trigger`s, and dedupes by `feishu_<message_id>`. The list response does not
   carry the p2p/group discriminator, so the Source resolves the chat and uses
   only `chat_mode` (`p2p` or `group`/`topic`); `chat_type` visibility such as
-  `private`/`public` is never used as a wake classification. This trusted class
-  remains separate from direct-ingress admission: `address.group` is retained,
-  mention-only addressing is unchanged, and actor/group allowlists still apply.
+  `private`/`public` is never used as a wake classification. Classification
+  supplies the trusted chat class; admission changes only when
+  `DS_AGENT_FEISHU_P2P_DIRECT=1` and the lookup verifies `chat_mode=p2p`. In that
+  case `address.group` is omitted, unmentioned messages may be `addressed=direct`,
+  and the group allowlist does not apply. Actor allowlists still apply, and bot
+  mentions still set `addressed=mention`.
   Thread key: `im:feishu:<chat_id>[:<thread_id>]`. `serve --feishu` covers
   **exactly one chat per process**. After upgrading or fixing the chat-information
   scope, an already-ingested message is not retroactively reclassified, and an
