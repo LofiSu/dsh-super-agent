@@ -31,9 +31,9 @@ state home is resolved by the CLI from `DS_AGENT_HOME`, falling back to
 ## Endpoints and auth
 
 ```text
-GET /                 server-rendered HTML (inline CSS only)      auth required
-GET /api/snapshot     JSON read model                             auth required
-GET /api/events       text/event-stream, snapshot then every 2 s  auth required
+GET /                 server-rendered HTML (inline CSS and SSE client) auth required
+GET /api/snapshot     JSON read model                                  auth required
+GET /api/events       text/event-stream, snapshot then every 2 s       auth required
 GET /health           200 JSON {"ok":true}, no state              no auth
 ```
 
@@ -64,6 +64,15 @@ curl -H "Authorization: Bearer $DS_AGENT_UI_TOKEN" http://127.0.0.1:4318/api/eve
 ```
 
 ## Read model
+
+The HTML page applies each valid snapshot message from its `EventSource` stream,
+updating every table and the generated timestamp from the same section renderer
+used for the initial server-rendered page. Invalid JSON or malformed snapshot
+frames are ignored, leaving the last good view visible. The connection indicator
+continues to show `live` or `reconnecting`.
+
+`/api/snapshot` remains the JSON read model for direct clients, and `curl` against
+`/api/events` continues to receive raw SSE frames.
 
 One function, `buildSnapshot()`, produces every view. It only includes visible
 tickets (`speculative !== true`), and outbox rows whose `ticketId` is not in that
