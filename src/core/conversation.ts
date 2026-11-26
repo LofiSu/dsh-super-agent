@@ -11,12 +11,18 @@ export function isConversationTicket(ticket: Ticket): boolean {
 
 /** Human 1:1 IM ingress (Feishu P2P, iMessage direct). Not CLI or other sources. */
 export function isDirectConversationIngress(trigger: Trigger): boolean {
-  if (!trigger.human || trigger.addressed !== 'direct') return false
+  if (!trigger.human || (trigger.addressed !== 'direct' && trigger.addressed !== 'mention')) return false
   const ref = trigger.threads[0]
-  if (!ref) return false
-  if (ref.source === 'imessage') return !trigger.channel?.address?.group
-  if (ref.source === 'im') return !trigger.channel?.address?.group
-  return false
+  if (!ref || (ref.source !== 'imessage' && ref.source !== 'im')) return false
+  if (trigger.channel?.address?.group?.trim()) return false
+  if (trigger.addressed === 'direct') return true
+  // An `im` mention is a 1:1 conversation only when the Feishu mapper supplied
+  // its verified p2p marker. Generic IM mentions without group metadata remain
+  // on the work path; iMessage direct threads have no such provider marker.
+  return ref.source === 'imessage'
+    || (trigger.channel?.source === 'im'
+      && trigger.channel.address?.provider === 'feishu'
+      && trigger.channel.address.chat_type === 'p2p')
 }
 
 export function conversationEnvelopeId(thread: Thread): string | undefined {

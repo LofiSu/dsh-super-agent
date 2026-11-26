@@ -6,6 +6,11 @@ import {
   isConversationTicket,
 } from '../src/core/conversation.ts'
 import { bypassEligible } from '../src/core/intake.ts'
+import { isDirectConversationIngress } from '../src/core/conversation.ts'
+import { feishuTriggerFromMessage, type FeishuConfig, type FeishuMessage } from '../src/channels/feishu.ts'
+import { coalesceTriggers } from '../src/cli/channel-loop.ts'
+import { filterTriggerWithPolicy } from '../src/ingress/policy.ts'
+import { ruleClassify } from '../src/ingress/filter.ts'
 import type { Host } from '../src/core/host.ts'
 import { conversationPromptFor } from '../src/harness/loop.ts'
 import { directChatThread } from '../src/harness/session.ts'
@@ -43,6 +48,28 @@ function feishuDirectTrigger(id: string, text: string, messageId = 'om_x'): Trig
   }
 }
 
+const feishuConfig: FeishuConfig = {
+  appId: 'cli_app',
+  appSecret: 'secret',
+  baseUrl: 'https://open.feishu.cn',
+  chatId: 'oc_p2p',
+  botOpenId: 'ou_bot',
+}
+
+function mappedFeishuMention(id: string, chatType: 'p2p' | 'group' = 'p2p'): Trigger {
+  const message: FeishuMessage = {
+    message_id: id,
+    chat_id: chatType === 'p2p' ? 'oc_p2p' : 'oc_group',
+    chat_type: chatType,
+    msg_type: 'text',
+    body: { content: JSON.stringify({ text: '@ds-agent haha' }) },
+    create_time: '1795737600000',
+    sender: { id: 'ou_user', sender_type: 'user' },
+    mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+  }
+  return feishuTriggerFromMessage(message, feishuConfig)
+}
+
 function makeRuntime(model?: Model, env: NodeJS.ProcessEnv = {}): Runtime {
   const runtime = freshRuntime({
     model: model ?? new MockModel(),
@@ -57,6 +84,105 @@ function makeRuntime(model?: Model, env: NodeJS.ProcessEnv = {}): Runtime {
 }
 
 describe('Feishu conversation-first 1:1', () => {
+  it('keeps verified p2p bot mentions on the conversation path', async () => {
+    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
+    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    try {
+      const first = mappedFeishuMention('om_mention_1')
+      const second = mappedFeishuMention('om_mention_2')
+      expect(first.addressed).toBe('mention')
+      expect(first.channel?.address?.group).toBeUndefined()
+      expect(first.channel?.address?.chat_type).toBe('p2p')
+      expect(isDirectConversationIngress(first)).toBe(true)
+      expect(isDirectConversationIngress({ ...first, human: false })).toBe(false)
+      await expect(filterTriggerWithPolicy(first, { name: 'rules', classify: ruleClassify }))
+        .resolves.toMatchObject({ action: 'pass', layer: 'fast', semantic: 'skip:direct' })
+      expect(ruleClassify(first)).toMatchObject({ pass: true })
+      expect(bypassEligible({
+        id: 'ticket_leftover',
+        title: 'leftover',
+        brief: '',
+        mandate: {
+          strength: 'explicit',
+          policyVersion: 'policy-v1',
+          scope: 'work',
+          actor: { source: 'im', id: 'ou_user' },
+          basis: 'addressed',
+        },
+        threadKeys: ['im:feishu:oc_p2p'],
+        channels: [{ source: 'im', thread: 'feishu:oc_p2p' }],
+        inputs: [],
+        assignments: [],
+        speculative: false,
+        originTriggerId: 'old',
+        createdAt: new Date().toISOString(),
+      }, first)).toBe(false)
+      expect(coalesceTriggers([first, second])).toHaveLength(1)
+
+      const runtime = makeRuntime()
+      const threadKey = 'im:feishu:oc_p2p'
+      const thread: Thread = {
+        key: threadKey,
+        ref: { source: 'im', id: 'feishu:oc_p2p' },
+        createdAt: new Date().toISOString(),
+        subscriptions: ['ticket_leftover'],
+        correlated: [],
+        pending: [],
+        meta: {},
+      }
+      const leftover: Ticket = {
+        id: 'ticket_leftover',
+        title: 'leftover',
+        brief: '',
+        mandate: {
+          strength: 'explicit',
+          policyVersion: 'policy-v1',
+          scope: 'work',
+          actor: { source: 'im', id: 'ou_user' },
+          basis: 'addressed',
+        },
+        threadKeys: [threadKey],
+        channels: [{ source: 'im', thread: 'feishu:oc_p2p' }],
+        inputs: [],
+        assignments: [{ id: 'asg_leftover', state: 'running', speculative: false }],
+        speculative: false,
+        originTriggerId: 'old',
+        createdAt: new Date().toISOString(),
+      }
+      runtime.store.putDoc('thread', threadKey, thread)
+      runtime.store.putDoc('ticket', leftover.id, leftover)
+      expect(runtime.ingest(first)).toBe('stored')
+      expect(runtime.ingest(second)).toBe('stored')
+
+      const tickets = runtime.store.listDocs<Ticket>('ticket')
+      expect(tickets.filter(isConversationTicket)).toHaveLength(1)
+      expect(tickets.filter(ticket => !isConversationTicket(ticket))).toHaveLength(1)
+      const updatedThread = runtime.store.getDoc<Thread>('thread', threadKey)
+      expect(updatedThread?.contextOnly).toContain('ticket_leftover')
+      expect(runtime.store.getDoc<Disposition>('disposition', first.id)?.fanout).toEqual([])
+      expect(runtime.store.getDoc<Disposition>('disposition', second.id)?.fanout).toEqual([])
+    } finally {
+      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+    }
+  })
+
+  it('keeps group mentions outside the conversation path and noise exemption', async () => {
+    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
+    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    try {
+      const groupMention = mappedFeishuMention('om_group_mention', 'group')
+      expect(groupMention.addressed).toBe('mention')
+      expect(groupMention.channel?.address?.group).toBe('oc_group')
+      expect(isDirectConversationIngress(groupMention)).toBe(false)
+      await expect(filterTriggerWithPolicy(groupMention, { name: 'rules', classify: ruleClassify }))
+        .resolves.toMatchObject({ action: 'drop', layer: 'semantic', reason: 'noise' })
+    } finally {
+      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+    }
+  })
+
   it('casual 在吗 uses one conversation envelope and does not open a work ticket per message', () => {
     const runtime = makeRuntime()
     expect(runtime.ingest(feishuDirectTrigger('trg_1', '在吗'))).toBe('stored')

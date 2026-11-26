@@ -1,3 +1,4 @@
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import type { Strength, Trigger } from '../shared/types.ts'
 
 const NOISE = /\b(lol|lmao|haha|weather|lunch)\b/i
@@ -108,9 +109,7 @@ export function ruleClassify(trigger: Trigger): SemanticHit {
   // "haha" is a valid message there and must not be dropped as noise. Group
   // messages keep the noise rule: they are input, not a conversation with us.
   // Agent-to-agent traffic is not a conversation either, even when addressed.
-  const directChat = trigger.source !== 'a2a'
-    && trigger.addressed === 'direct'
-    && trigger.channel?.address?.group == null
+  const directChat = trigger.source !== 'a2a' && isDirectConversationIngress(trigger)
   if (NOISE.test(trigger.text) && !ACTION.test(trigger.text) && !directChat) {
     return { pass: false, strength: 'inferred', reason: 'noise' }
   }

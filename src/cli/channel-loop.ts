@@ -7,6 +7,7 @@
  * `Runtime`, while tests pass fakes.
  */
 
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import {
   DEFAULT_IMESSAGE_INTERVAL_MS,
   ImessageOutboxAdapter,
@@ -85,8 +86,8 @@ export function coalesceTriggers(triggers: readonly Trigger[]): Trigger[] {
     const previous = merged.at(-1)
     if (
       previous
-      && trigger.addressed === 'direct'
-      && previous.addressed === 'direct'
+      && isDirectConversationIngress(trigger)
+      && isDirectConversationIngress(previous)
       && trigger.actor.id === previous.actor.id
       && trigger.channel?.thread === previous.channel?.thread
       && trigger.channel?.address?.group == null

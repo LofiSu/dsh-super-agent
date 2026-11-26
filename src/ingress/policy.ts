@@ -1,3 +1,4 @@
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import {
   fastPath,
   ruleClassify,
@@ -155,7 +156,7 @@ export async function filterTriggerWithPolicy(
       semantic: 'skip:fast-drop',
     }
   }
-  if (trigger.addressed === 'direct') {
+  if (isDirectConversationIngress(trigger)) {
     return {
       action: 'pass',
       layer: 'fast',
