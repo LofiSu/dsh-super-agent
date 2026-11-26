@@ -16,9 +16,11 @@ import type { OutboundAdapter } from './outbox-adapter.ts'
  *   FEISHU_VERIFICATION_TOKEN, FEISHU_ENCRYPT_KEY, FEISHU_BOT_OPEN_ID
  *
  * Bot permissions: im:message, im:message.send_as_bot, im:message:readonly (or
- * the corresponding granular scopes). Polling chat classification also needs
- * im:chat:readonly (or im:chat:read / im:chat), even when direct mode is off.
- * The bot must be a member of the chat.
+ * the corresponding granular scopes), plus im:message.group_msg for group
+ * history. Polling chat classification (connector wake, and
+ * DS_AGENT_FEISHU_P2P_DIRECT when enabled) needs im:chat:readonly (or
+ * im:chat:read / im:chat); the direct path verifies chat_mode. The bot must be
+ * a member of the chat.
  */
 
 export interface FeishuConfig {
@@ -72,7 +74,7 @@ export interface FeishuMention {
 export interface FeishuMessage {
   message_id: string
   chat_id: string
-  chat_type?: string
+  chat_type?: 'p2p' | 'group' | string
   msg_type: string
   body?: { content?: string }
   content?: string
@@ -94,6 +96,9 @@ export interface FeishuListOptions {
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
+
+/** Bound every Open Platform call so a hung DNS/proxy cannot stall poll or outbox. */
+export const FEISHU_FETCH_TIMEOUT_MS = 8_000
 
 export const DEFAULT_FEISHU_MAX_MESSAGE_AGE_MS = 60 * 60_000
 
@@ -123,16 +128,23 @@ export class FeishuClient {
   constructor(
     private readonly config: FeishuConfig,
     private readonly fetchImpl: FetchLike = fetch,
+    private readonly timeoutMs: number = FEISHU_FETCH_TIMEOUT_MS,
   ) {}
+
+  private fetchInit(init: RequestInit = {}): RequestInit {
+    const timeout = AbortSignal.timeout(this.timeoutMs)
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    return { ...init, signal }
+  }
 
   async accessToken(signal?: AbortSignal): Promise<string> {
     if (this.token && Date.now() < this.token.expiresAt) return this.token.value
-    const response = await this.fetchImpl(`${this.config.baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, {
+    const response = await this.fetchImpl(`${this.config.baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, this.fetchInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_id: this.config.appId, app_secret: this.config.appSecret }),
       ...(signal ? { signal } : {}),
-    })
+    }))
     const json = await response.json() as {
       code?: number
       msg?: string
@@ -154,7 +166,7 @@ export class FeishuClient {
       if (value !== undefined) params.set(key, String(value))
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : ''
-    const response = await this.fetchImpl(`${this.config.baseUrl}${path}${suffix}`, {
+    const response = await this.fetchImpl(`${this.config.baseUrl}${path}${suffix}`, this.fetchInit({
       method: init.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -162,7 +174,7 @@ export class FeishuClient {
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       ...(init.signal ? { signal: init.signal } : {}),
-    })
+    }))
     const json = await response.json() as { code?: number; msg?: string; data?: T }
     if (!response.ok || json.code !== 0) {
       throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path)
@@ -309,6 +321,15 @@ export function feishuThread(chatId: string, threadId?: string): string {
 }
 
 export function normalizeFeishuChatMode(mode: unknown): 'p2p' | 'group' | undefined {
+  // Message `chat_type` is visibility metadata: `p2p`/`group`/`topic` are
+  // discriminators, while `private`/`public` must stay unverified.
+  if (mode === 'p2p') return 'p2p'
+  if (mode === 'group' || mode === 'topic') return 'group'
+  return undefined
+}
+
+/** Chat-information API `chat_mode` recognizes only its documented modes. */
+export function normalizeFeishuChatModeForDirect(mode: unknown): 'p2p' | 'group' | undefined {
   if (mode === 'p2p') return 'p2p'
   if (mode === 'group' || mode === 'topic') return 'group'
   return undefined
@@ -326,7 +347,11 @@ function mentionsBot(message: FeishuMessage, config?: FeishuConfig): boolean {
 export function feishuTriggerFromMessage(message: FeishuMessage, config?: FeishuConfig): Trigger {
   const text = flattenFeishuMessage(message)
   const thread = feishuThread(message.chat_id, message.thread_id)
-  const addressed = mentionsBot(message, config) ? 'mention' as const : undefined
+  // The override applies only when Feishu identifies this message as a p2p chat.
+  // Missing or unknown chat types retain group admission and noise filtering.
+  const p2pDirect = message.chat_type === 'p2p'
+    && process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
+  const addressed = mentionsBot(message, config) ? 'mention' as const : (p2pDirect ? 'direct' as const : undefined)
   const senderType = message.sender?.sender_type
   const chatType = normalizeFeishuChatMode(message.chat_type)
   return {
@@ -344,9 +369,11 @@ export function feishuTriggerFromMessage(message: FeishuMessage, config?: Feishu
       address: {
         provider: 'feishu',
         chat_id: message.chat_id,
-        ...(chatType ? { chat_type: chatType } : {}),
-        // Group admission remains independent of trusted chat-mode classification.
-        group: message.chat_id,
+        // Group admission reads only `address.group`; a Feishu chat is the group.
+        // The p2p marker scopes the direct override and its group-allowlist exemption.
+        ...(p2pDirect
+          ? { chat_type: 'p2p' as const }
+          : { ...(chatType ? { chat_type: chatType } : {}), group: message.chat_id }),
         message_id: message.message_id,
         ...(message.thread_id ? { thread_id: message.thread_id } : {}),
       },
@@ -367,6 +394,9 @@ export function feishuTriggerFromMessage(message: FeishuMessage, config?: Feishu
 /** Polling Source over a real Feishu chat. Repeated pulls are safe (Trigger ids dedupe). */
 export class FeishuSource {
   private cursorMsValue: number
+  private readonly chatTypeCache = new Map<string, 'p2p' | 'group'>()
+  private readonly warnedChatModeLookupChatIds = new Set<string>()
+  private readonly rawModeLoggedChatIds = new Set<string>()
 
   constructor(
     private readonly client: FeishuClient,
@@ -397,6 +427,49 @@ export class FeishuSource {
   private readonly now: () => number
   private readonly maxMessageAgeMs: number
 
+  private warnChatModeLookupOnce(chatId: string, category: string): void {
+    if (this.warnedChatModeLookupChatIds.has(chatId)) return
+    this.warnedChatModeLookupChatIds.add(chatId)
+    this.log(`[feishu] chat mode lookup ${category} chat=${chatId}; keeping conservative group admission`)
+  }
+
+  /**
+   * Resolve and cache Feishu's trusted chat_mode for a chat. Returns the
+   * normalized type plus the raw mode so callers can log precisely once.
+   */
+  private async verifiedChatType(
+    chatId: string,
+    signal?: AbortSignal,
+  ): Promise<{ type: 'p2p' | 'group' | undefined; mode: string | undefined; failed?: string }> {
+    const cached = this.chatTypeCache.get(chatId)
+    if (cached) return { type: cached, mode: undefined }
+    let mode: string | undefined
+    try {
+      mode = await this.client.getChatMode(chatId, signal)
+    } catch (error) {
+      if (signal?.aborted) throw error
+      // Metadata is advisory for polling; failure keeps conservative group admission.
+      // Provider/custom-fetch messages may contain arbitrary or sensitive details.
+      const code = error instanceof FeishuApiError
+        && Number.isSafeInteger(error.code)
+        && Math.abs(error.code) <= 999_999_999
+        ? `api_error code=${error.code}`
+        : 'lookup_error'
+      this.warnChatModeLookupOnce(chatId, `failed category=${code}`)
+      const publicDetail = error instanceof FeishuApiError && Number.isSafeInteger(error.code)
+        ? String(error.code)
+        : 'lookup error'
+      return { type: undefined, mode: undefined, failed: publicDetail }
+    }
+    if (signal?.aborted) return { type: undefined, mode: undefined }
+    const type = normalizeFeishuChatModeForDirect(mode)
+    if (type) this.chatTypeCache.set(chatId, type)
+    else {
+      const category = mode === undefined ? 'unverified category=missing_mode' : 'unverified category=unrecognized_mode'
+      this.warnChatModeLookupOnce(chatId, category)
+    }
+    return { type, mode }
+  }
   /**
    * Highest message `create_time` (ms) observed so far, or the seed when none
    * was seen. A polling loop persists this as its durable cursor.
@@ -420,17 +493,20 @@ export class FeishuSource {
       startTimeSec,
       pageSize: this.pageSize,
     })
-    let chatType: 'p2p' | 'group' | undefined
+    const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
+    const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()
     if (items.length > 0) {
-      try {
-        const mode = await this.client.getChatMode(this.chatId, signal)
-        chatType = normalizeFeishuChatMode(mode)
-        if (!chatType) {
+      // Connector wake classifies the single polled chat regardless of direct
+      // mode; the verified type is also what gates the p2p-direct override.
+      const { type, mode, failed } = await this.verifiedChatType(this.chatId, signal)
+      resolvedTypes.set(this.chatId, type)
+      if (type === undefined && !this.rawModeLoggedChatIds.has(this.chatId)) {
+        this.rawModeLoggedChatIds.add(this.chatId)
+        if (failed) {
+          this.log(`[feishu] chat metadata lookup failed chat=${this.chatId}: ${failed}`)
+        } else {
           this.log(`[feishu] unrecognized chat_mode chat=${this.chatId} mode=${mode ?? '(missing)'}`)
         }
-      } catch (error) {
-        if (signal?.aborted) throw error
-        this.log(`[feishu] chat metadata lookup failed chat=${this.chatId}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
     if (signal?.aborted) return []
@@ -444,9 +520,18 @@ export class FeishuSource {
         this.log(`[feishu] skip stale message_id=${item.message_id}`)
         continue
       }
+      // Resolve other chat ids defensively when direct mode is enabled; cached
+      // results and one warning per chat keep repeated pulls quiet.
+      let chatType = resolvedTypes.get(item.chat_id)
+      if (p2pDirectEnabled && chatType === undefined && item.chat_id !== this.chatId) {
+        const resolved = await this.verifiedChatType(item.chat_id, signal)
+        chatType = resolved.type
+        resolvedTypes.set(item.chat_id, chatType)
+      }
       const message: FeishuMessage = {
         ...item,
-        // List-message chat_type is visibility metadata, not a private/group discriminator.
+        // List-message chat_type is visibility metadata, not a private/group
+        // discriminator; only verified chat_mode may set the marker.
         ...(chatType ? { chat_type: chatType } : { chat_type: undefined }),
       }
       triggers.push(feishuTriggerFromMessage(message, this.config))

@@ -217,7 +217,16 @@ describe('article domain alignment', () => {
     engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
-    const panel = executionView(store, home)
+    // Conversational IM suppresses the canned acknowledgement on ticket create.
+    let panel = executionView(store, home)
+    expect(panel[0]).toMatchObject({
+      ticketId: ticket.id,
+      state: 'pending',
+      outbox: { pending: 0, sent: 0, failed: 0 },
+    })
+
+    engine.reply(ticket.id, 'working on it', 'acknowledgement')
+    panel = executionView(store, home)
     expect(panel[0]).toMatchObject({
       ticketId: ticket.id,
       state: 'pending',

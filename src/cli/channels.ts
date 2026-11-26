@@ -430,7 +430,7 @@ export async function checkFeishuChannel(options: FeishuCheckOptions = {}): Prom
   lines.push(
     '[feishu] scopes: im:message, im:message:send_as_bot, im:message:readonly, '
     + 'im:message.group_msg (group history), im:chat:readonly (required for connector wake chat_mode lookup even when direct mode is off; '
-    + 'im:chat:read or im:chat also work); '
+    + 'im:chat:read or im:chat also work; DS_AGENT_FEISHU_P2P_DIRECT also needs it to resolve chat_mode); '
     + 'publish an app version after adding them',
   )
 

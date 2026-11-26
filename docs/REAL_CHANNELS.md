@@ -78,12 +78,15 @@ Set these for a live Feishu/Lark channel:
 
 Bot permissions: `im:message`, `im:message:send_as_bot`, `im:message:readonly`,
 and for group chats the sensitive scope `im:message.group_msg` (list/poll
-messages in groups the bot belongs to). Connector wake polling also requires
+messages in groups the bot belongs to). Connector wake polling requires
 `im:chat:readonly` to read `/open-apis/im/v1/chats/:chat_id` and classify the
 trusted `chat_mode`; `im:chat:read` or `im:chat` also satisfy the endpoint's
-scope requirements. This is required even when direct mode is off.
-`im:chat:create` is only needed for demo creation. The bot must be a member of
-`FEISHU_CHAT_ID`. Publish a new app version after adding scopes.
+scope requirements. This is required even when direct mode is off. The same
+scope is needed by `DS_AGENT_FEISHU_P2P_DIRECT=1` polling; without it, lookup
+failures are logged and messages stay conservatively in group admission, so
+short 1:1 polls may be filtered. `im:chat:create` is only needed for demo
+creation. The bot must be a member of `FEISHU_CHAT_ID`. Publish a new app
+version after adding scopes.
 
 One-time setup:
 
@@ -115,9 +118,12 @@ Inbound paths:
   `Trigger`s, and dedupes by `feishu_<message_id>`. The list response does not
   carry the p2p/group discriminator, so the Source resolves the chat and uses
   only `chat_mode` (`p2p` or `group`/`topic`); `chat_type` visibility such as
-  `private`/`public` is never used as a wake classification. This trusted class
-  remains separate from direct-ingress admission: `address.group` is retained,
-  mention-only addressing is unchanged, and actor/group allowlists still apply.
+  `private`/`public` is never used as a wake classification. Classification
+  supplies the trusted chat class; admission changes only when
+  `DS_AGENT_FEISHU_P2P_DIRECT=1` and the lookup verifies `chat_mode=p2p`. In that
+  case `address.group` is omitted, unmentioned messages may be `addressed=direct`,
+  and the group allowlist does not apply. Actor allowlists still apply, and bot
+  mentions still set `addressed=mention`.
   Thread key: `im:feishu:<chat_id>[:<thread_id>]`. `serve --feishu` covers
   **exactly one chat per process**. After upgrading or fixing the chat-information
   scope, an already-ingested message is not retroactively reclassified, and an
@@ -201,12 +207,17 @@ pull and the full window is retried. A stored cursor whose `chatId` differs from
 the current chat is ignored.
 
 **Admission semantics.** The loop calls `runtime.ingest(trigger)` with the
-Trigger returned by `feishuTriggerFromMessage`; it does not mark anything
-`direct` and does not bypass the ingress filter. That mapper sets
+Trigger returned by `feishuTriggerFromMessage`; it does not bypass the ingress
+filter. Group messages and messages with a missing or unknown `chat_type` keep
 `channel.address.group = message.chat_id`, so `DS_AGENT_GROUP_ALLOWLIST=<chat id>`
-admits or denies the chat in `src/ingress/filter.ts`. It sets
-`addressed='mention'` only when the text or mentions actually name the bot;
-otherwise `addressed` is unset and normal keyword/observed admission applies.
+admits or denies them in `src/ingress/filter.ts`. Set
+`DS_AGENT_FEISHU_P2P_DIRECT=1` to mark only messages verified as P2P by the
+chat-information `chat_mode` lookup as direct, allowing short 1:1 messages through
+the noise filter. This polling path requires `im:chat:readonly` (or `im:chat:read`
+or `im:chat`) as described above; failed or unrecognized lookups are logged and
+stay in conservative group admission. These verified P2P messages are outside the
+group-only allowlist; configured actor allowlists still apply. A real bot mention
+still sets `addressed='mention'`.
 `trigger.meta` carries provider ids for outbox routing only and is never read by
 admission. A denied message is persisted as a filtered disposition and cannot
 become a Ticket.

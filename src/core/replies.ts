@@ -25,12 +25,9 @@ export class Replies {
       this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=${wakeMarker} reason=conversational`)
       return
     }
-    // iMessage is a live conversation: a canned English acknowledgement before
-    // the Router has even decided whether there is work is noise, and it cannot
-    // be retracted when the Router vetoes (the sender sees "Working on it."
-    // followed by silence). Only the real result goes back to a chat.
-    if (channelFor(ticket, threadKey)?.source === 'imessage') {
-      this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=imessage reason=conversational`)
+    const channel = channelFor(ticket, threadKey)
+    if (isConversationalChannel(channel)) {
+      this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=${channel?.source} reason=conversational`)
       return
     }
     this.send(ticket, `Acknowledged “${ticket.title}”. Working on it.`, 'acknowledgement', threadKey)
@@ -93,7 +90,7 @@ export class Replies {
     const rendered = renderOutbound(channel, text, ticket.id)
     // A direct chat reads like texting: one long block feels like a letter.
     // Split at paragraph/sentence boundaries into at most three bubbles.
-    const directChat = channel === 'imessage' && target.group == null
+    const directChat = (channel === 'imessage' || channel === 'im') && target.group == null
     const parts = directChat ? splitChatText(rendered) : [rendered]
     for (const [index, part] of parts.entries()) {
       const label = parts.length > 1 ? `${purpose} part=${index + 1}/${parts.length}` : purpose
@@ -172,6 +169,10 @@ export function splitChatText(text: string, maxParts = MAX_CHAT_PARTS): string[]
   const head = parts.slice(0, maxParts - 1)
   head.push(parts.slice(maxParts - 1).join('\n\n'))
   return head
+}
+
+function isConversationalChannel(channel: Ticket['channels'][number] | undefined): boolean {
+  return channel?.source === 'imessage' || channel?.source === 'im'
 }
 
 /**

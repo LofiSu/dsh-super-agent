@@ -1,3 +1,4 @@
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import {
   fastPath,
   ruleClassify,
@@ -153,6 +154,16 @@ export async function filterTriggerWithPolicy(
       reason: fast.reason,
       fast: fastLabel,
       semantic: 'skip:fast-drop',
+    }
+  }
+  if (isDirectConversationIngress(trigger)) {
+    return {
+      action: 'pass',
+      layer: 'fast',
+      strength: 'explicit',
+      reason: fast.reason,
+      fast: fastLabel,
+      semantic: 'skip:direct',
     }
   }
   // `model` is the synchronous rules classifier used when no policy is wired.

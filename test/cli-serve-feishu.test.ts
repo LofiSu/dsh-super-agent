@@ -307,6 +307,27 @@ describe('serve --feishu loop', () => {
     await withTimeout(loop, 1_000)
   })
 
+
+  it('keeps polling when jobsSettled never resolves', async () => {
+    const runtime = makeRuntime()
+    runtime.jobsSettled = () => new Promise(() => undefined)
+    const source = new FakeFeishuSource([])
+    const controller = new AbortController()
+
+    const loop = runFeishuLoop({
+      runtime,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: () => source,
+      intervalMs: 5,
+      signal: controller.signal,
+    })
+
+    await waitFor(() => source.pulls >= 3)
+    controller.abort()
+    await withTimeout(loop, 1_000)
+  })
+
   it('stops promptly when aborted and leaves no pending poll timer', async () => {
     const runtime = makeRuntime()
     const source = new FakeFeishuSource([])
