@@ -356,6 +356,36 @@ describe('Feishu conversation-first 1:1', () => {
     expect(directChatThread(envelope)).toBe('feishu:oc_p2p')
   })
 
+  it('finish waits for a detached settle batch before closing the store', async () => {
+    let releaseModel!: () => void
+    let markStarted!: () => void
+    const modelStarted = new Promise<void>(resolve => { markStarted = resolve })
+    const modelGate = new Promise<void>(resolve => { releaseModel = resolve })
+    const model = new ScriptedModel(async request => {
+      if (request.role === 'router' && lastPrompt(request).startsWith('CONVERSATION_INBOUND')) {
+        markStarted()
+        await modelGate
+      }
+      return { text: 'done' }
+    })
+    const runtime = makeRuntime(model)
+    runtime.ingest(feishuDirectTrigger('trg_shutdown_settle', '你好'))
+    await modelStarted
+
+    // Simulate the poll loop's fire-and-forget settle after its call has
+    // spliced the active conversation turn out of the shared queue.
+    void runtime.jobsSettled().catch(() => undefined)
+    const finishing = runtime.finish()
+    try {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(runtime.store.isOpen).toBe(true)
+    } finally {
+      releaseModel()
+    }
+    await finishing
+    expect(runtime.store.isOpen).toBe(false)
+  })
+
   it('ingest does not await a hanging jobsSettled during direct poll (smoke)', async () => {
     const runtime = makeRuntime()
     runtime.jobsSettled = () => new Promise(() => undefined)
@@ -364,11 +394,34 @@ describe('Feishu conversation-first 1:1', () => {
   })
 
   it('work path: Router reply then dispatch_work opens a worker ticket (conversation envelope kept)', async () => {
+    let workRouterReplied = false
+    const workerPrompts: string[] = []
     const model = new ScriptedModel(request => {
       const prompt = lastPrompt(request)
-      if (request.role !== 'router' || !prompt.startsWith('CONVERSATION_INBOUND')) {
-        return { text: 'noop' }
+      if (request.role === 'worker') {
+        workerPrompts.push(prompt)
+        return { text: 'worker started' }
       }
+      if (request.role !== 'router') return { text: 'noop' }
+      if (prompt.startsWith('TICKET_CREATED')) {
+        if (!workRouterReplied) {
+          workRouterReplied = true
+          return {
+            toolCalls: [{
+              id: 'work-reply',
+              name: 'reply_user',
+              args: {
+                ticketId: field(prompt, 'ticketId'),
+                text: '我来处理这个问题。',
+                purpose: 'progress',
+                thread: 'im:feishu:oc_p2p',
+              },
+            }],
+          }
+        }
+        return { text: 'continue with the requested work' }
+      }
+      if (!prompt.startsWith('CONVERSATION_INBOUND')) return { text: 'noop' }
       const replied = request.messages.some(m => m.role === 'tool' && m.name === 'reply_user')
       if (!replied) {
         return {
@@ -407,6 +460,7 @@ describe('Feishu conversation-first 1:1', () => {
     await vi.waitFor(() => {
       const work = runtime.store.listDocs<Ticket>('ticket').filter(t => !isConversationTicket(t))
       expect(work.length).toBeGreaterThanOrEqual(1)
+      expect(workerPrompts.length).toBeGreaterThan(0)
     }, { timeout: 15_000 })
 
     const envelopes = runtime.store.listDocs<Ticket>('ticket').filter(isConversationTicket)
@@ -414,6 +468,8 @@ describe('Feishu conversation-first 1:1', () => {
     expect(runtime.store.listReplies().some(r => r.text.includes('查'))).toBe(true)
     const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
     expect(work.assignments.some(a => a.state === 'pending' || a.state === 'running')).toBe(true)
+    expect(work.ended?.outcome).not.toBe('stopped')
+    expect(runtime.log.text()).not.toContain(`worker skipped ticketId=${work.id} ended=answered-direct-chat`)
   })
 })
 

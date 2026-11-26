@@ -161,6 +161,7 @@ export function conversationPromptFor(envelope: Ticket, trigger: Trigger, extraL
 export class Harness {
   private readonly chains = new Map<string, Promise<void>>()
   private inflight: Promise<void>[] = []
+  private settling?: Promise<void>
   private readonly running = new Set<string>()
   private readonly pendingJobs: Promise<void>[] = []
   private readonly routersReady = new Set<string>()
@@ -317,18 +318,16 @@ export class Harness {
         return undefined
       }
       if (isConversationTicket(ticket)) {
-        this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=conversation-envelope`)
-        return undefined
-      }
-      // A direct chat the Router already answered is finished. Give the
-      // conversation no Worker even when the Router forgot assess_trigger
-      // stop: a conversational reply is the whole deliverable.
-      const directChat = directChatThread(ticket) !== undefined
-      if (directChat && this.opts.repliedTo?.(ticket.id)) {
-        const latest = this.opts.store.getDoc<Ticket>('ticket', ticket.id)
-        this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=answered-direct-chat`)
-        if (!latest?.ended) {
-          this.opts.stopAnsweredDirectChat?.(ticket, 'direct-chat answered by Router')
+        // A replied-to conversation envelope is complete without a Worker.
+        // Work tickets dispatched from that conversation still need their Worker.
+        if (directChatThread(ticket) !== undefined && this.opts.repliedTo?.(ticket.id)) {
+          const latest = this.opts.store.getDoc<Ticket>('ticket', ticket.id)
+          this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=answered-direct-chat`)
+          if (!latest?.ended) {
+            this.opts.stopAnsweredDirectChat?.(ticket, 'direct-chat answered by Router')
+          }
+        } else {
+          this.opts.log(`[harness] worker skipped ticketId=${ticket.id} ended=conversation-envelope`)
         }
         return undefined
       }
@@ -913,7 +912,20 @@ export class Harness {
     this.opts.log(`[mesh] mesh.queue_drained count=${pending.length}`)
   }
 
-  async jobsSettled(): Promise<void> {
+  jobsSettled(): Promise<void> {
+    // Poll loops may start a settle without awaiting it. Share that drain with
+    // shutdown so a second caller cannot mistake its spliced batches for idle.
+    if (this.settling) return this.settling
+    const settling = this.settleJobs()
+    this.settling = settling
+    void settling.then(
+      () => { if (this.settling === settling) this.settling = undefined },
+      () => { if (this.settling === settling) this.settling = undefined },
+    )
+    return settling
+  }
+
+  private async settleJobs(): Promise<void> {
     for (let wave = 0; wave < 20; wave += 1) {
       // Settle, do not drain: queued Workers must get their turn as capacity
       // frees. Only the explicit shutdown path clears the queue.
