@@ -390,6 +390,63 @@ describe('local UI server', () => {
     expect(generated.textContent).toBe(previousGenerated)
   })
 
+  it('ships a portable browser script that applies valid SSE snapshots', async () => {
+    const { base } = await startSeeded()
+    const response = await request(`${base}/api/snapshot`)
+    const first = JSON.parse(response.body) as UiSnapshot
+    const html = renderHtml(first)
+    const script = html.match(/<script>\s*([\s\S]*?)\s*<\/script>/u)?.[1]
+    expect(script).toBeDefined()
+    expect(script).not.toMatch(/\b__name\b|\b(?:require|exports|module)\b/u)
+    expect(() => new Function('document', 'EventSource', script!)).not.toThrow()
+
+    const content = { innerHTML: renderSnapshotContent(first) }
+    const generated = { textContent: `generated ${first.generatedAt}` as string | null }
+    const status = { textContent: 'connecting' as string | null }
+    const listeners = new Map<string, (event: { data: string }) => void>()
+    class StubEventSource {
+      constructor(url: string) { expect(url).toBe('/api/events') }
+      addEventListener(name: string, callback: (event: { data: string }) => void): void {
+        listeners.set(name, callback)
+      }
+    }
+    const document = {
+      getElementById(id: string): { innerHTML: string } | { textContent: string | null } | null {
+        if (id === 'snapshot-content') return content
+        if (id === 'generated') return generated
+        if (id === 'live') return status
+        return null
+      },
+    }
+    const execute = new Function('document', 'EventSource', script!) as (
+      doc: { getElementById(id: string): { innerHTML: string } | { textContent: string | null } | null },
+      eventSource: typeof StubEventSource,
+    ) => void
+    execute(document, StubEventSource)
+
+    const second: UiSnapshot = {
+      ...first,
+      generatedAt: '2026-11-26T13:45:00.000Z',
+      tickets: [{ ...first.tickets[0]!, id: 'tkt_browser_new', title: '<img src=x onerror=alert(1)> & "browser"' }],
+      threads: [],
+      outbox: [],
+      events: [],
+    }
+    listeners.get('message')!({ data: JSON.stringify(second) })
+    expect(content.innerHTML).toContain('tkt_browser_new')
+    expect(content.innerHTML).not.toContain('tkt_ui_1')
+    expect(content.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;browser&quot;')
+    expect(content.innerHTML).not.toContain('<img src=x')
+    expect(generated.textContent).toBe('generated 2026-11-26T13:45:00.000Z')
+
+    const lastGoodContent = content.innerHTML
+    const lastGoodGenerated = generated.textContent
+    listeners.get('message')!({ data: '{invalid json' })
+    listeners.get('message')!({ data: JSON.stringify({ ...second, tickets: 'not-an-array' }) })
+    expect(content.innerHTML).toBe(lastGoodContent)
+    expect(generated.textContent).toBe(lastGoodGenerated)
+  })
+
   it('serves the same read model through /api/snapshot without bodies or speculation', async () => {
     const { base, home } = await startSeeded()
     const response = await request(`${base}/api/snapshot`)

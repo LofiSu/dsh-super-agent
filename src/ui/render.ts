@@ -178,10 +178,74 @@ export function applySnapshot(
 }
 
 function browserApplyScript(): string {
+  // Keep this as plain browser JavaScript. The host functions above pass through
+  // tsx/esbuild, whose function source can contain helpers unavailable in-page.
   return `(() => {
-  const isUiSnapshot = ${isUiSnapshot.toString()};
-  const renderSnapshotContent = ${renderSnapshotContent.toString()};
-  const applySnapshot = ${applySnapshot.toString()};
+  const escape = value => String(value ?? '').replace(/[&<>"']/gu, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+  const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const isUiSnapshot = value => {
+    if (!isRecord(value) || typeof value.generatedAt !== 'string'
+      || !Array.isArray(value.tickets) || !Array.isArray(value.threads)
+      || !Array.isArray(value.outbox) || !Array.isArray(value.events)
+      || !isRecord(value.health) || !isRecord(value.metrics)) return false;
+    const health = value.health;
+    const metrics = value.metrics;
+    if (typeof health.store !== 'string' || typeof health.vaultMode !== 'string'
+      || typeof health.machinesOnline !== 'number' || typeof health.watchdogIdle !== 'boolean'
+      || !isRecord(metrics.counters) || !isRecord(metrics.modelLatencyMs)) return false;
+    const latency = metrics.modelLatencyMs;
+    if (['count', 'sum', 'max', 'last'].some(key => typeof latency[key] !== 'number')) return false;
+    return value.tickets.every(item => isRecord(item) && typeof item.id === 'string'
+      && typeof item.title === 'string' && typeof item.stage === 'string'
+      && typeof item.ended === 'boolean' && typeof item.paused === 'boolean'
+      && typeof item.createdAt === 'string')
+      && value.threads.every(item => isRecord(item) && typeof item.key === 'string'
+        && Array.isArray(item.subscriptions) && item.subscriptions.every(id => typeof id === 'string')
+        && typeof item.pending === 'number' && typeof item.deferred === 'boolean'
+        && (item.lastAt === undefined || typeof item.lastAt === 'string'))
+      && value.outbox.every(item => isRecord(item) && typeof item.id === 'string'
+        && typeof item.ticketId === 'string' && typeof item.status === 'string'
+        && typeof item.channel === 'string' && typeof item.thread === 'string'
+        && typeof item.attempts === 'number' && typeof item.createdAt === 'string')
+      && value.events.every(item => isRecord(item) && typeof item.kind === 'string' && isRecord(item.payload))
+      && Object.values(metrics.counters).every(count => typeof count === 'number');
+  };
+  const renderSnapshotContent = snapshot => {
+    const code = value => '<code>' + escape(value) + '</code>';
+    const table = (headers, rows, empty) => rows.length === 0
+      ? '<p class="empty">' + escape(empty) + '</p>'
+      : '<table><thead><tr>' + headers.map(header => '<th>' + escape(header) + '</th>').join('')
+        + '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(cell => '<td>' + cell + '</td>').join('') + '</tr>').join('')
+        + '</tbody></table>';
+    const tickets = snapshot.tickets.map(ticket => [code(ticket.id), '<span class="wrap">' + escape(ticket.title) + '</span>',
+      code(ticket.stage), ticket.ended ? 'yes' : 'no', ticket.paused ? 'yes' : 'no', code(ticket.createdAt)]);
+    const threads = snapshot.threads.map(thread => [code(thread.key), thread.subscriptions.length === 0
+      ? '<span class="empty">none</span>' : thread.subscriptions.map(code).join(', '), String(thread.pending),
+      thread.deferred ? 'yes' : 'no', thread.lastAt ? code(thread.lastAt) : '<span class="empty">-</span>']);
+    const outbox = snapshot.outbox.map(row => [code(row.id), code(row.status), code(row.channel), code(row.thread),
+      code(row.ticketId), String(row.attempts), code(row.createdAt)]);
+    const events = snapshot.events.map(event => [code(event.kind), '<span class="wrap">' + escape(JSON.stringify(event.payload) ?? '') + '</span>']);
+    const counters = Object.entries(snapshot.metrics.counters).sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, value]) => [code(name), String(value)]);
+    const latency = snapshot.metrics.modelLatencyMs;
+    const health = [[code('store'), escape(snapshot.health.store)], [code('vault'), escape(snapshot.health.vaultMode)],
+      [code('machines online'), String(snapshot.health.machinesOnline)], [code('watchdog idle'), snapshot.health.watchdogIdle ? 'yes' : 'no']];
+    return '<section><h2>Health</h2>' + table(['check', 'value'], health, 'no health data') + '</section>'
+      + '<section><h2>Metrics<span class="count">' + counters.length + ' counters</span></h2>'
+      + table(['counter', 'value'], counters, 'no counters') + '<p class="sub">model latency: count '
+      + escape(latency.count) + ' · sum ' + escape(latency.sum) + ' ms · max ' + escape(latency.max)
+      + ' ms · last ' + escape(latency.last) + ' ms</p></section>'
+      + '<section><h2>Tickets<span class="count">' + snapshot.tickets.length + '</span></h2>'
+      + table(['id', 'title', 'stage', 'ended', 'paused', 'created'], tickets, 'no tickets') + '</section>'
+      + '<section><h2>Threads<span class="count">' + snapshot.threads.length + '</span></h2>'
+      + table(['thread', 'subscriptions', 'pending', 'deferred', 'last'], threads, 'no threads') + '</section>'
+      + '<section><h2>Outbox<span class="count">' + snapshot.outbox.length + '</span></h2>'
+      + table(['id', 'status', 'channel', 'thread', 'ticket', 'attempts', 'created'], outbox, 'no outbox rows') + '</section>'
+      + '<section><h2>Lifecycle events<span class="count">' + snapshot.events.length + '</span></h2>'
+      + table(['kind', 'payload'], events, 'no lifecycle events') + '</section>';
+  };
   const content = document.getElementById('snapshot-content');
   const generated = document.getElementById('generated');
   const status = document.getElementById('live');
@@ -191,7 +255,10 @@ function browserApplyScript(): string {
   source.addEventListener('message', event => {
     try {
       const snapshot = JSON.parse(event.data);
-      if (content && generated) applySnapshot(snapshot, content, generated);
+      if (!content || !generated || !isUiSnapshot(snapshot)) return;
+      const rendered = renderSnapshotContent(snapshot);
+      content.innerHTML = rendered;
+      generated.textContent = 'generated ' + snapshot.generatedAt;
     } catch {
       // Ignore malformed frames and retain the last good snapshot.
     }
