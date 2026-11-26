@@ -11,7 +11,7 @@ import {
 } from '../src/core/external-effects.ts'
 import { Replies, splitChatText } from '../src/core/replies.ts'
 import type { Host } from '../src/core/host.ts'
-import type { OutboxRow, Ticket } from '../src/shared/types.ts'
+import type { OutboxRow, Ticket, Trigger } from '../src/shared/types.ts'
 import { Store } from '../src/store/sqlite.ts'
 
 const homes: string[] = []
@@ -84,6 +84,80 @@ describe('durable outbox', () => {
     expect(queued[0]!.thread).toBe('issue:7')
     expect(queued[0]!.target.issue).toBe('7')
     expect(queued[0]!.text).toContain('ds-agent note')
+    store.close()
+  })
+
+  it('targets the latest human Feishu message on a ticket', () => {
+    const store = tempStore()
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: () => undefined,
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const first: Trigger = {
+      id: 'feishu_origin', source: 'im', threads: [{ source: 'im', id: 'feishu:oc_chat' }],
+      actor: { source: 'im', id: 'alice' }, human: true, at: '2026-01-01T00:00:00.000Z',
+      text: 'start', channel: { source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }, meta: {},
+    }
+    const latest: Trigger = {
+      ...first, id: 'feishu_latest', at: '2026-01-01T00:01:00.000Z', text: 'follow up',
+      channel: { ...first.channel!, address: { ...first.channel!.address!, message_id: 'om_latest' } },
+    }
+    store.putDoc('trigger', first.id, first)
+    store.putDoc('trigger', latest.id, latest)
+    store.putDoc('thread', 'im:feishu:oc_chat', {
+      key: 'im:feishu:oc_chat', ref: { source: 'im', id: 'feishu:oc_chat' }, createdAt: first.at,
+      subscriptions: [], correlated: [], pending: [], meta: {},
+    })
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_chat'],
+      channels: [{ source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }],
+      inputs: [
+        { id: 'input_origin', kind: 'trigger', triggerId: first.id, text: first.text, at: first.at, human: true },
+        { id: 'input_latest', kind: 'trigger', triggerId: latest.id, text: latest.text, at: latest.at, human: true },
+      ],
+    })
+
+    new Replies(host).answer(feishuTicket, 'response')
+    expect(store.listOutbox('pending')[0]?.target.message_id).toBe('om_latest')
+    store.close()
+  })
+
+  it('persists a Feishu stop-quoting request and omits message_id on later sends', () => {
+    const store = tempStore()
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: () => undefined,
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const inbound: Trigger = {
+      id: 'feishu_stop', source: 'im', threads: [{ source: 'im', id: 'feishu:oc_chat' }],
+      actor: { source: 'im', id: 'alice' }, human: true, at: '2026-01-01T00:02:00.000Z',
+      text: '别用回复了你直接给我发吧',
+      channel: { source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_stop' } }, meta: {},
+    }
+    store.putDoc('trigger', inbound.id, inbound)
+    store.putDoc('thread', 'im:feishu:oc_chat', {
+      key: 'im:feishu:oc_chat', ref: { source: 'im', id: 'feishu:oc_chat' }, createdAt: inbound.at,
+      subscriptions: [], correlated: [], pending: [], meta: {},
+    })
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_chat'],
+      channels: [{ source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }],
+      inputs: [{ id: 'input_stop', kind: 'trigger', triggerId: inbound.id, text: inbound.text, at: inbound.at, human: true }],
+    })
+    const replies = new Replies(host)
+
+    replies.answer(feishuTicket, 'first direct response')
+    replies.answer(feishuTicket, 'later direct response')
+    const queued = store.listOutbox('pending')
+    expect(queued).toHaveLength(2)
+    expect(queued.every(row => !('message_id' in row.target))).toBe(true)
+    expect(store.getDoc<{ meta: Record<string, unknown> }>('thread', 'im:feishu:oc_chat')?.meta.feishuStopQuoting).toBe(true)
     store.close()
   })
 
