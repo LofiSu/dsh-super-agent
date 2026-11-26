@@ -239,6 +239,16 @@ pause freezes Router/Worker turns, reports, and outbound replies.
 stop ends a ticket for good (an operator veto); pause is for a resumable hold.
 intervene records guidance and pauses by default, so the note lands before more work.
 resume clears the pause and continues with the unseen guidance in the next turn.
+tasks prints one tab-separated line per ticket: <id> <stage> <title>.
+panel prints Mandate, Executor Session, directory, report, and Outbox
+pending/sent/failed counts. A paused ticket is person/paused in tasks and
+paused in panel. The Watchdog does not nudge or fail it, and the pause is
+still there after a process restart. chat returns after its ticket ends, so
+pause an in-progress ticket from a second terminal that shares DS_AGENT_HOME.
+Pausing an already-paused ticket prints "already paused" and keeps the
+original pause. Resuming a ticket that is not paused prints "not paused" and
+does not rewrite it. An unknown id exits with an error and leaves other
+tickets unchanged.
 demo/retry/resume/approve/deny/dismiss need a live model; chat may use MockModel.
 pause/intervene/collab/team/teams/approvals are offline.
 
