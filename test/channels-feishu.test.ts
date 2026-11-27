@@ -513,6 +513,18 @@ describe('Feishu webhook parser', () => {
 })
 
 describe('Feishu client and outbox', () => {
+  it('caps a history read at one page when requested, even when more pages exist', async () => {
+    const { fn, calls } = fakeFetch(url => {
+      if (url.includes('tenant_access_token')) return tokenHandler(url)
+      return { body: { code: 0, data: { items: [apiMessage()], has_more: true, page_token: 'next-page' } } }
+    })
+    const items = await new FeishuClient(config, fn).listMessages('oc_chat', { pageSize: 1, maxPages: 1 })
+    const historyCalls = calls.filter(call => call.url.includes('/open-apis/im/v1/messages?'))
+    expect(items).toHaveLength(1)
+    expect(historyCalls).toHaveLength(1)
+    expect(new URL(historyCalls[0]!.url).searchParams.get('page_size')).toBe('1')
+  })
+
   it('caches the tenant token and sends text to a chat', async () => {
     const { fn, calls } = fakeFetch((url, init) => {
       if (url.includes('tenant_access_token')) return tokenHandler(url, init)

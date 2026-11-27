@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { FeishuClient, FeishuOutboxAdapter, FeishuSource, type FeishuConfig } from '../channels/feishu.ts'
+import { FeishuApiError, FeishuClient, FeishuOutboxAdapter, FeishuSource, feishuConfigFromEnv, type FeishuConfig } from '../channels/feishu.ts'
 import {
   ChatDbImessageApi,
   ImessageOutboxAdapter,
@@ -397,7 +397,9 @@ export type FeishuFetch = (input: string, init?: RequestInit) => Promise<Respons
 export interface FeishuCheckOptions extends CheckInput {
   /** Default false: no network call at all. */
   network?: boolean
-  /** Test seam for `--network`; the production path uses fetch with a timeout. */
+  /** Read-only token, chat metadata, and one-message history probe. */
+  checkChat?: boolean
+  /** Test seam for network calls; the production path uses fetch with a timeout. */
   fetchImpl?: FeishuFetch
 }
 
@@ -414,14 +416,12 @@ function feishuCredentialLine(env: NodeJS.ProcessEnv): string {
   return `[feishu] credentials: missing/incomplete (${missing.join(', ')})`
 }
 
-/**
- * Feishu preflight. Default is offline and checks configuration only. With
- * `network: true` it requests a real tenant access token (no message is sent)
- * and reports only success/failure, never the app secret or token value.
- */
+/** Feishu preflight: offline by default; --network checks only authentication. */
 export async function checkFeishuChannel(options: FeishuCheckOptions = {}): Promise<ChannelCheckResult> {
   const env = options.env ?? process.env
   const argv = options.argv ?? process.argv
+  const checkChat = options.checkChat === true || argv.includes('--check-chat')
+  const network = options.network === true || checkChat
   const lines = [feishuCredentialLine(env)]
   const baseUrl = (env.FEISHU_BASE_URL?.trim() || 'https://open.feishu.cn').replace(/\/$/, '')
   lines.push(`[feishu] base URL: ${baseUrl}`)
@@ -433,32 +433,106 @@ export async function checkFeishuChannel(options: FeishuCheckOptions = {}): Prom
     + 'im:chat:read or im:chat also work; DS_AGENT_FEISHU_P2P_DIRECT also needs it to resolve chat_mode); '
     + 'publish an app version after adding them',
   )
+  if (checkChat) lines.push('[feishu] send capability: 未验证 (no message sent)')
 
   let config: FeishuCliConfig | undefined
+  let apiConfig: FeishuConfig | undefined
   const errorLines: string[] = []
   try {
     config = resolveFeishuCliConfig(argv, env)
+    apiConfig = config.config
   } catch (error) {
     errorLines.push(`[feishu] config: FAILED ${messageOf(error)}`)
+    // A missing chat does not prevent the authentication stage of the explicit
+    // probe; use credential configuration only and never invent a chat target.
+    if (checkChat && !chatId) {
+      try { apiConfig = feishuConfigFromEnv(env) ?? undefined } catch { /* configuration error is already reported */ }
+    }
   }
 
   let ready = errorLines.length === 0
-  if (!options.network) {
+  if (!network) {
     lines.push('[feishu] network: skipped (offline check; pass --network for a real tenant_access_token call)')
-  } else if (!config) {
+  } else if (!apiConfig) {
     lines.push('[feishu] network: skipped (configuration is not ready)')
   } else {
     const fetchImpl: FeishuFetch = options.fetchImpl ?? ((input, init) => fetch(input, {
       ...init,
       signal: init?.signal ?? AbortSignal.timeout(15_000),
     }))
+    const client = new FeishuClient(apiConfig, fetchImpl)
+    const timeoutMs = checkChat ? 5_000 : 15_000
+    const withProbeTimeout = async <T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+      const controller = new AbortController()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new DOMException('Probe timed out', 'TimeoutError'))
+          reject(new Error('probe timed out'))
+        }, timeoutMs)
+      })
+      try {
+        return await Promise.race([operation(controller.signal), timeout])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+    const describeFailure = (error: unknown, signal?: AbortSignal): string => {
+      if (signal?.aborted || (error instanceof Error && /timed out|timeout/i.test(error.message))) return 'timeout'
+      if (error instanceof FeishuApiError) {
+        return `failed${error.status === undefined ? '' : ` HTTP ${error.status}`} Feishu code=${error.code}`
+      }
+      return 'request failed'
+    }
+    let tokenOk = false
     try {
-      const client = new FeishuClient(config.config, fetchImpl)
-      await client.accessToken()
+      await withProbeTimeout(signal => client.accessToken(signal))
+      tokenOk = true
       lines.push('[feishu] tenant_access_token: ok (no message sent)')
     } catch (error) {
       ready = false
-      lines.push(`[feishu] tenant_access_token: FAILED ${messageOf(error)}`)
+      lines.push(`[feishu] tenant_access_token: FAILED API auth/v3/tenant_access_token ${describeFailure(error)}`)
+    }
+
+    if (checkChat) {
+      if (!tokenOk) {
+        lines.push('[feishu] chat metadata: skipped (prior token stage failed)')
+        lines.push('[feishu] chat history: skipped (prior token stage failed)')
+      } else if (!chatId) {
+        ready = false
+        lines.push('[feishu] chat metadata: FAILED chat missing / not configured; set FEISHU_CHAT_ID or pass --chat <id>')
+        lines.push('[feishu] chat history: FAILED chat missing / not configured; set FEISHU_CHAT_ID or pass --chat <id>')
+      } else {
+        let metadataOk = false
+        try {
+          const mode = await withProbeTimeout(signal => client.getChatMode(chatId, signal))
+          metadataOk = true
+          const safeMode = mode === 'p2p' ? 'p2p' : mode === 'group' || mode === 'topic' ? 'group' : undefined
+          lines.push(`[feishu] chat metadata: ok (API /open-apis/im/v1/chats/:chat_id${safeMode ? `; mode=${safeMode}` : ''})`)
+        } catch (error) {
+          ready = false
+          const detail = describeFailure(error)
+          lines.push(`[feishu] chat metadata: FAILED API /open-apis/im/v1/chats/:chat_id ${detail}`)
+          if (error instanceof FeishuApiError && error.code === 230002) {
+            lines.push('[feishu] possible causes: bot is not in the chat, the chat is not visible to the app, or required chat read scope is unavailable')
+          }
+        }
+        if (!metadataOk) {
+          lines.push('[feishu] chat history: skipped (prior chat metadata stage failed)')
+        } else {
+          try {
+            const items = await withProbeTimeout(signal => client.listMessages(chatId, {
+              pageSize: 1,
+              maxPages: 1,
+              signal,
+            }))
+            lines.push(`[feishu] chat history: ok (API /open-apis/im/v1/messages; items=${Math.min(items.length, 1)}; one-message probe)`)
+          } catch (error) {
+            ready = false
+            lines.push(`[feishu] chat history: FAILED API /open-apis/im/v1/messages ${describeFailure(error)}`)
+          }
+        }
+      }
     }
   }
 
@@ -479,6 +553,7 @@ export function selectedCheckChannels(argv: readonly string[] = process.argv): C
 export interface ChannelsCheckOptions extends CheckInput {
   channels?: readonly ChannelName[]
   network?: boolean
+  checkChat?: boolean
   fetchImpl?: FeishuFetch
   openDatabase?: (dbPath: string) => DatabaseSync
   findExecutable?: (name: string, env: NodeJS.ProcessEnv) => string | undefined
@@ -514,6 +589,7 @@ export async function runChannelsCheck(options: ChannelsCheckOptions = {}): Prom
         argv,
         env,
         network: options.network === true,
+        checkChat: options.checkChat === true,
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       }))
     }

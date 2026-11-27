@@ -179,9 +179,10 @@ function help(): void {
                             # daemon timer over persisted state; optional inbound iMessage
                             # and/or Feishu poll loop; the two loops share one Runtime but
                             # keep independent cursors, outboxes, and abort controllers
-  pnpm ds-agent channels check [--imessage] [--feishu] [--network]
+  pnpm ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]
                             # offline preflight: no model, no SQLite, no message send;
-                            # --network only calls Feishu tenant_access_token
+                            # --network checks token only; --check-chat implies it and reads chat metadata + one history item;
+                            # send capability remains unverified
   pnpm ds-agent chat "fix the login timeout"
   pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
   pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
@@ -606,10 +607,11 @@ async function main(): Promise<void> {
   }
   if (cmd === 'channels') {
     if (sub !== 'check') {
-      throw new Error('channels needs "check": ds-agent channels check [--imessage] [--feishu] [--network]')
+      throw new Error('channels needs "check": ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]')
     }
     const report = await runChannelsCheck({
       network: process.argv.includes('--network'),
+      checkChat: process.argv.includes('--check-chat'),
     })
     for (const line of report.lines) console.log(line)
     process.exitCode = report.code
