@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Outbox, PermanentDeliveryError, type OutboundAdapter } from '../src/channels/outbox-adapter.ts'
+import { FeishuClient, FeishuOutboxAdapter } from '../src/channels/feishu.ts'
 import {
   EXTERNAL_OP_KIND,
   finalizeUncertainExternalEffects,
@@ -343,6 +344,80 @@ describe('durable outbox', () => {
     expect(parts.length).toBe(2)
     expect(parts.some(part => /\.\s+Hello/.test(part))).toBe(true)
     expect(parts.every(part => !/\.Hello/.test(part))).toBe(true)
+  })
+
+  it('resumes Feishu text chunks from durable progress after a later chunk fails', async () => {
+    const store = tempStore()
+    const text = '界🙂'.repeat(30_000)
+    const target = { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' }
+    store.enqueueOutbox(row({ channel: 'im', thread: 'feishu:oc_chat', target, text }))
+
+    const requests: { url: string; body: string }[] = []
+    let sendRequests = 0
+    const fetchImpl = async (input: string, init?: RequestInit): Promise<Response> => {
+      if (input.includes('tenant_access_token')) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }))
+      }
+      const body = JSON.parse(String(init?.body)) as { uuid: string }
+      const sending = store.listOutbox()[0]!
+      const metadata = JSON.parse(sending.target.__ds_feishu_text_progress!) as { sendUuids: Record<string, string> }
+      expect(Object.values(metadata.sendUuids)).toContain(body.uuid)
+      expect(body.uuid).toBeTruthy()
+      expect(body.uuid.length).toBeLessThanOrEqual(50)
+      requests.push({ url: input, body: String(init?.body) })
+      sendRequests += 1
+      if (sendRequests === 2) {
+        return new Response(JSON.stringify({ code: 999, msg: 'rate limited' }), { status: 429 })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: `om_chunk_${sendRequests}` } }))
+    }
+    const adapter = new FeishuOutboxAdapter(new FeishuClient({
+      appId: 'app', appSecret: 'secret', baseUrl: 'https://open.feishu.cn', chatId: 'oc_chat',
+    }, fetchImpl))
+    const outbox = new Outbox(store, [adapter])
+
+    const firstAttempt = await outbox.flush()
+    expect(firstAttempt).toMatchObject({ sent: 0, failed: 0, pending: 1 })
+    expect(requests).toHaveLength(2)
+    expect(requests.every(request => request.url === 'https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')).toBe(true)
+    const requestTexts = requests.map(request => {
+      const body = JSON.parse(request.body) as { msg_type: string; content: string }
+      expect(body.msg_type).toBe('text')
+      return (JSON.parse(body.content) as { text: string }).text
+    })
+    expect(requestTexts[0]).toMatch(/^（1\/(\d+)）\n/)
+    expect(requestTexts[1]).toMatch(/^（续 2\/\d+）\n/)
+
+    const stored = store.listOutbox()[0]!
+    expect(stored.status).toBe('pending')
+    expect(stored.externalId).toBe('om_chunk_1')
+    expect(stored.target.__ds_feishu_text_progress).toBeTruthy()
+    store.markOutboxRetry(stored.id, 'rate limited', new Date(Date.now() - 1_000).toISOString(), stored.attempts ?? 1)
+
+    const retryStart = requests.length
+    const retry = await outbox.flush()
+    expect(retry).toEqual({ sent: 1, failed: 0, pending: 0 })
+    const retryRequests = requests.slice(retryStart)
+    expect(retryRequests.length).toBeGreaterThan(0)
+    expect(retryRequests.every(request => request.url === 'https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')).toBe(true)
+    const retryTexts = retryRequests.map(request => {
+      const body = JSON.parse(request.body) as { msg_type: string; content: string }
+      expect(body.msg_type).toBe('text')
+      return (JSON.parse(body.content) as { text: string }).text
+    })
+    const acceptedTexts = [requestTexts[0]!, ...retryTexts]
+    const total = requestTexts[0]!.match(/^（1\/(\d+)）/)?.[1]
+    expect(total).toBeTruthy()
+    expect(retryTexts).toHaveLength(Number(total) - 1)
+    expect(retryTexts[0]).toBe(requestTexts[1])
+    const uuidOf = (request: { body: string }): string => String((JSON.parse(request.body) as { uuid: string }).uuid)
+    expect(uuidOf(retryRequests[0]!)).toBe(uuidOf(requests[1]!))
+    expect(uuidOf(requests[0]!)).not.toBe(uuidOf(requests[1]!))
+    expect(acceptedTexts.slice(1).every(chunk => /^（续 \d+\/\d+）\n/.test(chunk))).toBe(true)
+    expect(acceptedTexts.every(chunk => chunk.includes(`/${total}）`))).toBe(true)
+    expect(acceptedTexts.map(chunk => chunk.replace(/^（(?:续 )?\d+\/\d+）\n/, '')).join('')).toBe(text)
+    expect(store.listOutbox()[0]?.externalId).toBe('om_chunk_1')
+    store.close()
   })
 
   it('flushes through the matching adapter and records the provider id', async () => {

@@ -676,6 +676,15 @@ export class Store {
     ).run(externalId ?? null, new Date().toISOString(), id)
   }
 
+  /** Persist adapter progress without releasing the row while its send is active. */
+  updateSendingOutboxProgress(id: string, target: Record<string, string>, externalId?: string): void {
+    this.assertWritable()
+    const result = this.db.prepare(
+      `UPDATE outbox SET target = ?, external_id = COALESCE(?, external_id) WHERE id = ? AND status = 'sending'`,
+    ).run(JSON.stringify(target), externalId ?? null, id)
+    if (Number(result.changes ?? 0) !== 1) throw new Error(`outbox row ${id} is not sending`)
+  }
+
   markOutboxRetry(id: string, error: string, nextAttemptAt: string, attempts: number): void {
     this.assertWritable()
     this.db.prepare(
