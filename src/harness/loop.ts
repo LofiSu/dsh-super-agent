@@ -681,7 +681,10 @@ export class Harness {
       const refs = formatRefs(trigger.refs)
       if (refs) lines.push(refs)
       return this.run(sessionId, 'worker', ticketId, lines.join('\n'))
-    }).finally(() => this.settleWorkerTurn(ticketId)))
+    }).finally(() => {
+      this.settleWorkerTurn(ticketId)
+      if (!this.activeWorkers.has(ticketId)) this.pump()
+    }))
   }
 
   /**
@@ -854,7 +857,10 @@ export class Harness {
       .then(() => undefined)
       .finally(() => {
         this.running.delete(ticket.id)
-        if (localResume) this.settleWorkerTurn(ticket.id)
+        if (localResume) {
+          this.settleWorkerTurn(ticket.id)
+          if (!this.activeWorkers.has(ticket.id)) this.pump()
+        }
       })
     return this.track(work)
   }
