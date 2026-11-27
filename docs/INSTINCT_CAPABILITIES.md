@@ -1,6 +1,6 @@
 # Instinct 公开能力验收清单
 
-> 基线：`origin/main` `d616dbd`（2026-11-26，Asia/Shanghai）。本文件比较的是 **Instinct 的公开可观察能力** 与本仓库 `ds-agent` 的实现状态，不是对 Instinct 内部实现的还原。
+> 基线：`origin/main` `840386e`（2026-11-27，Asia/Shanghai）。本文件比较的是 **Instinct 的公开可观察能力** 与本仓库 `ds-agent` 的实现状态，不是对 Instinct 内部实现的还原。
 >
 > 关于 t286：父会话要求的 t286 完整公开清单，其逐字 assistant message **没有**在可索引的常用 agent 会话记录中找到（ds-agent 最新索引消息停在 2026-11-12；检索过的 Grok Bot 会话也不包含它）。本文件从父会话指向的同一批公开研究缓存重建，**没有**把 t286 当作已逐字读过。任何与 t286 原文的差异，以公开来源为准。
 
@@ -28,7 +28,7 @@
 | S12 | Meta Muse, *How We Designed Muse*，[链接](https://muse.ai/blog/how-we-designed-muse) | 2026-09-08 | 主动消息必须“真正有用且值得这次打扰” | official（对照产品，非 Instinct） |
 | S13 | JK, *Pitting Meta's Muse Against Instinct AI*，[链接](https://www.jkspeaks.com/wordpress/digital-signals/pitting-metas-muse-against-instinct-ai/) | 2026-10-31 | 价格追踪、有变化才来、用户反馈 | media |
 | S14 | CNBC（2026-10-13，JPMorgan/Citi/Schwab 对 agent 登录银行的态度） | 2026-10-13 | 银行不欢迎第三方代登录；open banking 只读 | media |
-| S15 | 本仓库 `docs/COMPETITIVE_GAP.md`（last audited 2026-11-26） | 2026-11-26 | **仅作内部对照**；须区分 official Instinct 与 Open Instinct，不能当作本清单的 inventory | 内部文档 |
+| S15 | 本仓库 `docs/COMPETITIVE_GAP.md`（last audited 2026-11-27） | 2026-11-27 | **仅作内部对照**；须区分 official Instinct 与 Open Instinct，不能当作本清单的 inventory | 内部文档 |
 
 > 连接器命名规则：只有来源明确写出名字才列入验收。S1–S15 中只有 **Google Workspace** 被官方隐私页逐项点名。Slack、Notion、1Password 类在本机缓存里没有具名证据，因此不在下文中冒充“已证实连接器”；见 §5。
 
@@ -106,22 +106,22 @@
 
 ## 8. 仍未进入 `main` 的 open 项
 
-以下 **不算** `main` 已完成。已与 d616dbd 合入的 #165–#168、#173、#174、#172 等不在此表重复。
+以下是基线 `840386e` 合入时仍待完成的项目。
 
 | # | 项 | PR | 状态 | 验收边界 |
 |---|---|---|---|---|
-| N1 | 飞书短私聊 `DS_AGENT_FEISHU_P2P_DIRECT` | [#180](https://github.com/LofiSu/dsh-super-agent/pull/180) | `PR-only`（OPEN，CI 绿） | 修复短 p2p 被丢；**未合入 main**；不构成飞书秒回或真实发送已验收 |
-| N2 | Instinct / competitive-gap RSI **提案摄入** + 有界 scheduler tick | [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | `PR-only`（OPEN，CI 绿） | 基础设施，不是产品级 RSI 已发布 |
+| N1 | GitHub issue poll、可选 @ 派发、holdout implementer | [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) | 待合入 | @ 派发默认关闭，真实 GitHub 轮询待验收 |
+| N2 | Instinct / competitive-gap RSI **提案摄入** + 有界 scheduler tick | [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | 待合入 | 调度器仍需接入 CLI 的运行路径 |
 | N3 | GitHub issue poll queue + 更完整 bounded RSI | [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) | `PR-only`（OPEN，**CONFLICTING**） | 底分支过旧，**不宜**当可合并目标 |
 
-**不在本仓库 / 未闭环（无 PR 可指）：** `conversation-first`；完整 RSI 自迭代（维护缺口 → 评对话 → 落地改进）；可对话的独立桌面 UI（现有 UI 只读）；默认 GitHub @ issue 派发（`github-source` 识别 `@ds-agent` ≠ 默认派发已上线）；真实通道验收（飞书/Google/iMessage/表单 fill）。
+**未闭环：** 完整 RSI 自迭代（维护缺口 → 评对话 → 落地改进）；可对话的独立桌面 UI（现有 UI 只读）；默认 GitHub @ issue 派发（`github-source` 识别 `@ds-agent` ≠ 默认派发已上线）；真实通道验收（飞书/Google/iMessage/表单 fill）。
 
-**已在 `main`、本节不再标 PR-only：** #165 remote mesh placement、#167 部署与 loopback 探测、#168 controlled evolution v1（非完整 RSI）、#173 三答案卡 + fill-only vault、#174 Google 连接器/索引/事件唤醒、#172 owner-gated browser errands、#182 执行凭据、#170 idle self-wake（默认关闭）。
+**已在 `main`、本节不再标 PR-only：** #165 remote mesh placement、#167 部署与 loopback 探测、#168 controlled evolution v1（非完整 RSI）、#173 三答案卡 + fill-only vault、#174 Google 连接器/索引/事件唤醒、#172 owner-gated browser errands、#182 执行凭据、#170 idle self-wake（默认关闭）、#180 飞书短私聊支持、#184 飞书过期消息过滤和引用定位、#188 飞书 1:1 conversation-first。真实飞书发送仍待验收。
 
 ## 9. 结论
 
 - **已具备（`main`，离线/CI；真实账号多数未验收）**：iMessage/Feishu/GitHub/CLI/A2A 运行时；routines；LTM + ACL；三答案审批（D2）与 fill-only vault（D4，#173）；Google Workspace 索引与 event wake（A9/B3/C1，#174，默认关闭）；browser errand adapter（#172，非 cloud browser）；执行凭据 D5（#182）；approval hold（D3）；sandbox/redaction 默认边界。
 - **明确缺失或 blocked**：WhatsApp/SMS/email/电话；群聊 shared agent；Instinct 式 **leased cloud browser**（D1）；支付**扣款**；deletion surface（D6）；推荐系统（A11）。Slack/Notion 仍不列入验收（无具名来源）。
-- **open PR，未进 main**：#180、#183；#177 冲突不宜合并。
+- **open PR，未进 main**：#183、#187；#177 在替代方案的调度入口验收后再关闭。
 - **不能靠代码等价**：hosted identity、电话网络、merchant partnerships、用户 Mac/iMessage 账号（`environment-blocked`）。
 - **不猜测**：Instinct 未公开的 instruction body、host、model id、control-plane、desktop app 与 policy section；本仓库不复制、不假装对齐。

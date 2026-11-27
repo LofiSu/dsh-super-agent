@@ -1,21 +1,23 @@
 # Development status
 
-> **Current checkpoint:** 2026-11-26 (Asia/Shanghai) · `main` = `d616dbd1820ca6a31e44e2fa233a53864e36df4e`
+> **Current checkpoint:** 2026-11-27 (Asia/Shanghai) · `main` = `840386ed1dfdb1445a0ae7a32e4ed39427c32de8`
 > Repo: `LofiSu/dsh-super-agent`. Source of truth: `git`, GitHub PRs/checks, and cited CI runs. Re-verify before relying on this file.
 
-## Current integration checkpoint (2026-11-26)
+## Current integration checkpoint (2026-11-27)
 
-`main` is at **0.1.0** with no GitHub Release and no tag. Required check **`typecheck and test`** is green on this SHA: [Actions run 45687952739](https://github.com/LofiSu/dsh-super-agent/actions/runs/45687952739) (success). Capabilities below are **merged and covered by offline tests / CI** unless noted; **real channel, real Google, real browser/form, and real iMessage send remain operator-gated and largely unvalidated**.
+`main` is at **0.1.0** with no GitHub Release and no tag. The required **`typecheck and test`** run on this SHA was in progress when checked ([Actions run 45975345608](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975345608)). The previous main run failed in the detached supervisor tests ([run 45863781081](https://github.com/LofiSu/dsh-super-agent/actions/runs/45863781081)); #190 addresses those races. A separate [release-check run 45975425759](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975425759) was started to verify and package this SHA. The capabilities below have merged; **real channel, real Google, real browser/form, and real iMessage send remain operator-gated and largely unvalidated**.
 
 | Field | Value |
 |-------|-------|
-| `main` | `d616dbd` — `feat(env): writable Peanut workspace and host-side PR-only publish` (#175) |
+| `main` | `840386e` — `fix(os-tests): stabilize detached supervisor handoffs` (#190) |
 | Version | `0.1.0` (`package.json`) |
 | Release | none |
-| Required check | `typecheck and test` — green at `d616dbd` (run above) |
+| Required check | `typecheck and test` — see the run above for this SHA |
 
 ### Recently on `main` (merged; not “production-validated” on live accounts)
 
+- **#180, #184, #188** — Feishu supports short direct messages, drops stale ingress, scopes quoted replies to the selected thread, and handles eligible 1:1 conversation turns independently of work tickets.
+- **#185, #189** — The local execution panel shows paused tickets and applies incoming SSE snapshots.
 - **#171** — Muse-style prompt stack: 33 ordered sections + nine runtime files (`docs/PROMPTS.md`).
 - **#175** — Writable Peanut workspace; host may open/update `peanut/` branches and open PRs to `main` only (no merge, force-push, or tag; owner token not injected into sandbox).
 - **#174** — Owner-gated Google Workspace connectors (calendar/gmail/drive/docs/sheets/slides/tasks), connector index, event wake; **default off**; real Google OAuth/API not accepted.
@@ -36,25 +38,24 @@
 
 | Item | Notes |
 |------|--------|
-| [#180](https://github.com/LofiSu/dsh-super-agent/pull/180) | Feishu: honor `DS_AGENT_FEISHU_P2P_DIRECT` for p2p short messages — **OPEN**, mergeable, CI green; **not** “Feishu instant reply done” or live send validated. |
-| [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | Dispatch: ingest Instinct/competitive-gap RSI **proposals** + bounded scheduler tick — **OPEN**, mergeable, CI green; infrastructure only, not product RSI shipped. |
+| [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | Dispatch: ingest Instinct/competitive-gap RSI **proposals** + bounded scheduler tick. Pending integration at this checkpoint. The scheduler tick still needs production wiring. |
+| [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) | Owner GitHub issue polling, opt-in @ dispatch, and a holdout-gated implementer. Pending integration at this checkpoint. |
 | [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) | Dispatch: owner GitHub issue poll queue and bounded RSI — **OPEN**, **CONFLICTING**, stale base; do not treat as merge-ready. |
-| Conversation-first | Not in this repository. |
 | Full RSI closure | No living gap list → evaluate conversations → land improvements on `main`. |
-| Standalone conversational desktop UI | UI is **read-only** dashboard; no second-sidebar chat product. `src/dispatch` not on `main`. |
-| Default GitHub @ dispatch / issue poll queue | Not on `main` (broader work was on expired #177). `github-source` recognizing `@ds-agent` in issue text ≠ default dispatch live. |
+| Standalone conversational desktop UI | The current local dashboard is read-only. |
+| Default GitHub @ dispatch / issue poll queue | The opt-in poll path is tracked in #187. Default @ dispatch remains unshipped. |
 | Formal release | No tag/release workflow product cut yet. |
 
 ### Honest limits (current)
 
 - Real Feishu send, real Google accounts, real iMessage send, real form fill: **operator-gated**, mostly **not** accepted in this doc’s sense.
 - Local UI: loopback, token-gated, **read-only** — not a full desktop chat shell.
-- No **conversation-first**, no weekday stock-morning-report config in tree.
+- No weekday stock-morning-report config in tree.
 - Semantic/month-scale memory: harness and protocol exist; **month-scale bake-off not completed**.
 
 ### Next actions
 
-1. Review and consider merging **#180** and **#183** after independent review; do not treat **#177** as a clean merge target.
+1. Review #183 and #187, then verify the scheduled RSI path through the CLI before closing the overlapping #177.
 2. Schedule **real-channel / real-connector** acceptance with owner credentials (Feishu, Google, iMessage, browser errands, vault fill) and record evidence.
 3. Product work still open: **full RSI loop**, **standalone conversational desktop**, **default GitHub @ issue poll dispatch**.
 4. Keep `.super-agent/state.json` and this checkpoint truthful when the orchestrator updates state.

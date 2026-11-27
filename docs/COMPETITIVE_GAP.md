@@ -1,6 +1,6 @@
 # Competitive gap: Instinct, Muse, and Grok Bot
 
-> Living document. Last audited **2026-11-26** against `main` **`d616dbd`**. Structural comparison only — not a claim about production prompts:
+> Living document. Last audited **2026-11-27** against `main` **`840386e`**. Structural comparison only — not a claim about production prompts:
 > none of the three products publishes its full prompt or internals. Muse is
 > known from its leaked agent workspace, Instinct from the Open Instinct
 > implementation, and Grok Bot from its public instruction and approval model.
@@ -20,7 +20,7 @@ that make a personal agent worth talking to and worth delegating work to.
 | **Memory** | `MEMORY.md` + daily journal; bounded digest every turn | `MEMORY.md` + memory search/explain tools; strict write rules | Bot memory | `MEMORY.md` injection plus typed refs, `read_object` chain of recall, hybrid lexical + embedding recall, hot/cold retention, cold Thread digests, per-hop ACL | **Ahead on safety and provenance**; **behind on learned semantic recall and an owner-editable daily journal** |
 | **Skills** | `skills/` with `SKILL.md`; loaded on demand | Tools and workspace files | Skills | `skills/<id>/SKILL.md` index in the prompt; `read_skill` loads the body | **Parity on the core loop**; no bundled starter set yet |
 | **Proactivity / routines** | Scheduled etiquette and routines | `HEARTBEAT.md`, `PROACTIVE_PREFERENCES.md`, scheduling | Routines | `HEARTBEAT.md` checklist + `PROACTIVE_PREFERENCES.md`; `routines.json`: interval or UTC daily-time prompt, weekdays, channel/thread, persisted last-run, daemon tick | **Parity on intervals and daily times**; no cron expressions, per-routine timezone, or owner editor yet |
-| **Channels** | Texting, email, A2A, chat | App / channel surfaces | Bot connectors | CLI, iMessage, Feishu, GitHub, A2A, OpenAI-compatible gateway, read-only loopback UI | **Ahead in one runtime**; owner-gated Google Workspace + browser errands on `main` (#174, #172) but **default off, real account/browser not validated**; **behind** on email, payment capture, SMS/phone, standalone conversational desktop |
+| **Channels** | Texting, email, A2A, chat | App / channel surfaces | Bot connectors | CLI, iMessage, Feishu with 1:1 conversation-first handling (#188), GitHub, A2A, OpenAI-compatible gateway, read-only loopback UI | **Ahead in one runtime**; owner-gated Google Workspace + browser errands on `main` (#174, #172) but **default off, real account/browser not validated**; **behind** on email, payment capture, SMS/phone, standalone conversational desktop |
 | **Approvals** | Dedicated approvals layer | Safety policy | Approval before send, publish, delete, spend | Worker `request_approval` → hold → Router asks → **CLI** `approve` / `deny` / **`dismiss`** (dismiss closes card, no consent) with `actionId` on exact action text → audited RESUME | **Parity on state machine + structured action id**; still **CLI-only** — channel reply cannot approve |
 | **Observability** | Layer inspection, logs | Workspace files are visible | Bot editor | Lifecycle bus, read-only token-gated UI, metrics, health, session journals, offline CLI inspection, execution receipts (#182) | **Ahead** |
 | **Safety / sandbox** | Rules layer, approvals | Safety and security policy last | Approval gates | Default-on fail-closed OS sandbox for bash, env allowlist, secret redaction sentinel, spill ACL, opt-in strict read isolation; fill-only vault (#173) with no read-back | **Ahead for its scope**; specialist CLIs and host reads remain trust boundaries |
@@ -88,7 +88,7 @@ implementation.
 | ~~P2~~ | ~~Browser errand adapter (owner-gated)~~ — shipped in #172 | ✅ local/remote HTTP command path, default off; not leased cloud browser; live browser open |
 | P2 | Real-channel / real-connector acceptance | Recorded operator runs: Feishu send, Google, iMessage, browser errand, vault fill — not assumed from CI |
 | P2 | Email and payment **capture** connectors | Adapter contract, approval gate, offline fakes; distinct from fill-only vault |
-| P2 | Consider merge **#180**, **#183** after review | Independent review; do not treat **#177** as merge-ready |
+| P2 | Review #183 and #187 | Verify the scheduler through the CLI before closing #177 |
 | P2 | Principal tiers | Trigger trust tiers, prompt `principal` layer, tests that a group member cannot become the owner |
 | P3 | Full reflection / RSI loop on `main` | Scheduled review → bounded lesson updates with owner approval; beyond #168 v1 and open #183 ingest |
 

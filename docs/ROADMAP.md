@@ -1,9 +1,9 @@
 # Plan audit and living roadmap
 
 > Status: living document · First audit: 2026-11-02 against `8f8e104` ·
-> Revised: 2026-11-03 against `8fa3a79` · **Current baseline:** `origin/main` `d616dbd` (2026-11-26, Asia/Shanghai) · Repo: `LofiSu/dsh-super-agent`
+> Revised: 2026-11-03 against `8fa3a79` · **Current baseline:** `origin/main` `840386e` (2026-11-27, Asia/Shanghai) · Repo: `LofiSu/dsh-super-agent`
 >
-> Sources for **current** claims in the snapshot below: `origin/main` at `d616dbd` and `docs/DEVELOPMENT_STATUS.md`.
+> Sources for **current** claims in the snapshot below: `origin/main` at `840386e` and `docs/DEVELOPMENT_STATUS.md`.
 > Sources for the 2026-11-03 historical matrices: `origin/main` at `8fa3a79` (`PLAN.md`,
 > `README.md`, `README.zh-CN.md`, `docs/install.md`, `docs/zh/install.md`,
 > `docs/MODULES.md`, `docs/HARDENING_2026-11-01.md`), plus `src/`, `test/`,
@@ -35,16 +35,16 @@
 | 2026-11-03 | `34aef25` | #75–#82 and #84 merged: project-state checkpoint (#75), gateway authentication hardening (#76), iMessage fail-closed admission (#77, corrected by #81), single-owner orchestration (#78), Worker-mesh backpressure (#79, release ordering corrected by #84), docs reconciliation (#80), and gateway token-file redirection rejection (#82). The §7 work board and the final-tree evidence below are re-checked at `34aef25`; P1-3 is resolved and restart replay (P1-6) is ready to start. #83 (state-doc reconciliation) was still open at this base. The live Magpie claim remains operator-only. |
 | 2026-11-03 | `cecfba0` | #83 merged the project-state reconciliation; the `34aef25` audit evidence is now documented on `main`. No runtime change. |
 | 2026-11-03 | `bb11c96` + fixes | Live reference run reproduced on local Magpie (`workbuddy/deepseek-v4.1-flash`): `pnpm test:live` 22/22 (195.34 s), full `pnpm test` 384 passed / 3 skipped / 55 files (622.33 s); P1-9 resolved. The three test-only determinism fixes are on `main` via #91; this docs update is re-landed on `8fa3a79`. |
-| 2026-11-26 | `d616dbd` | Added **Current snapshot**; repo `LofiSu/dsh-super-agent`. Matrices through 2026-11-03 are historical. |
+| 2026-11-27 | `840386e` | Refreshed the current snapshot after Feishu conversation-first and the detached supervisor test fixes. Matrices through 2026-11-03 are historical. |
 
-## Current snapshot (2026-11-26, `main` `d616dbd`)
+## Current snapshot (2026-11-27, `main` `840386e`)
 
 Use `docs/DEVELOPMENT_STATUS.md` for the maintainer checkpoint. Summary before the matrices below:
 
-- **On `main` (offline/CI; real accounts mostly not accepted):** Muse-style prompts (#171); three-answer approvals + fill-only vault (#173, CLI-only); Google Workspace connectors + index + event wake (#174, default off); browser errand adapter (#172, default off); writable Peanut workspace (#175); execution receipts (#182); controlled evolution v1 (#168, not full RSI); idle self-wake (#170); deployment probes (#167); T48 harness (#166); remote mesh placement (#165); recovery/sandbox health (#164, #163); read-only local UI; CLI/GitHub/Feishu/iMessage/A2A.
-- **Open, not on `main`:** [#180](https://github.com/LofiSu/dsh-super-agent/pull/180) (Feishu p2p, CI green); [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) (RSI proposal ingest, CI green); [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) (issue poll + RSI, **conflicting** base).
-- **Still missing / blocked:** conversation-first; full RSI loop; standalone conversational desktop; default GitHub @ issue poll; formal release; real-channel acceptance.
-- **CI at `d616dbd`:** `typecheck and test` green — [run 45687952739](https://github.com/LofiSu/dsh-super-agent/actions/runs/45687952739).
+- **On `main` (offline/CI; real accounts mostly not accepted):** Muse-style prompts (#171); three-answer approvals + fill-only vault (#173, CLI-only); Google Workspace connectors + index + event wake (#174, default off); browser errand adapter (#172, default off); writable Peanut workspace (#175); execution receipts (#182); controlled evolution v1 (#168, not full RSI); idle self-wake (#170); deployment probes (#167); T48 harness (#166); remote mesh placement (#165); recovery/sandbox health (#164, #163); read-only local UI with paused tickets and SSE updates (#185, #189); CLI/GitHub/Feishu/iMessage/A2A, including Feishu 1:1 conversation-first (#188), short direct messages (#180), and stale-ingress filtering (#184).
+- **Pending integration:** [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) (RSI proposal ingest and scheduler); [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) (owner GitHub issue polling, opt-in @ dispatch, and implementer); [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) (overlapping issue poll and RSI work awaiting replacement of the production scheduler wiring).
+- **Still missing / blocked:** full RSI loop; standalone conversational desktop; default GitHub @ issue poll; formal release; real-channel acceptance.
+- **CI at `840386e`:** `typecheck and test` was in progress at review time. See [Actions run 45975345608](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975345608).
 
 > **Section 2 onward:** Module/domain matrices and verification logs were last fully re-checked against **`fa974ca` / `8fa3a79` (2026-11-03)**. Prefer this snapshot and `DEVELOPMENT_STATUS.md` over undated current-main claims in those sections.
 
