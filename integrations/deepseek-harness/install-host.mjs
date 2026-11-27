@@ -1,0 +1,25 @@
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+
+const path = process.argv[2] ?? join(homedir(), 'Documents/deepseek-harness/ds-super-agent-tab/desktop-server.js');
+const installed = readFileSync(path, 'utf8');
+const upgraded = installed.includes('import { createBotHttpHandler }');
+const source = upgraded ? readFileSync(path + '.before-bot-api', 'utf8') : installed;
+const setup = '  return new Promise((resolve, reject) => {\n    const server = http.createServer(async (req, res) => {';
+{
+  if (source.split(setup).length !== 2) throw new Error('Unsupported desktop host layout');
+  const updated = "import { createBotHttpHandler } from './bot-http.mjs';\nimport { buildBotPrompt } from './bot-context.mjs';\nimport { recoverBotTurns } from './bot-registry.mjs';\nimport { createCodexAdapter } from './codex-adapter.mjs';\nimport { createClaudeAdapter } from './claude-adapter.mjs';\nimport { createHarnessAdapter } from './harness-adapter.mjs';\nimport { readDeviceInventory, probeSshHost } from './bot-devices.mjs';\n" + source.replace('function runCli(args, timeoutMs = 20_000)', 'function runCli(args, timeoutMs = 20_000, stateHome = HOME, modelEnv = {})').replace('env: spawnEnv(),', 'env: { ...spawnEnv(), ...modelEnv, DS_AGENT_HOME: stateHome },').replace("      log(`listening on 127.0.0.1:${port}`);", "      try { recoverBotTurns(HOME); } catch (error) { server.close(); reject(error); return; }\n      log(`listening on 127.0.0.1:${port}`);").replace(setup,
+    "  const runIsolatedBotTurn = async (bot, prompt, history) => {\n    const stateHome = path.join(HOME, 'bot-workspaces', bot.id);\n    fs.mkdirSync(stateHome, { recursive: true, mode: 0o700 });\n    const botModelEnv = process.env.DS_AGENT_API_BASE && process.env.DS_AGENT_API_KEY ? {} : { DS_AGENT_API_BASE: 'http://127.0.0.1:3425/v1', DS_AGENT_API_KEY: 'magpie', DS_AGENT_API_MODEL: 'codex/gpt-6.2-sol' };\n    const result = await runCli(['chat', buildBotPrompt(bot, prompt, history)], 120_000, stateHome, botModelEnv);\n    if (result.code !== 0 || !result.stdout.includes('model=HttpOpenAI')) throw new Error('Bot execution failed');\n    return extractAssistantReply(result.stdout.split('\\n').filter(line => !line.startsWith('[reply]') || line.includes('purpose=result')).join('\\n'));\n  };\n  const runtimeConfigPath = path.join(HOME, 'bot-runtimes.json');\n  const runtimeConfig = fs.existsSync(runtimeConfigPath) ? JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8')) : {};\n  const codex = process.env.DSH_BOT_CODEX_BIN || runtimeConfig.codex;\n  const adapters = codex && path.isAbsolute(codex) && fs.existsSync(codex) ? { codex: createCodexAdapter({ executable: codex, workspaceRoot: path.join(HOME, 'bot-workspaces') }) } : {};\n  const claude = process.env.DSH_BOT_CLAUDE_BIN || runtimeConfig.claude;\n  if (claude && path.isAbsolute(claude) && fs.existsSync(claude)) adapters.claude = createClaudeAdapter({ executable: claude, workspaceRoot: path.join(HOME, 'bot-workspaces') });\n  const harness = process.env.DSH_BOT_HARNESS_BIN || runtimeConfig.harness;\n  if (harness && path.isAbsolute(harness) && fs.existsSync(harness)) adapters.harness = createHarnessAdapter({ executable: harness, useLocalMagpie: runtimeConfig.localMagpie === true, workspaceRoot: path.join(HOME, 'bot-workspaces') });\n  const proposalTokenFile = path.join(HOME, 'bot-proposal.token');\n  const proposalToken = process.env.DSH_BOT_PROPOSAL_TOKEN || (fs.existsSync(proposalTokenFile) ? fs.readFileSync(proposalTokenFile, 'utf8').trim() : undefined);\n  const handleBots = createBotHttpHandler({ home: HOME, runTurn: runIsolatedBotTurn, adapters, remoteDevices: () => readDeviceInventory(HOME), probeHost: probeSshHost, proposalToken, allowedOrigin: 'dsh-app://app' });\n" + setup +
+    "\n      if (/^\\/api\\/bots(?:\\/|$)/.test(req.url?.split('?')[0] ?? '')) {\n        if (!isAllowedHost(req.headers.host)) return send(res, 403, { error: 'forbidden' });\n        if (req.method !== 'OPTIONS' && req.headers['x-ds-desktop'] !== DESKTOP_SECRET && !(req.method === 'POST' && req.url === '/api/bots/offers' && !req.headers.origin)) return send(res, 401, { error: 'unauthorized' });\n        try { if (!await handleBots(req, res)) send(res, 404, { error: 'not found' }); } catch { send(res, 500, { error: 'Bot service unavailable' }); }\n        return;\n      }");
+  if (updated !== installed) writeFileSync(path + (upgraded ? '.before-bot-api-' + Date.now() : '.before-bot-api'), installed, { flag: 'wx' });
+  for (const name of ['bot-http.mjs', 'bot-routes.mjs', 'bot-registry.mjs', 'bot-context.mjs', 'codex-adapter.mjs', 'claude-adapter.mjs', 'harness-adapter.mjs', 'harness-magpie.yml', 'bot-devices.mjs']) {
+    const target = join(dirname(path), name);
+    if (!upgraded && existsSync(target)) throw new Error('Existing host module: ' + name);
+    copyFileSync(new URL('./' + name, import.meta.url), target);
+  }
+  if (updated !== installed) {
+    writeFileSync(path + '.bots-new', updated, { flag: 'wx' });
+    renameSync(path + '.bots-new', path);
+  }
+}

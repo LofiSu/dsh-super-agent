@@ -1,0 +1,25 @@
+- id: llm-pi-ai
+  config:
+    providers:
+      magpie:
+        api: openai-completions
+        models:
+          - id: codex/gpt-6.2-sol
+            name: Magpie Codex
+            contextWindow: 128000
+            maxTokens: 4096
+            input: [text]
+        apiKeyEnv: DSH_BOT_MAGPIE_KEY
+        baseURL: http://127.0.0.1:3425/v1
+- id: llm-deepseek
+  disabled: true
+- id: agent-loop
+  config:
+    agents:
+      - id: main
+        provider: magpie
+        model: codex/gpt-6.2-sol
+- id: agent-default-model
+  config:
+    provider: magpie
+    model: codex/gpt-6.2-sol

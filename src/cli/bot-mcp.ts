@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListToolsRequestSchema, McpError, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js'
@@ -46,14 +47,61 @@ export async function runBotMcp(home: string): Promise<void> {
     { name: 'dsh-super-bot', version: '0.1.0' },
     { capabilities: { tools: {}, resources: {} } },
   )
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }))
+  let proposalToken = process.env.DSH_BOT_PROPOSAL_TOKEN?.trim()
+  const tokenFile = process.env.DSH_BOT_PROPOSAL_TOKEN_FILE
+  if (!proposalToken && tokenFile) {
+    try {
+      proposalToken = readFileSync(tokenFile, 'utf8').trim()
+    } catch {
+      // Proposal access is optional; keep read-only tools available.
+    }
+  }
+  const proposalPort = Number(process.env.DSH_BOT_PROPOSAL_PORT ?? 4328)
+  const proposalEnabled = Boolean(proposalToken && proposalToken.length >= 32 &&
+    Number.isInteger(proposalPort) && proposalPort > 0 && proposalPort <= 65535)
+  const proposalTool = {
+    name: 'propose_bot',
+    description: 'Submit a Bot draft for owner review in DeepSeek Harness.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { name: { type: 'string' }, purpose: { type: 'string' } },
+      required: ['name', 'purpose'],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, openWorldHint: false },
+  }
+  server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: proposalEnabled ? [...tools, proposalTool] : tools,
+  }))
   server.setRequestHandler(ListResourcesRequestSchema, () => ({ resources: [dashboardResource] }))
   server.setRequestHandler(ReadResourceRequestSchema, ({ params }) => {
     if (params.uri !== dashboardUri) throw new McpError(ErrorCode.InvalidParams, 'Unknown resource')
     return { contents: [{ ...dashboardResource, text: renderBotDashboard(home) }] }
   })
-  server.setRequestHandler(CallToolRequestSchema, ({ params }) => {
+  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     const args = params.arguments ?? {}
+    if (params.name === 'propose_bot' && proposalEnabled) {
+      const { name, purpose } = args
+      if (typeof name !== 'string' || !name.trim() || name.length > 80 ||
+          typeof purpose !== 'string' || !purpose.trim() || purpose.length > 1000 ||
+          Object.keys(args).some(key => key !== 'name' && key !== 'purpose')) {
+        return { isError: true, content: [{ type: 'text', text: 'Supply a valid Bot name and purpose.' }] }
+      }
+      try {
+        const response = await fetch(`http://127.0.0.1:${proposalPort}/api/bots/offers`, {
+          method: 'POST',
+          redirect: 'error',
+          headers: { Authorization: 'Bearer ' + proposalToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, purpose, device: 'local', engine: 'ds-agent' }),
+          signal: AbortSignal.timeout(5000),
+        })
+        if (response.status !== 201) throw new Error('Proposal not accepted')
+        const result = await response.json()
+        return { content: [{ type: 'text', text: 'Awaiting owner approval. Proposal ID: ' + result.id }] }
+      } catch {
+        return { isError: true, content: [{ type: 'text', text: 'Harness could not confirm receipt of the proposal.' }] }
+      }
+    }
     if (params.name === 'open_dashboard' && Object.keys(args).length === 0) {
       return { content: [{ type: 'text', text: 'Dashboard available in compatible hosts. Use list_tasks and list_teams for text results.' }] }
     }

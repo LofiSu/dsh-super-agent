@@ -310,7 +310,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     expect(runtime.ingest(imTrigger({
       id: 'mod_harness',
       thread: 'topic/mod-harness',
-      text: '@ds-agent please acknowledge the checkout login timeout in one short sentence',
+      text: '@ds-agent delegate to a worker: draft a three-step verification plan for a checkout login timeout, then report the worker result.',
       actor: 'alex',
     }))).toBe('stored')
     await settleWithDeadline(runtime, 60_000)
