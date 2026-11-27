@@ -396,10 +396,12 @@ describe('Feishu conversation-first 1:1', () => {
   it('work path: Router reply then dispatch_work opens a worker ticket (conversation envelope kept)', async () => {
     let workRouterReplied = false
     const workerPrompts: string[] = []
+    let workerSystem = ''
     const model = new ScriptedModel(request => {
       const prompt = lastPrompt(request)
       if (request.role === 'worker') {
         workerPrompts.push(prompt)
+        workerSystem = request.messages.find(message => message.role === 'system')?.content ?? ''
         return { text: 'worker started' }
       }
       if (request.role !== 'router') return { text: 'noop' }
@@ -465,6 +467,7 @@ describe('Feishu conversation-first 1:1', () => {
 
     const envelopes = runtime.store.listDocs<Ticket>('ticket').filter(isConversationTicket)
     expect(envelopes).toHaveLength(1)
+    expect(workerSystem).toContain('Every accepted work ticket starts here')
     expect(runtime.store.listReplies().some(r => r.text.includes('查'))).toBe(true)
     const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
     expect(work.assignments.some(a => a.state === 'pending' || a.state === 'running')).toBe(true)

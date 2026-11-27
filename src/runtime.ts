@@ -66,7 +66,9 @@ import { TeamRegistry } from './harness/team.ts'
 import { createModelFromEnv, HttpOpenAI, roleModelsFromEnv, type Model } from './harness/model.ts'
 import { directChatRouterShard, directChatThread, SessionJournal, sharesDirectChatThread, workerSessionId } from './harness/session.ts'
 import { loadPromptFiles, type PromptFiles } from './harness/prompts.ts'
+import { loadBoundAgentSpecs } from './env/agent-connections.ts'
 import { LocalAgentRegistry, loadLocalAgents, type LocalAgentSpec } from './env/local-agents.ts'
+import { engineeringWorkflow } from './harness/engineering-workflow.ts'
 import { SkillRegistry } from './env/skills.ts'
 import { ToolRegistry } from './harness/tools.ts'
 import {
@@ -157,7 +159,7 @@ export interface RuntimeOptions {
    * `local-agents.json` in `home`, then `DS_AGENT_LOCAL_AGENTS`.
    */
   localAgents?: LocalAgentSpec[]
-  /** Owner-authored playbooks. Defaults to `skills/<id>/SKILL.md` in `home`. */
+  /** Playbook catalog. Defaults to pstack plus owner skills from `home`. */
   skills?: SkillRegistry
   /**
    * Owner-configured browser errands. Defaults to `browser-errands.json` in
@@ -760,7 +762,10 @@ export class Runtime {
       + `minIntervalMinutes=${connectorConfig.wake.minIntervalMinutes} maxPerDay=${connectorConfig.wake.maxPerDay}`,
     )
     const promptFiles = opts.prompts ?? loadPromptFiles(opts.home, baseEnv, line => log.info(line))
-    const localAgentSpecs = opts.localAgents ?? loadLocalAgents(opts.home, baseEnv)
+    const localAgentSpecs = opts.localAgents ?? [
+      ...loadLocalAgents(opts.home, baseEnv),
+      ...loadBoundAgentSpecs(opts.home),
+    ]
     const localAgents = localAgentSpecs.length
       ? new LocalAgentRegistry(localAgentSpecs, {
         env: baseEnv,
@@ -772,7 +777,7 @@ export class Runtime {
     }
     const skills = opts.skills ?? SkillRegistry.fromHome(opts.home, line => log.info(line))
     if (skills.size) {
-      log.info(`[skill] configured skills=${skills.list().map(skill => skill.id).join(',')}`)
+      log.info(`[skill] loaded ${skills.size} workflow documents`)
     }
     // The scheduler is built before the Runtime exists; the closure forwards
     // into Runtime.ingest once construction finishes, so routines take the
@@ -1923,7 +1928,7 @@ export class Runtime {
       jobDelayMs: opts.jobDelayMs ?? 40,
       prompts: promptFiles,
       ...(localAgents ? { localAgents: localAgents.list() } : {}),
-      ...(skills.size ? { skills: skills.list() } : {}),
+      ...(skills.size ? { skills: skills.list(), engineeringWorkflow: (ticket: Ticket) => engineeringWorkflow(ticket, skills, store) } : {}),
       teams,
       takeGuidance: (ticketId, audience) => engine.takeGuidance(ticketId, audience),
       singleSession: opts.singleSession === true,

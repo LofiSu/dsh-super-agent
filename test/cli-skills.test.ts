@@ -47,13 +47,16 @@ describe('ds-agent skills', () => {
     const result = runCli(home, ['skills', '--json'])
     expect(result.status, result.stderr).toBe(0)
     const skills = JSON.parse(result.stdout) as { id: string; description: string }[]
-    expect(skills).toEqual([{ id: 'release', description: 'Cut a release.' }])
+    expect(skills).toEqual(expect.arrayContaining([
+      { id: 'release', description: 'Cut a release.' },
+      expect.objectContaining({ id: 'poteto-mode', bundled: true }),
+    ]))
   })
 
-  it('says so when nothing is configured', () => {
+  it('lists pstack when no owner skills are configured', () => {
     const result = runCli(tempHome(), ['skills'])
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toContain('no skills configured')
+    expect(result.stdout).toContain('pstack-playbook-bug-fix')
   })
 
   it('includes the skills index in the rendered prompt', () => {

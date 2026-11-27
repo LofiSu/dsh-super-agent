@@ -1,26 +1,29 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { UserError } from '../shared/errors.ts'
 
 /**
- * Owner-authored skills: a directory of playbooks the agent can load when a
+ * Bundled and owner-authored playbooks the agent can load when a
  * task matches. The index (id plus one-line description) is injected into the
  * system prompt; the body is read on demand with `read_skill`.
  *
  * A skill is documentation, not a capability. It cannot grant a tool, widen a
- * role, or authorize an outward action. The registry only ever reads a regular
- * file inside `<home>/skills/<id>/SKILL.md`; symlinks and path-like ids are
- * rejected so a skill cannot become a arbitrary-file read.
+ * role, or authorize an outward action. The registry resolves only exact catalog entries for regular files. Owner
+ * skills use `<home>/skills/<id>/SKILL.md`; bundled references use IDs
+ * discovered in the package. An ID is never interpreted as a filesystem path.
  */
 export interface SkillInfo {
   id: string
   description: string
+  bundled?: true
 }
 
 export interface SkillRecord extends SkillInfo {
   /** Absolute path resolved at load time. Never exposed to the model. */
   file: string
   bytes: number
+  markdown?: true
 }
 
 export interface SkillDocument extends SkillInfo {
@@ -37,6 +40,11 @@ export const MAX_SKILL_BODY_CHARS = 16_000
 export const MAX_SKILL_DESCRIPTION_CHARS = 200
 /** Budget for the index lines in the prompt; extra skills stay on disk. */
 export const MAX_SKILL_INDEX_CHARS = 2_000
+
+const PSTACK_ROOT = fileURLToPath(new URL(
+  import.meta.url.endsWith('.ts') ? '../../vendor/pstack/' : '../pstack/',
+  import.meta.url,
+))
 
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/
 
@@ -70,6 +78,40 @@ export function loadSkills(
     if (record) skills.push(record)
   }
   return skills
+}
+
+/** Package-owned workflow documents. IDs are generated from files in fixed directories. */
+function loadPstackSkills(): SkillRecord[] {
+  const root = path.join(PSTACK_ROOT, 'skills')
+  const records: SkillRecord[] = fs.readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && ID.test(entry.name))
+    .flatMap(entry => {
+      const file = path.join(root, entry.name, SKILL_FILE)
+      const stat = fs.lstatSync(file, { throwIfNoEntry: false })
+      if (!stat?.isFile() || stat.size > MAX_SKILL_FILE_BYTES) return []
+      const text = fs.readFileSync(file, 'utf8')
+      const description = parseSkill(text, Infinity)?.description.slice(0, MAX_SKILL_DESCRIPTION_CHARS)
+      return description ? [{ id: entry.name, description, file, bytes: stat.size, bundled: true as const }] : []
+    })
+
+  for (const entry of fs.readdirSync(PSTACK_ROOT, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+    const file = path.join(entry.parentPath, entry.name)
+    const relative = path.relative(PSTACK_ROOT, file).split(path.sep).join('/')
+    if (/^skills\/[^/]+\/SKILL\.md$/.test(relative)) continue
+    const id = 'pstack:' + relative
+    const bytes = fs.statSync(file).size
+    if (bytes > MAX_SKILL_FILE_BYTES) continue
+    const record: SkillRecord = { id, description: 'pstack workflow reference', file, bytes, markdown: true, bundled: true }
+    records.push(record)
+    const alias = relative
+      .replace(/^skills\/poteto-mode\/playbooks\//, 'pstack-playbook-')
+      .replace(/^skills\/poteto-mode\//, 'pstack-mode-')
+      .replace(/^agents\//, 'pstack-agent-')
+      .replace(/\.md$/, '')
+    if (alias.startsWith('pstack-') && ID.test(alias)) records.push({ ...record, id: alias })
+  }
+  return records
 }
 
 function readSkillRecord(
@@ -112,7 +154,7 @@ interface ParsedSkill {
 }
 
 /** Parse the YAML-ish frontmatter these skills use: one `key: value` per line. */
-export function parseSkill(text: string): ParsedSkill | undefined {
+export function parseSkill(text: string, descriptionLimit = MAX_SKILL_DESCRIPTION_CHARS): ParsedSkill | undefined {
   const normalized = text.replace(/\r\n/g, '\n')
   if (!normalized.startsWith('---\n')) return undefined
   const end = normalized.indexOf('\n---', 4)
@@ -128,7 +170,7 @@ export function parseSkill(text: string): ParsedSkill | undefined {
     if (!(key in meta)) meta[key] = value
   }
   const description = meta.description?.trim() ?? ''
-  if (!description || description.length > MAX_SKILL_DESCRIPTION_CHARS || /[\r\n]/.test(description)) {
+  if (!description || description.length > descriptionLimit || /[\r\n]/.test(description)) {
     return undefined
   }
   return { description, body }
@@ -163,13 +205,17 @@ export class SkillRegistry {
     home: string,
     warn: (line: string) => void = () => {},
   ): SkillRegistry {
-    return new SkillRegistry(loadSkills(home, warn))
+    return new SkillRegistry([...loadSkills(home, warn), ...loadPstackSkills()])
   }
 
   list(): SkillInfo[] {
     return [...this.skills.values()]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map(skill => ({ id: skill.id, description: skill.description }))
+      .map(skill => ({
+        id: skill.id,
+        description: skill.description,
+        ...(skill.bundled ? { bundled: true as const } : {}),
+      }))
   }
 
   get size(): number {
@@ -184,12 +230,14 @@ export class SkillRegistry {
     }
     const stat = fs.lstatSync(skill.file)
     if (!stat.isFile()) throw new UserError(`skill ${id} is no longer a regular file`)
-    const parsed = parseSkill(fs.readFileSync(skill.file, 'utf8'))
+    if (stat.size > MAX_SKILL_FILE_BYTES) throw new UserError(`skill ${id} exceeds the file size limit`)
+    const text = fs.readFileSync(skill.file, 'utf8')
+    const parsed = skill.markdown ? { body: text, description: skill.description } : parseSkill(text, skill.bundled ? Infinity : MAX_SKILL_DESCRIPTION_CHARS)
     if (!parsed) throw new UserError(`skill ${id} changed on disk and is no longer valid`)
     const truncated = parsed.body.length > MAX_SKILL_BODY_CHARS
     return {
       id,
-      description: parsed.description,
+      description: parsed.description.slice(0, MAX_SKILL_DESCRIPTION_CHARS),
       body: truncated ? parsed.body.slice(0, MAX_SKILL_BODY_CHARS) : parsed.body,
       truncated,
     }

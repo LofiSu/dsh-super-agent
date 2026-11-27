@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createA2AReplayCache } from '../src/channels/a2a-auth.ts'
+import { recordPstack } from '../src/core/pstack-run.ts'
 import { imTrigger } from '../src/channels/im.ts'
 import {
   createRemoteMeshHandler,
@@ -22,6 +23,17 @@ const REMOTE_NODE_ID = 'cancel-pump-node'
 
 const servers: Server[] = []
 const homes: string[] = []
+
+// These tests manually complete a local capacity blocker while its fixture
+// Worker is held. Record the same checkpoints the Worker would have emitted.
+function verifyLocalBlocker(runtime: Runtime, ticketId: string): void {
+  const ticket = loadTicket(runtime, ticketId)
+  const sessionId = ticket.assignments.at(-1)?.workerSessionId
+  if (!sessionId) throw new Error('capacity blocker has no worker session')
+  for (const phase of ['plan', 'execute', 'verify']) {
+    recordPstack(runtime.store, ticket, sessionId, phase, 'Capacity blocker control fixture', 'pstack-playbook-investigation')
+  }
+}
 
 interface Gate {
   promise: Promise<void>
@@ -3485,6 +3497,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
 
       // The local overflow is gone: end the holder through the production
       // report path, then let its Worker turn finish so the local slot frees.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -3606,6 +3619,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
       expect(runtime.placement.remoteHasTicket(ticketId)).toBe(false)
 
       // End the blocker and free the local slot.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -3751,6 +3765,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
       expect(runtime.placement.remoteHasTicket(ticketId)).toBe(false)
 
       // End the blocker and free the local slot.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -3904,6 +3919,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
       expect(runtime.placement.remoteHasTicket(ticketId)).toBe(false)
 
       // End the blocker and free the local slot.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -4121,6 +4137,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
 
       // Free the local slot and retry T1 locally. Hold A3's worker turn so
       // `releaseSlot` for T1 cannot run yet.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -4295,6 +4312,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
       expect(runtime.placement.remoteHasTicket(ticketId)).toBe(false)
 
       // End the blocker and free the local slot.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',
@@ -4747,6 +4765,7 @@ describe('Runtime remote mesh cancel releases capacity', () => {
 
       // 2. Free the local slot and retry T1 local-first. Hold A2's worker turn;
       // its placement-time A1 cancel is lost as well.
+      verifyLocalBlocker(runtime, blockerId)
       expect(runtime.engine.report(blockerId, {
         kind: 'ready',
         text: 'blocker done',

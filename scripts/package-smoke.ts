@@ -144,6 +144,13 @@ check(
   `expected ${JSON.stringify(pkg.version)} got ${JSON.stringify(version.output)}`,
 )
 
+const skills = run('node', [distEntry, 'skills', '--json'])
+check(
+  'built CLI loads pstack and its playbooks',
+  skills.status === 0 && skills.output.includes('"poteto-mode"') && skills.output.includes('"pstack-playbook-bug-fix"'),
+  skills.output,
+)
+
 console.log('package smoke: checking tarball contents')
 // pnpm 9 does not implement `pnpm pack --dry-run`; npm is the fallback the
 // contract allows. npm still runs the `prepack` script above.
@@ -152,6 +159,9 @@ check('npm pack --dry-run exits 0', pack.status === 0, pack.output)
 check('tarball file list contains dist/cli/main.js', pack.output.includes('dist/cli/main.js'), pack.output)
 for (const asset of RUNTIME_ASSETS) {
   check(`tarball file list contains dist/${asset}`, pack.output.includes(`dist/${asset}`), pack.output)
+}
+for (const asset of ['dist/pstack/LICENSE', 'dist/pstack/skills/poteto-mode/playbooks/bug-fix.md']) {
+  check(`tarball file list contains ${asset}`, pack.output.includes(asset), pack.output)
 }
 for (const file of distEvaluatorFiles) {
   const relative = path.relative(root, file).split(path.sep).join('/')

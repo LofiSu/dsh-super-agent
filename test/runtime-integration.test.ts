@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { bindAgentConnection } from '../src/env/agent-connections.ts'
+import { cliTrigger } from '../src/channels/cli.ts'
 import { imTrigger } from '../src/channels/im.ts'
 import { bindRolePorts } from '../src/core/role-ports.ts'
 import { LocalEnv } from '../src/env/local-env.ts'
 import { ToolRegistry } from '../src/harness/tools.ts'
 import type { Runtime } from '../src/runtime.ts'
 import { threadKey, type Decision, type Disposition, type Thread, type Ticket, type Trigger } from '../src/shared/types.ts'
-import { freshRuntime, shutdown } from './fixtures.ts'
+import { freshRuntime, shutdown, tempHome } from './fixtures.ts'
 import { field, lastPrompt, ScriptedModel, silentModel } from './scripted-model.ts'
 import { normalizeConnectorConfig } from '../src/connectors/config.ts'
 import { connectorTrigger, ConnectorWakeScheduler, loadConnectorWakeState } from '../src/connectors/wake.ts'
@@ -28,12 +30,13 @@ function isolatedEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env
 }
 
-function start(opts: { model?: ScriptedModel; env?: NodeJS.ProcessEnv; singleSession?: boolean; now?: () => string } = {}): Runtime {
+function start(opts: { model?: ScriptedModel; env?: NodeJS.ProcessEnv; singleSession?: boolean; now?: () => string; home?: string } = {}): Runtime {
   const runtime = freshRuntime({
     model: opts.model ?? silentModel(),
     env: opts.env ?? isolatedEnv(),
     singleSession: opts.singleSession,
     now: opts.now,
+    home: opts.home,
     jobDelayMs: 5,
     watchdogIntervalMs: 60_000,
   })
@@ -97,6 +100,71 @@ function reportingModel(prompts: string[] = []): ScriptedModel {
 }
 
 describe('Runtime service integration', () => {
+  it('starts and checkpoints pstack for a plain accepted task before running any tools', async () => {
+    let ticketId = ''
+    let system = ''
+    const runtime = start({ model: new ScriptedModel(request => {
+      if (request.role !== 'worker') return { text: 'router-ok' }
+      ticketId = field(lastPrompt(request), 'ticketId')
+      system = request.messages.find(message => message.role === 'system')?.content ?? ''
+      const records = request.messages.filter(message => message.role === 'tool' && message.name === 'pstack_checkpoint')
+      const phase = ['plan', 'execute', 'verify'][records.length]
+      if (!phase) return { text: 'workflow checkpointed' }
+      return { toolCalls: [{ id: phase, name: 'pstack_checkpoint', args: {
+        phase, playbook: 'pstack-playbook-investigation', evidence: 'Check ticket input and report its sources.',
+      } }] }
+    }) })
+    runtime.ingest(cliTrigger({ text: '帮我整理这周的会议笔记' }))
+    await runtime.jobsSettled()
+    expect(system).toContain('Every accepted work ticket starts here')
+    expect(runtime.store.getDoc('pstack-run', ticketId)).toMatchObject({
+      phase: 'verify',
+      playbook: 'pstack-playbook-investigation',
+    })
+  })
+
+  it('runs bound implementer and reviewer agents on one ticket and persists their receipts', async () => {
+    const home = tempHome()
+    for (const id of ['implementer', 'reviewer']) {
+      bindAgentConnection(home, id, 'bridge', {
+        command: process.execPath,
+        args: ['-e', `process.stdout.write('${id} observed: ' + process.argv[1])`, '{task}'],
+      })
+    }
+    let ticketId = ''
+    const receipts: string[] = []
+    const runtime = start({ home, model: new ScriptedModel(request => {
+      if (request.role !== 'worker') return { text: 'router-ok' }
+      ticketId = field(lastPrompt(request), 'ticketId')
+      const results = request.messages.filter(message => message.role === 'tool')
+      const previous = results.at(-1)
+      if (previous?.name === 'delegate_agent') receipts.push(previous.content)
+      const steps = [
+        { name: 'pstack_checkpoint', args: { phase: 'plan', playbook: 'pstack-playbook-feature', evidence: 'Implement and independently review a scoped task.' } },
+        { name: 'report_to_router', args: { deliver: true, text: 'Too early' } },
+        { name: 'delegate_agent', args: { agent: 'implementer', task: 'Create the change' } },
+        { name: 'delegate_agent', args: { agent: 'reviewer', task: 'Review the implementation independently' } },
+        { name: 'pstack_checkpoint', args: { phase: 'execute', evidence: 'Both agents returned successful receipts.' } },
+        { name: 'pstack_checkpoint', args: { phase: 'verify', evidence: 'Observed expected results from both fixtures.' } },
+        { name: 'report_to_router', args: { deliver: true, text: 'Verified result' } },
+      ]
+      if (results.length === 2) expect(previous?.content).toContain('verification must be recorded')
+      const step = steps[results.length]
+      return step ? { toolCalls: [{ id: `step_${results.length}`, ...step }] } : { text: 'done' }
+    }) })
+    runtime.ingest(cliTrigger({ text: 'Use the implementer and reviewer to handle this task' }))
+    await runtime.jobsSettled()
+    expect(receipts).toHaveLength(2)
+    expect(receipts[0]).toContain('implementer observed')
+    expect(receipts[1]).toContain('reviewer observed')
+    expect(runtime.store.getDoc('pstack-run', ticketId)).toMatchObject({ phase: 'delivered' })
+    expect(runtime.store.listReceiptExternalOperations(ticketId).filter(row => row.kind === 'delegate_agent'))
+      .toEqual([
+        expect.objectContaining({ agentId: 'implementer', phase: 'completed' }),
+        expect.objectContaining({ agentId: 'reviewer', phase: 'completed' }),
+      ])
+  })
+
   it('resumes a trigger-only interrupted ingress and leaves completed retries duplicate', () => {
     const runtime = start()
     const trigger = imTrigger({ id: 'trg_interrupted_ingress', thread: 'recovery/topic', text: 'synthetic event' })

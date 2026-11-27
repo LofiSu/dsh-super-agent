@@ -25,6 +25,7 @@ export interface ExternalOperationRecord {
   ticketId: string
   assignmentId?: string
   sessionId?: string
+  agentId?: string
   idempotencyKey: string
   phase: ExternalOperationPhase
   startedAt: string
@@ -87,6 +88,7 @@ export function beginDelegateOperation(input: {
     ticketId: input.ticketId,
     assignmentId: input.assignmentId,
     sessionId: input.sessionId,
+    agentId: input.agent,
     idempotencyKey: delegateIdempotencyKey(input.ticketId, input.assignmentId, input.agent, input.task),
     phase: 'started',
     startedAt: input.now,

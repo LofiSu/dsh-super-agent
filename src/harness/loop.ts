@@ -66,6 +66,7 @@ export interface HarnessOptions {
   localAgents?: readonly LocalAgentInfo[]
   /** Owner-authored playbooks, by id and description only. */
   skills?: readonly SkillInfo[]
+  engineeringWorkflow?: (ticket: Ticket) => string | undefined
   /**
    * Router-only global memory. Defaults to `memory`; the Runtime narrows this
    * to same-Thread decisions/digests so a lexical query stays in the Worker
@@ -999,6 +1000,7 @@ export class Harness {
       createdAt,
     })
     try {
+      const ticket = role === 'worker' && ticketId ? this.opts.store.getDoc<Ticket>('ticket', ticketId) : undefined
       await runTurn({
         model: this.modelFor(role),
         tools: this.opts.tools,
@@ -1011,6 +1013,11 @@ export class Harness {
         prompts: this.opts.prompts,
         localAgents: this.opts.localAgents,
         skills: this.opts.skills,
+        workflow: ticket && !ticket.ended && ticket.assignments.at(-1)?.state === 'running'
+          && !isConversationTicket(ticket)
+          && !isProactiveTicket(ticket) && !isConnectorWakeTicket(ticket)
+          ? this.opts.engineeringWorkflow?.(ticket)
+          : undefined,
         pause: () => this.pauseReason(ticketId, prompt),
       })
     } finally {
@@ -1040,6 +1047,7 @@ export async function runTurn(input: {
   prompts?: PromptFiles
   localAgents?: readonly LocalAgentInfo[]
   skills?: readonly SkillInfo[]
+  workflow?: string
   maxSteps?: number
   /** Return a reason to stop this turn before the next model call or tool call. */
   pause?: () => string | undefined
@@ -1059,6 +1067,7 @@ async function runTurnBody(input: {
   prompts?: PromptFiles
   localAgents?: readonly LocalAgentInfo[]
   skills?: readonly SkillInfo[]
+  workflow?: string
   maxSteps?: number
   pause?: () => string | undefined
 }): Promise<void> {
@@ -1080,8 +1089,9 @@ async function runTurnBody(input: {
     ...message,
     content: redact(message.content),
   }))
+  const system = systemPrompt(input.session.role, input.prompts, input.localAgents, input.skills)
   const messages: ModelMessage[] = [
-    { role: 'system', content: redact(systemPrompt(input.session.role, input.prompts, input.localAgents, input.skills)) },
+    { role: 'system', content: redact(input.workflow ? system + '\n\n' + input.workflow : system) },
     ...prior,
     { role: 'user', content: prompt },
   ]

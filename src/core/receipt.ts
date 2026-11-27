@@ -30,11 +30,13 @@ export interface ExecutionReceipt {
       at?: string
     }>
   }
+  workflow?: { phase: string; playbook?: string; verificationRecorded: boolean }
   trackedExternalEffects: Array<{
     id: string
     kind: 'delegate_agent' | 'other'
     status: ReceiptStatus
     assignmentId?: string
+    agentId?: string
     updatedAt?: string
   }>
   scope: {
@@ -86,11 +88,13 @@ export function executionReceipt(store: Store, ticket: ReceiptTicket): Execution
     })),
   ]
   const executionStatus = statusForTicket(ticket)
+  const workflow = store.getDoc<{ phase?: string; playbook?: string; checkpoints?: { verify?: unknown } }>('pstack-run', ticket.id)
   const trackedExternalEffects = operations.map(operation => ({
     id: safeId(operation.id),
     kind: operation.kind === 'delegate_agent' ? 'delegate_agent' as const : 'other' as const,
     status: operationStatus(operation.phase),
     ...(operation.assignmentId ? { assignmentId: safeId(operation.assignmentId) } : {}),
+    ...(operation.agentId ? { agentId: safeId(operation.agentId) } : {}),
     ...(safeTimestamp(operation.updatedAt) ? { updatedAt: safeTimestamp(operation.updatedAt) } : {}),
   }))
 
@@ -121,6 +125,11 @@ export function executionReceipt(store: Store, ticket: ReceiptTicket): Execution
       status: aggregateDelivery(deliveryItems),
       items: deliveryItems,
     },
+    ...(workflow?.phase ? { workflow: {
+      phase: safeId(workflow.phase),
+      ...(workflow.playbook ? { playbook: safeId(workflow.playbook) } : {}),
+      verificationRecorded: workflow.checkpoints?.verify !== undefined,
+    } } : {}),
     trackedExternalEffects,
     scope: {
       evidence: [
@@ -159,12 +168,17 @@ export function formatExecutionReceipt(receipt: ExecutionReceipt): string {
   for (const item of receipt.delivery.items) {
     lines.push(`  ${item.id} channel=${item.channel} status=${item.status}${item.at ? ` at=${item.at}` : ''}`)
   }
+  if (receipt.workflow) {
+    const { phase, playbook, verificationRecorded } = receipt.workflow
+    lines.push(`pstack: ${phase}${playbook ? ` playbook=${playbook}` : ''} verification-recorded=${verificationRecorded}`)
+  }
   lines.push('tracked external effects:')
   if (receipt.trackedExternalEffects.length === 0) lines.push('  none recorded')
   for (const effect of receipt.trackedExternalEffects) {
     lines.push(
       `  ${effect.id} kind=${effect.kind} status=${effect.status}`
       + `${effect.assignmentId ? ` assignment=${effect.assignmentId}` : ''}`
+      + `${effect.agentId ? ` agent=${effect.agentId}` : ''}`
       + `${effect.updatedAt ? ` updated=${effect.updatedAt}` : ''}`,
     )
   }
