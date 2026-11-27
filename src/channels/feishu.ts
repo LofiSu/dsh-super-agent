@@ -93,6 +93,7 @@ export interface FeishuListOptions {
   endTimeSec?: number
   pageSize?: number
   threadId?: string
+  signal?: AbortSignal
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
@@ -201,6 +202,7 @@ export class FeishuClient {
           page_size: options.pageSize ?? 50,
           page_token: pageToken,
         },
+        signal: options.signal,
       })
       for (const item of data.items ?? []) items.push(item)
       if (!data.has_more || !data.page_token) break
@@ -492,6 +494,7 @@ export class FeishuSource {
     const items = await this.client.listMessages(this.chatId, {
       startTimeSec,
       pageSize: this.pageSize,
+      signal,
     })
     const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()

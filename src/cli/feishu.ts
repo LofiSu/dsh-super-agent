@@ -227,10 +227,11 @@ export async function runFeishuLoop(options: FeishuLoopOptions): Promise<FeishuL
         // anything; a blocked trigger must not be skipped on the next poll.
         const cursorBeforePull = source.cursorMs
         const triggers = await source.pull(options.signal)
+        let confirmedCursor = cursorBeforePull
+        let confirmedTrigger = false
         let cursorBlockedByIngress = false
         for (const trigger of triggers) {
-          const preview = trigger.text.replace(/\s+/g, ' ').slice(0, 80)
-          log(`[feishu] inbound id=${trigger.id} from=${trigger.actor.id} text=${preview}`)
+          log(`[feishu] inbound id=${trigger.id}`)
           try {
             await ingestResidentTrigger(runtime, trigger, {
               limit: ingressLimit,
@@ -239,41 +240,40 @@ export async function runFeishuLoop(options: FeishuLoopOptions): Promise<FeishuL
               channel: 'feishu',
               ...(options.saturateWaitMs === undefined ? {} : { saturateWaitMs: options.saturateWaitMs }),
             })
+            confirmedTrigger = true
+            const triggerTime = Date.parse(trigger.at)
+            if (Number.isFinite(triggerTime)) confirmedCursor = Math.max(confirmedCursor, triggerTime)
           } catch (error) {
-            log(`[feishu] ingest failed ${messageOf(error)}`)
+            log(`[feishu] ingest failed id=${trigger.id} ${messageOf(error)}`)
             cursorBlockedByIngress = true
             break
           }
         }
-        // Persist only after the pulled triggers were ingested, matching the
-        // iMessage loop: a crashed ingest window is retried on the next pull.
-        // On a blocked window also roll the source back to where this pull
-        // started, so the next pull re-reads the whole uningested span rather
-        // than only the source's one-second overlap. Already-ingested ids are
-        // deduped by `Runtime.ingest`, so replaying them is safe.
-        if (cursorBlockedByIngress) {
-          source.restoreCursor(cursorBeforePull)
-        } else {
-          const advanced = source.cursorMs
-          if (
-            Number.isFinite(advanced)
-            && advanced > 0
-            && (cursor === undefined || advanced > cursor)
-          ) {
-            // Keep both cursor representations unchanged until the durable
-            // write succeeds. If persistence fails, the next pull must replay
-            // this entire window: keeping either cursor advanced would skip it.
-            try {
-              runtime.store.putDoc(CURSOR_KIND, CURSOR_ID, {
-                chatId,
-                lastCreateTimeMs: advanced,
-              } satisfies FeishuCursorDoc)
-              cursor = advanced
-            } catch (error) {
-              source.restoreCursor(cursorBeforePull)
-              throw error
-            }
+        // On failure, commit only through the last successfully ingested
+        // trigger. The failed trigger and the rest of the batch are replayed;
+        // Runtime's durable trigger-id dedupe makes the confirmed prefix safe.
+        const advanced = cursorBlockedByIngress
+          ? (confirmedTrigger ? confirmedCursor : undefined)
+          : source.cursorMs
+        if (
+          typeof advanced === 'number'
+          && Number.isFinite(advanced)
+          && advanced > 0
+          && (cursor === undefined || advanced > cursor)
+        ) {
+          try {
+            runtime.store.putDoc(CURSOR_KIND, CURSOR_ID, {
+              chatId,
+              lastCreateTimeMs: advanced,
+            } satisfies FeishuCursorDoc)
+            cursor = advanced
+          } catch (error) {
+            source.restoreCursor(cursorBeforePull)
+            throw error
           }
+        }
+        if (cursorBlockedByIngress) {
+          source.restoreCursor(confirmedTrigger ? confirmedCursor : cursorBeforePull)
         }
         void runtime.jobsSettled().catch(error => {
           log(`[feishu] settle error ${messageOf(error)}`)

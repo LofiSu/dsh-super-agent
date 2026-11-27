@@ -94,7 +94,6 @@ function trigger(id: string, createTimeMs: number, text = '@ds-agent please fix 
 class FakeFeishuSource implements FeishuLoopSource {
   pulls = 0
   private cursor = 0
-  private delivered = false
 
   constructor(
     private readonly messages: readonly Trigger[] = [],
@@ -112,12 +111,13 @@ class FakeFeishuSource implements FeishuLoopSource {
   async pull(): Promise<readonly Trigger[]> {
     this.pulls += 1
     if (this.pulls <= this.failFirst) throw new Error(`pull failed #${this.pulls}`)
-    if (this.delivered) return []
-    this.delivered = true
-    for (const item of this.messages) {
+    const messages = this.messages
+      .filter(item => Date.parse(item.at) >= this.cursor)
+      .sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
+    for (const item of messages) {
       this.cursor = Math.max(this.cursor, Date.parse(item.at))
     }
-    return this.messages
+    return messages
   }
 }
 
@@ -280,6 +280,166 @@ describe('serve --feishu loop', () => {
     })
 
     expect(seeds).toEqual([undefined])
+  })
+
+  it('retries a failed message from the confirmed prefix in-process and after restart', async () => {
+    const home = tempDir('ds-agent-serve-feishu-ingest-retry-')
+    const first = makeRuntime(home)
+    const messages = [
+      trigger('om_prefix', 1_761_958_800_000),
+      trigger('om_failed', 1_761_958_805_000),
+      trigger('om_after', 1_761_958_810_000),
+    ]
+    const source = new FakeFeishuSource(messages)
+    const attempted: string[] = []
+    const original = first.ingestAsync.bind(first)
+    let fail = true
+    first.ingestAsync = async incoming => {
+      attempted.push(incoming.id)
+      if (incoming.id === 'feishu_om_failed' && fail) {
+        fail = false
+        throw new Error('injected ingest failure')
+      }
+      return original(incoming)
+    }
+    const controller = new AbortController()
+    const loop = runFeishuLoop({
+      runtime: first,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: () => source,
+      intervalMs: 5,
+      signal: controller.signal,
+    })
+
+    await waitFor(() => first.store.getDoc<Trigger>('trigger', 'feishu_om_after') !== undefined)
+    controller.abort()
+    await withTimeout(loop, 1_000)
+
+    expect(attempted.slice(0, 3)).toEqual([
+      'feishu_om_prefix', 'feishu_om_failed', 'feishu_om_prefix',
+    ])
+    expect(attempted).toContain('feishu_om_failed')
+    expect(attempted).toContain('feishu_om_after')
+    expect(source.cursorMs).toBe(1_761_958_810_000)
+    expect(first.store.getDoc('feishu_cursor', 'cursor'))
+      .toEqual({ chatId: 'oc_test', lastCreateTimeMs: 1_761_958_810_000 })
+    const feishuLogs = logText(first).split('\n').filter(line => line.startsWith('[feishu]'))
+    expect(feishuLogs.join('\n')).not.toMatch(/inbound .*text=/)
+    expect(feishuLogs.join('\n')).toContain('[feishu] ingest failed')
+    await first.finish()
+
+    const second = makeRuntime(home)
+    const restartAttempts = spyIngest(second)
+    await runFeishuLoop({
+      runtime: second,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: seed => new FakeFeishuSource(messages.filter(item => Date.parse(item.at) >= (seed ?? 0))),
+      intervalMs: 5,
+      once: true,
+    })
+    // The one-second overlap may present the high-water trigger again; Runtime's
+    // durable idempotency returns before it can start another task.
+    expect(restartAttempts.map(item => item.id)).toEqual(['feishu_om_after'])
+    expect(second.store.getDoc<Trigger>('trigger', 'feishu_om_prefix')).toBeDefined()
+    expect(second.store.getDoc<Trigger>('trigger', 'feishu_om_failed')).toBeDefined()
+    expect(second.store.getDoc<Trigger>('trigger', 'feishu_om_after')).toBeDefined()
+  })
+
+  it('resumes at a failed message after restarting from the confirmed prefix', async () => {
+    const home = tempDir('ds-agent-serve-feishu-crash-retry-')
+    const first = makeRuntime(home)
+    const messages = [
+      trigger('om_durable_prefix', 1_761_958_800_000),
+      trigger('om_durable_failed', 1_761_958_805_000),
+      trigger('om_durable_after', 1_761_958_810_000),
+    ]
+    const source = new FakeFeishuSource(messages)
+    const original = first.ingestAsync.bind(first)
+    first.ingestAsync = async incoming => {
+      if (incoming.id === 'feishu_om_durable_failed') throw new Error('injected ingest failure')
+      return original(incoming)
+    }
+    await runFeishuLoop({
+      runtime: first,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: () => source,
+      intervalMs: 5,
+      once: true,
+    })
+    expect(source.cursorMs).toBe(1_761_958_800_000)
+    expect(first.store.getDoc('feishu_cursor', 'cursor'))
+      .toEqual({ chatId: 'oc_test', lastCreateTimeMs: 1_761_958_800_000 })
+    expect(first.store.getDoc<Trigger>('trigger', 'feishu_om_durable_prefix')).toBeDefined()
+    await first.finish()
+
+    const restarted = makeRuntime(home)
+    const received: string[] = []
+    const restartIngest = restarted.ingestAsync.bind(restarted)
+    restarted.ingestAsync = incoming => {
+      received.push(incoming.id)
+      return restartIngest(incoming)
+    }
+    await runFeishuLoop({
+      runtime: restarted,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: seed => new FakeFeishuSource(messages.filter(item => Date.parse(item.at) >= (seed ?? 0))),
+      intervalMs: 5,
+      once: true,
+    })
+    expect(received).toContain('feishu_om_durable_failed')
+    expect(received).toContain('feishu_om_durable_after')
+    expect(restarted.store.getDoc<Trigger>('trigger', 'feishu_om_durable_prefix')).toBeDefined()
+  })
+
+  it('keeps inbound polling prompt while job settlement remains pending', async () => {
+    const runtime = makeRuntime()
+    runtime.jobsSettled = () => new Promise(() => undefined)
+    const messageTime = Date.now()
+    let secondAvailableAt: number | undefined
+    let secondIngestedAt: number | undefined
+    const original = runtime.ingestAsync.bind(runtime)
+    runtime.ingestAsync = incoming => {
+      if (incoming.id === 'feishu_om_during_job') secondIngestedAt = Date.now()
+      return original(incoming)
+    }
+    let cursorMs = 0
+    let pulls = 0
+    const source: FeishuLoopSource = {
+      get cursorMs() { return cursorMs },
+      restoreCursor(value) { cursorMs = value },
+      async pull() {
+        pulls += 1
+        if (pulls === 1) {
+          cursorMs = messageTime
+          return [trigger('om_first_job', messageTime)]
+        }
+        if (pulls === 2) {
+          secondAvailableAt = Date.now()
+          cursorMs = messageTime + 1
+          return [trigger('om_during_job', messageTime + 1)]
+        }
+        return []
+      },
+    }
+    const controller = new AbortController()
+    const loop = runFeishuLoop({
+      runtime,
+      chatId: 'oc_test',
+      client: noNetworkClient(),
+      createSource: () => source,
+      intervalMs: 5,
+      signal: controller.signal,
+    })
+    await waitFor(() => secondIngestedAt !== undefined)
+    const delayMs = secondIngestedAt! - secondAvailableAt!
+    controller.abort()
+    await withTimeout(loop, 1_000)
+    expect(delayMs).toBeLessThan(250)
+    console.info(`[test] second inbound ingest delay while jobsSettled pending: ${delayMs}ms`)
   })
 
   it('retries a failing pull with bounded backoff and recovers', async () => {
