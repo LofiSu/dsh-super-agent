@@ -23,7 +23,7 @@ import { readObjectFor } from '../memory/acl.ts'
 import type { Metrics } from '../metrics/metrics.ts'
 import { UserError } from '../shared/errors.ts'
 import type { EnvPort, EnvRunOptions, RolePortFor, RolePorts } from '../shared/ports.ts'
-import type { ApprovalRequest, Disposition, PublishApprovalBinding, Role, Ticket } from '../shared/types.ts'
+import type { ApprovalRequest, Decision, Disposition, PublishApprovalBinding, Role, Ticket } from '../shared/types.ts'
 import { settleSpeculation, visibleTickets } from '../speculate/index.ts'
 import type { ToolCall, ToolSpec } from './model.ts'
 import type { McpToolSourceLike } from './mcp.ts'
@@ -57,7 +57,7 @@ export interface ToolDeps {
   scheduleJob: (job: { id: string; sessionId: string; ticketId: string }) => void
   routerTurn: (prompt: string) => Promise<void>
   /** Start a Worker for a ticket the Router just opened. */
-  launchWork?: (ticketId: string) => void
+  launchWork?: (ticketId: string, mandateChanged: boolean) => void
   /** Append a nudge to the worker session journal (same effect as Watchdog.nudge). */
   nudge?: (sessionId: string, ticketId: string) => void
   teams?: TeamRegistry
@@ -367,6 +367,14 @@ function mainAgentTools(
         if (!conversationTicketId) throw new UserError('dispatch_work needs conversationTicketId')
         if (!title) throw new UserError('dispatch_work needs title')
         assertShardOwner(store, ctx.sessionId, { ticketId: conversationTicketId, triggerId })
+        const priorDecision = store.listDocs<Decision>('decision')
+          .find(item => item.kind === 'accept' && item.triggerIds.includes(triggerId))
+        const priorTicket = priorDecision?.ticketId
+          ? store.getDoc<Ticket>('ticket', priorDecision.ticketId)
+          : undefined
+        const previousMandate = priorTicket
+          ? `${priorTicket.title}\n${priorTicket.mandate.scope}`
+          : undefined
         const decision = ports.decide(triggerId, {
           kind: 'accept',
           title,
@@ -375,8 +383,12 @@ function mainAgentTools(
           reason: 'router-dispatch',
         })
         const workId = decision.ticketId
+        const updatedTicket = workId ? store.getDoc<Ticket>('ticket', workId) : undefined
+        const mandateChanged = previousMandate !== undefined && updatedTicket !== undefined
+          ? previousMandate !== `${updatedTicket.title}\n${updatedTicket.mandate.scope}`
+          : true
         if (workId && thread) ports.subscribe(workId, thread, { contextOnly: true })
-        if (workId) deps.launchWork?.(workId)
+        if (workId) deps.launchWork?.(workId, mandateChanged)
         log(`[harness] dispatch_work workTicketId=${workId ?? '-'} conversation=${conversationTicketId}`)
         return { decision: decision.kind, ticketId: workId, conversationTicketId }
       }),

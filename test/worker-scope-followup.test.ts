@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { imTrigger } from '../src/channels/im.ts'
+import { isConversationTicket } from '../src/core/conversation.ts'
 import type { Runtime } from '../src/runtime.ts'
 import type { Ticket, Trigger } from '../src/shared/types.ts'
 import { freshRuntime, shutdown } from './fixtures.ts'
@@ -11,10 +12,10 @@ afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await shutdown(runtime)
 })
 
-function start(model?: ScriptedModel): Runtime {
+function start(model?: ScriptedModel, extraEnv: NodeJS.ProcessEnv = {}): Runtime {
   const runtime = freshRuntime({
     model: model ?? silentModel(),
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
     jobDelayMs: 5,
     watchdogIntervalMs: 60_000,
   })
@@ -40,6 +41,105 @@ function issue192Fixture(runtime: Runtime, triggerId: string) {
     strength: 'explicit',
     reason: 'router-dispatch',
   })
+}
+
+function directTrigger(id: string): Trigger {
+  const trigger = imTrigger({ id, thread: 'feishu:oc_p2p', text: '重新测一下这个' })
+  trigger.addressed = 'direct'
+  trigger.channel!.address = { provider: 'feishu', chat_type: 'p2p' }
+  return trigger
+}
+
+function dispatchModel(
+  prompts: string[],
+  gateTask?: Promise<void>,
+  scopeForDispatch: () => string = () => scopeA,
+  redispatch?: { value: boolean },
+): ScriptedModel {
+  const reportedWorkerPrompts = new Set<string>()
+  return new ScriptedModel(async request => {
+    const prompt = lastPrompt(request)
+    if (request.role === 'worker') {
+      if (!prompts.includes(prompt)) prompts.push(prompt)
+      if (prompt.startsWith('TASK') && gateTask) await gateTask
+      if (!reportedWorkerPrompts.has(prompt)) {
+        reportedWorkerPrompts.add(prompt)
+        return {
+          toolCalls: [{
+            id: 'report-ready',
+            name: 'report_to_router',
+            args: {
+              ticketId: field(prompt, 'ticketId'),
+              text: 'done under the active mandate',
+              deliver: true,
+              kind: 'ready',
+            },
+          }],
+        }
+      }
+      return { text: 'finished' }
+    }
+    if (request.role !== 'router' || !prompt.startsWith('CONVERSATION_INBOUND')) return { text: 'ok' }
+    if (redispatch?.value) {
+      redispatch.value = false
+      return {
+        toolCalls: [{
+          id: 'redispatch-work',
+          name: 'dispatch_work',
+          args: {
+            triggerId: field(prompt, 'triggerId'),
+            conversationTicketId: field(prompt, 'conversationTicketId'),
+            title: '重测只读读取 GitHub 工单 #192',
+            scope: scopeForDispatch(),
+            thread: 'im:feishu:oc_p2p',
+          },
+        }],
+      }
+    }
+    const replied = request.messages.some(m => m.role === 'tool' && m.name === 'reply_user')
+    if (!replied) {
+      return {
+        toolCalls: [{
+          id: 'reply-first',
+          name: 'reply_user',
+          args: {
+            ticketId: field(prompt, 'conversationTicketId'),
+            text: '我来处理这个问题。',
+            purpose: 'progress',
+          },
+        }],
+      }
+    }
+    const dispatched = request.messages.some(m => m.role === 'tool' && m.name === 'dispatch_work')
+    if (!dispatched) {
+      return {
+        toolCalls: [{
+          id: `dispatch-${prompts.length}-${request.messages.length}`,
+          name: 'dispatch_work',
+          args: {
+            triggerId: field(prompt, 'triggerId'),
+            conversationTicketId: field(prompt, 'conversationTicketId'),
+            title: '重测只读读取 GitHub 工单 #192',
+            scope: scopeForDispatch(),
+            thread: 'im:feishu:oc_p2p',
+          },
+        }],
+      }
+    }
+    return { text: 'done' }
+  })
+}
+
+async function dispatchAgain(
+  runtime: Runtime,
+  triggerId: string,
+  envelopeId: string,
+  redispatch: { value: boolean },
+): Promise<void> {
+  redispatch.value = true
+  const envelope = runtime.store.getDoc<Ticket>('ticket', envelopeId)!
+  const trigger = runtime.store.getDoc<Trigger>('trigger', triggerId)!
+  await runtime.harness.conversationTurn(envelope, trigger)
 }
 
 describe('worker mandate scope', () => {
@@ -101,73 +201,26 @@ describe('worker mandate scope', () => {
     expect(resume).toContain(`scope=${scopeA}`)
   })
 
-  it('re-dispatch with a new scope updates the mandate and reaches the worker via FOLLOWUP', async () => {
+  it('re-dispatch with a new scope reaches the active worker through dispatch_work', async () => {
     const prompts: string[] = []
-    let releaseWorker: (() => void) | undefined
-    const workerTurnDone = new Promise<void>(resolve => { releaseWorker = resolve })
-    const model = new ScriptedModel(async request => {
-      const prompt = lastPrompt(request)
-      if (request.role === 'worker') {
-        const head = prompt.split('\n')[0] ?? ''
-        const seen = prompts.some(p => (p.split('\n')[0] ?? '') === head)
-        if (!seen) prompts.push(prompt)
-        if (prompt.startsWith('TASK')) await workerTurnDone
-      }
-      if (request.role === 'router') return { text: 'ok' }
-      if (!request.messages.some(m => m.role === 'tool' && m.name === 'report_to_router')) {
-        return {
-          toolCalls: [{
-            id: 'r1',
-            name: 'report_to_router',
-            args: {
-              ticketId: field(prompt, 'ticketId'),
-              text: 'working',
-              deliver: false,
-              kind: 'progress',
-            },
-          }],
-        }
-      }
-      return { text: 'done' }
-    })
-    const runtime = start(model)
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch))
+    runtime.ingest(directTrigger('trg_redispatch'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const task = prompts.find(p => p.startsWith('TASK'))!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!.id
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    expect(task).toContain(`scope=${scopeA}`)
 
-    const decision = issue192Fixture(runtime, 'trg_redispatch')
-    const ticketId = decision.ticketId!
-    const ticket = runtime.store.getDoc<Ticket>('ticket', ticketId)!
-    void runtime.harness.launch(ticket)
-    await vi.waitFor(() => {
-      expect(prompts.some(p => p.startsWith('TASK'))).toBe(true)
-      expect(runtime.harness.workerActive(ticketId)).toBe(true)
-    })
-    const firstTask = prompts.find(p => p.startsWith('TASK'))!
-    expect(firstTask).toContain(`scope=${scopeA}`)
-
-    runtime.engine.decide('trg_redispatch', {
-      kind: 'accept',
-      title: '重测只读读取 GitHub 工单 #192',
-      scope: scopeB,
-      strength: 'explicit',
-      reason: 'router-dispatch',
-    })
-    const updated = runtime.store.getDoc<Ticket>('ticket', ticketId)!
-    expect(updated.mandate.scope).toBe(scopeB)
-
-    const engage = (workId: string) => {
-      const row = runtime.store.getDoc<Ticket>('ticket', workId)
-      if (!row || row.ended) return
-      const asg = row.assignments.at(-1)
-      const engaged = asg?.state === 'running' || runtime.harness.workerActive(workId)
-      if (engaged) {
-        const trig = runtime.store.getDoc<Trigger>('trigger', row.originTriggerId)
-        if (trig) void runtime.harness.deliver(workId, trig)
-        return
-      }
-      if (runtime.harness.launchInFlight(workId)) return
-      void runtime.harness.launch(row)
-    }
-    engage(ticketId)
-    releaseWorker?.()
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_redispatch', envelope.id, redispatch)
+    const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
+    expect(work.mandate.scope).toBe(scopeB)
+    releaseWorker()
     await runtime.jobsSettled()
 
     const followup = prompts.find(p => p.startsWith('FOLLOWUP'))
@@ -175,22 +228,80 @@ describe('worker mandate scope', () => {
     expect(followup).toContain(`scope=${scopeB}`)
     expect(runtime.log.text()).toContain('Evals.decide remandate')
     const workerStarts = runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []
-    expect(workerStarts.length).toBe(1)
+    expect(workerStarts).toHaveLength(1)
   })
 
-  it('same-trigger accept with unchanged scope stays idempotent', () => {
-    const runtime = start()
-    const decision = issue192Fixture(runtime, 'trg_idem_scope')
-    const again = runtime.engine.decide('trg_idem_scope', {
-      kind: 'accept',
-      title: '重测只读读取 GitHub 工单 #192',
-      scope: scopeA,
-      strength: 'explicit',
-      reason: 'router-dispatch',
-    })
-    expect(again.id).toBe(decision.id)
-    expect(runtime.store.listDocs('decision')).toHaveLength(1)
-    expect(runtime.log.text()).toContain('Evals.decide skipped triggerId=trg_idem_scope kind=accept')
+  it('unchanged scope re-dispatch does not enqueue an extra worker turn', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, gate, () => scopeA, redispatch))
+    runtime.ingest(directTrigger('trg_idem_scope'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    await dispatchAgain(runtime, 'trg_idem_scope', envelope.id, redispatch)
+    releaseWorker()
+    await runtime.jobsSettled()
+
+    expect(prompts.filter(p => p.startsWith('FOLLOWUP'))).toHaveLength(0)
     expect(runtime.log.text()).not.toContain('Evals.decide remandate')
+    const workerStarts = runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []
+    expect(workerStarts).toHaveLength(1)
+  })
+
+  it('ready from the superseded turn leaves the revised ticket open for FOLLOWUP', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch))
+    runtime.ingest(directTrigger('trg_ready_race'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const workId = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!.id
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_ready_race', envelope.id, redispatch)
+    releaseWorker()
+    await vi.waitFor(() => expect(runtime.store.getDoc<Ticket>('ticket', workId)?.ended).toBeDefined())
+    await runtime.jobsSettled()
+
+    const workerTurns = prompts.filter(p => p.startsWith('TASK') || p.startsWith('FOLLOWUP'))
+    expect(workerTurns.some(p => p.startsWith('FOLLOWUP') && p.includes(`scope=${scopeB}`))).toBe(true)
+    expect(runtime.store.getDoc<Ticket>('ticket', workId)?.ended?.outcome).toBe('ready')
+    expect(runtime.log.text()).toContain('kept ticket open for revised mandate')
+  })
+
+  it('a revised remote-owned assignment does not start a local FOLLOWUP', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch), {
+      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+        id: 'remote-test-node',
+        url: 'http://127.0.0.1:9',
+        peerId: 'peer-test',
+        secret: 'x'.repeat(32),
+      }]),
+    })
+    runtime.ingest(directTrigger('trg_remote_scope'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
+    const assignment = work.assignments.at(-1)!
+    assignment.node = 'remote-test-node'
+    assignment.state = 'running'
+    runtime.store.putDoc('ticket', work.id, work)
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_remote_scope', envelope.id, redispatch)
+    releaseWorker()
+    await runtime.jobsSettled()
+
+    expect(prompts.filter(p => p.startsWith('FOLLOWUP'))).toHaveLength(0)
+    const workerStarts = runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []
+    expect(workerStarts).toHaveLength(1)
   })
 })

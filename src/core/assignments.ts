@@ -43,6 +43,14 @@ export class Assignments {
     this.gate = gate ?? resolveDeliverGate(stateHome)
   }
 
+  activateMandate(ticketId: string): void {
+    const ticket = this.must(ticketId)
+    const assignment = ticket.assignments.at(-1)
+    if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    assignment.mandateScopeAtStart = ticket.mandate.scope
+    this.host.repo.putDoc('ticket', ticket.id, ticket)
+  }
+
   start(ticketId: string, assignmentId: string, sessionId: string): void {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId) ?? ticket.assignments.at(-1)
@@ -50,6 +58,7 @@ export class Assignments {
     assignment.state = 'running'
     assignment.workerSessionId = sessionId
     assignment.startedAt = this.host.now()
+    assignment.mandateScopeAtStart = ticket.mandate.scope
     this.host.repo.putDoc('ticket', ticket.id, ticket)
     this.host.log(`[engine] Assignments.start ticketId=${ticket.id} assignmentId=${assignment.id} session=${sessionId}`)
     this.host.repo.addEvent('assignment.started', { ticketId: ticket.id, assignmentId: assignment.id, sessionId })
@@ -168,6 +177,15 @@ export class Assignments {
       this.host.log(`[speculate] deliver=true ticketId=${ticket.id}`)
     } else if (report.deliver === true) {
       this.host.log(`deliver=true ticketId=${ticket.id}`)
+    }
+
+    const readyForSupersededMandate = report.kind === 'ready'
+      && assignment.mandateScopeAtStart !== undefined
+      && assignment.mandateScopeAtStart !== ticket.mandate.scope
+    if (readyForSupersededMandate) {
+      this.host.repo.putDoc('ticket', ticket.id, ticket)
+      this.host.log(`[engine] Assignments.report kept ticket open for revised mandate ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return { surfaced: false, verdict: 'hold' }
     }
 
     let assignmentEnded = false

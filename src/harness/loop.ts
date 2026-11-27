@@ -23,6 +23,8 @@ export interface HarnessOptions {
   store: Store
   /** Host bookkeeping when a worker session starts. The harness does not hold the Engine. */
   assignmentStarted(ticketId: string, assignmentId: string, sessionId: string): void
+  /** Mark the current mandate as active when a queued FOLLOWUP begins. */
+  assignmentMandateActivated?(ticketId: string): void
   /** Host bookkeeping for logical mesh placement. The Engine owns the ticket write. */
   assignmentPlaced(ticketId: string, assignmentId: string, node: string): void
   journal: SessionJournal
@@ -652,17 +654,24 @@ export class Harness {
       })
       return Promise.resolve()
     }
-    const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
-    const mode = ticket?.speculative ? 'speculative' : 'normal'
-    const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
-    if (ticket?.mandate.scope) lines.push(`scope=${ticket.mandate.scope}`)
-    // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
-    const owned = spillId ?? ticket?.spillId ?? ''
-    if (owned) lines.push(`spillId=${owned}`)
-    const refs = formatRefs(trigger.refs)
-    if (refs) lines.push(refs)
     const sessionId = workerSessionId(ticketId)
-    return this.track(this.enqueue(sessionId, () => this.run(sessionId, 'worker', ticketId, lines.join('\n'))))
+    return this.track(this.enqueue(sessionId, async () => {
+      const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
+      if (!ticket || ticket.ended) {
+        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${ticket ? 'ended' : 'missing'}`)
+        return
+      }
+      this.opts.assignmentMandateActivated?.(ticketId)
+      const mode = ticket.speculative ? 'speculative' : 'normal'
+      const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
+      if (ticket.mandate.scope) lines.push(`scope=${ticket.mandate.scope}`)
+      // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
+      const owned = spillId ?? ticket.spillId ?? ''
+      if (owned) lines.push(`spillId=${owned}`)
+      const refs = formatRefs(trigger.refs)
+      if (refs) lines.push(refs)
+      return this.run(sessionId, 'worker', ticketId, lines.join('\n'))
+    }))
   }
 
   /**

@@ -172,6 +172,8 @@ export interface Assignment {
   /** Authenticated remote peer selected when this assignment was dispatched. */
   remotePeerId?: string
   startedAt?: string
+  /** Mandate scope captured when this assignment began. */
+  mandateScopeAtStart?: string
   endedAt?: string
   report?: {
     kind: string

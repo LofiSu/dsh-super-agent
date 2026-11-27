@@ -1881,14 +1881,14 @@ export class Runtime {
         if (!late.harness) throw new Error('harness is not ready')
         return late.harness.routerTurn(prompt)
       },
-      launchWork: ticketId => {
+      launchWork: (ticketId, mandateChanged) => {
         if (!late.harness) throw new Error('harness is not ready')
         const ticket = store.getDoc<Ticket>('ticket', ticketId)
         if (!ticket || ticket.ended || isConversationTicket(ticket)) return
         const assignment = ticket.assignments.at(-1)
-        const workerEngaged = assignment?.state === 'running'
-          || late.harness.workerActive(ticketId)
-        if (workerEngaged) {
+        const remoteOwned = assignment?.node !== undefined && assignment.node !== instanceId
+        const localWorkerActive = late.harness.workerActive(ticketId)
+        if (mandateChanged && !remoteOwned && localWorkerActive) {
           const trigger = store.getDoc<Trigger>('trigger', ticket.originTriggerId)
           if (trigger) void late.harness.deliver(ticketId, trigger)
           return
@@ -1923,6 +1923,7 @@ export class Runtime {
         browserErrands?.beginAssignment(sessionId, assignmentId)
         engine.assignmentStarted(ticketId, assignmentId, sessionId)
       },
+      assignmentMandateActivated: ticketId => engine.assignmentMandateActivated(ticketId),
       assignmentPlaced: (ticketId, assignmentId, node) => {
         engine.assignmentPlaced(ticketId, assignmentId, node, placement.remote?.get(node)?.peerId)
       },

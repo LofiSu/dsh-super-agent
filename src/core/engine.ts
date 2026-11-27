@@ -77,6 +77,10 @@ export class Engine {
     this.host.repo.atomic(() => this.assignments.start(ticketId, assignmentId, sessionId))
   }
 
+  assignmentMandateActivated(ticketId: string): void {
+    this.host.repo.atomic(() => this.assignments.activateMandate(ticketId))
+  }
+
   /** Persist the Harness's logical mesh placement; the Engine owns the write. */
   assignmentPlaced(ticketId: string, assignmentId: string, node: string, remotePeerId?: string): void {
     this.host.repo.atomic(() => this.assignments.placed(ticketId, assignmentId, node, remotePeerId))
