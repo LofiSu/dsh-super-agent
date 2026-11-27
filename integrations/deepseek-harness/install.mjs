@@ -9,13 +9,19 @@ const source = previous ? readFileSync(path + '.before-bots', 'utf8') : installe
 {
   const factory = '    const React = require(\'react\');';
   const apply = '      apply(ctx) {';
-  for (const anchor of [factory, apply]) {
+  const props = 'function Desktop({ t }) {';
+  const header = "          h('button', { type: 'button', className: 'dsd-share', onClick: share,";
+  const render = 'return h(Desktop, { t });';
+  for (const anchor of [factory, apply, props, header, render]) {
     if (source.split(anchor).length !== 2) throw new Error('Unsupported ds-super-agent-tab client layout');
   }
   const panel = readFileSync(new URL('./bots-panel.js', import.meta.url), 'utf8').trimEnd()
     .split('\n').map(line => '    ' + line).join('\n');
   const updated = source.replace(factory, () => factory + '\n' + panel)
-    .replace(apply, () => apply + '\n        mountBotsPanel(ctx, React, request);');
+    .replace(apply, () => apply + '\n        const openBots = mountBotsPanel(ctx, React, request);')
+    .replace(props, 'function Desktop({ t, openBots }) {')
+    .replace(header, () => "          h('button', { type: 'button', className: 'dsd-share', onClick: openBots }, 'Bots'),\n" + header)
+    .replace(render, 'return h(Desktop, { t, openBots });');
   if (updated === installed) {
     console.log('Bots panel already installed:', path);
     process.exit(0);

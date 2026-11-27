@@ -2,6 +2,7 @@
 function mountBotsPanel(ctx, React, request) {
   const h = React.createElement;
   const panel = 'dsh-super-bot';
+  const openBots = () => ctx.layout.selectPanel(panel);
   const avatars = { initial: '首字', leaf: '🌿', spark: '✨', moon: '🌙' };
   const runtimePermissions = {
     'ds-agent': '使用本机 ds-agent 的工具与审批配置。',
@@ -452,6 +453,7 @@ function mountBotsPanel(ctx, React, request) {
         .dsh-bots{--bot-accent:#6755c8;--bot-line:color-mix(in srgb,currentColor 15%,transparent);--bot-tint:color-mix(in srgb,var(--bot-accent) 10%,transparent);max-width:1040px;margin:auto;padding:clamp(20px,5vw,52px);font-family:inherit;min-height:100%}
         .dsh-bots header{display:flex;align-items:center;justify-content:space-between;gap:16px}
         .dsh-bots .bots-hero{border:1px solid var(--bot-line);border-radius:22px;padding:clamp(20px,4vw,36px);background:linear-gradient(135deg,var(--bot-tint),transparent)}
+        .dsh-bots .bots-hero-actions{display:flex;flex-wrap:wrap;gap:8px}.dsh-bots .bots-hero-actions button+button{margin-left:0}
         .dsh-bots h1{font-size:clamp(28px,5vw,42px);line-height:1.1;letter-spacing:-.04em;margin:0}
         .dsh-bots h2{font-size:18px;margin:0}.dsh-bots header p,.dsh-bots small{opacity:.74}
         .dsh-bots form,.dsh-bots article,.dsh-bots .bots-empty{border:1px solid var(--bot-line);border-radius:16px;padding:20px;margin:16px 0;overflow-wrap:anywhere}
@@ -474,9 +476,11 @@ function mountBotsPanel(ctx, React, request) {
       h('header', { className: 'bots-hero' },
         h('div', null, h('span', { className: 'bots-icon' }, h(BotIcon)),
           h('h1', null, 'Bots'), h('p', null, '为不同的工作配置专属 Agent。')),
-        h('button', { className: 'bots-primary',
-          type: 'button', disabled: loading || saving || !devices.length, onClick: openCreate,
-        }, '＋ 新建 Bot')),
+        h('div', { className: 'bots-hero-actions' },
+          h('button', { type: 'button', onClick: () => ctx.layout.selectPanel('ds-super-agent') }, '返回聊天'),
+          h('button', { className: 'bots-primary',
+            type: 'button', disabled: loading || saving || !devices.length, onClick: openCreate,
+          }, '＋ 新建 Bot'))),
       error && h('p', { role: 'alert' }, error),
       deviceWarning && h('p', { role: 'status' }, deviceWarning),
       editing && h('form', { className: 'bots-create', 'aria-label': '新建 Bot', onSubmit: create, onKeyDown: event => {
@@ -567,4 +571,5 @@ function mountBotsPanel(ctx, React, request) {
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: panel,
   }, Bots));
+  return openBots;
 }

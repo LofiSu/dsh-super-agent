@@ -15,7 +15,8 @@ node integrations/deepseek-harness/install.mjs /path/to/ds-super-agent-tab/clien
 ```
 
 Wait for active turns to finish, restart the local sidecar, and relaunch
-Harness Desktop. Open Bots in the sidebar or the More menu. Create a Bot
+Harness Desktop. Open Bots from the sidebar, the More menu, or the Bots
+button in the ds-super-agent chat header. Create a Bot
 using a ready device, open its conversation, and send a short test question.
 Reopen the app and verify that the reply is still present. To test team
 dispatch, create a second Bot, create a team with both Bots, and open the

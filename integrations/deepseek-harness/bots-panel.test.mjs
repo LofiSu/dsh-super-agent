@@ -22,7 +22,8 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
     crypto: { randomUUID: () => 'bot-1' },
     FormData: class { constructor(fields) { this.fields = fields; } get(key) { return this.fields[key]; } },
   });
-  mount({ slots: { inject: (_, register) => register(), register: (entry, component) => slots.set(entry.name, { entry, component }) } }, React, async (_, options) => {
+  const navigation = [];
+  const openBots = mount({ layout: { selectPanel: id => navigation.push(id) }, slots: { inject: (_, register) => register(), register: (entry, component) => slots.set(entry.name, { entry, component }) } }, React, async (_, options) => {
     if (options) {
       const bot = { ...JSON.parse(options.body), id: 'bot-1' };
       profiles.push(bot);
@@ -31,12 +32,17 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
     return Response.json({ bots: [...profiles], devices: [{ id: 'local', label: '本机 Mac', status: 'ready', engines: ['ds-agent'] }] });
   });
   assert.equal(slots.get('sidebar.panellist').entry.label(), 'Bots');
+  openBots();
+  assert.deepEqual(navigation, ['dsh-super-bot']);
   const render = () => { cursor = 0; return slots.get('main').component(); };
   render();
   effects.shift()();
   await new Promise(setImmediate);
   assert.match(JSON.stringify(render()), /创建你的第一个 Bot/);
-  render().children[1].children[1].props.onClick();
+  const actions = render().children[1].children[1].children;
+  actions[0].props.onClick();
+  assert.deepEqual(navigation, ['dsh-super-bot', 'ds-super-agent']);
+  actions[1].props.onClick();
   const findForm = () => render().children.find(child => child?.tag === 'form');
   findForm().children[0].children[1].props.onChange({ target: { value: '项目跟进' } });
   const form = findForm();
