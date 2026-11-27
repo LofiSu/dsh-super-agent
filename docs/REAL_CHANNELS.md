@@ -75,6 +75,7 @@ Set these for a live Feishu/Lark channel:
 | `FEISHU_VERIFICATION_TOKEN` | no | event-callback token check |
 | `FEISHU_ENCRYPT_KEY` | no | decrypt encrypted event envelopes |
 | `FEISHU_BOT_OPEN_ID` | no | detect mentions of the bot (`ou_...`) |
+| `FEISHU_REPLY_FORMAT` | no | `auto` (default): structured Markdown replies use cards; `text`: force plain text |
 
 Bot permissions: `im:message`, `im:message:send_as_bot`, `im:message:readonly`,
 and for group chats the sensitive scope `im:message.group_msg` (list/poll
@@ -139,10 +140,15 @@ messages so a backfill does not retry them.
 
 Outbound: `FeishuOutboxAdapter` replies in-thread with
 `/open-apis/im/v1/messages/:message_id/reply` when the source message is known,
-otherwise sends to the chat with `/open-apis/im/v1/messages`. Feishu replies use
-the latest human inbound message on the selected thread as their quote target. When a user
-asks to stop quoting/replying on that thread, that preference is saved there and later messages
-are sent directly to the chat without a `message_id`.
+otherwise sends to the chat with `/open-apis/im/v1/messages`. In the default
+`FEISHU_REPLY_FORMAT=auto` mode, short plain replies stay text and replies with
+Markdown headings, lists, or fenced code use a single-column interactive card.
+Set `FEISHU_REPLY_FORMAT=text` to force the existing plain text format. Card send
+and mobile display still need mobile acceptance; this change does not cut over
+live `serve`. Feishu replies use the latest human inbound message on the selected
+thread as their quote target. When a user asks to stop quoting/replying on that
+thread, that preference is saved there and later messages are sent directly to
+the chat without a `message_id`.
 
 ### Inbound poll loop from `serve --feishu`
 

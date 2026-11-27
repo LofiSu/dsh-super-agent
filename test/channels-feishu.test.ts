@@ -15,6 +15,7 @@ import {
 } from '../src/channels/feishu.ts'
 import { filterTrigger, ruleClassify } from '../src/ingress/filter.ts'
 import { admissionRulesFromEnv } from '../src/runtime.ts'
+import { FEISHU_CARD_CONTENT_LIMIT_BYTES } from '../src/channels/feishu-card.ts'
 import type { OutboxRow, Trigger } from '../src/shared/types.ts'
 
 const config: FeishuConfig = {
@@ -989,5 +990,199 @@ describe('Feishu client and outbox', () => {
       : { body: { code: 230002, msg: 'bot not in chat' } })
     const client = new FeishuClient(config, fn)
     await expect(client.sendText('oc_chat', 'hi')).rejects.toThrow(/230002/)
+  })
+})
+
+describe('Feishu Markdown card outbox formatting', () => {
+  const makeRow = (text: string, target: OutboxRow['target'] = { provider: 'feishu', chat_id: 'oc_chat' }): OutboxRow => ({
+    id: 'outbox_card',
+    replyId: 'reply_card',
+    ticketId: 'ticket_durable_1',
+    channel: 'im',
+    thread: 'feishu:oc_chat',
+    target,
+    text,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  })
+
+  const withFormat = async (format: string | undefined, run: () => Promise<void>): Promise<void> => {
+    const previous = process.env.FEISHU_REPLY_FORMAT
+    if (format === undefined) delete process.env.FEISHU_REPLY_FORMAT
+    else process.env.FEISHU_REPLY_FORMAT = format
+    try {
+      await run()
+    } finally {
+      if (previous === undefined) delete process.env.FEISHU_REPLY_FORMAT
+      else process.env.FEISHU_REPLY_FORMAT = previous
+    }
+  }
+
+  const sentCalls = (calls: { url: string; init?: RequestInit }[]) => calls.filter(call =>
+    call.url.includes('/open-apis/im/v1/messages') && !call.url.includes('tenant_access_token'))
+
+  it('retains provider and missing-target checks without making an API call', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'unexpected' } } })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      await expect(adapter.send(makeRow('## Structured', { provider: 'github', chat_id: 'oc_chat' })))
+        .rejects.toThrow(/targets github, not feishu/)
+      await expect(adapter.send(makeRow('plain', { provider: 'feishu' })))
+        .rejects.toThrow(/has no chat_id\/message_id/)
+      expect(calls).toHaveLength(0)
+    })
+  })
+
+  it('keeps a short plain answer as text by default on chat-send and thread-reply routes', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_plain' } } })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      await adapter.send(makeRow('A short answer.'))
+      await adapter.send(makeRow('Another short answer.', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' }))
+      const [send, reply] = sentCalls(calls)
+      expect(send.init?.method).toBe('POST')
+      expect(send.url).toBe('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id')
+      expect(JSON.parse(String(send.init?.body))).toMatchObject({ msg_type: 'text', content: JSON.stringify({ text: 'A short answer.' }) })
+      expect(reply.init?.method).toBe('POST')
+      expect(reply.url).toBe('https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')
+      expect(JSON.parse(String(reply.init?.body))).toMatchObject({ msg_type: 'text', content: JSON.stringify({ text: 'Another short answer.' }) })
+    })
+  })
+
+  it.each([
+    ['heading', '## Résultat\nC’est corrigé.'],
+    ['list', 'Next steps:\n- restart\n- verify'],
+    ['fenced code', '```ts\nconst ready = true\n```'],
+  ])('sends a structured %s reply as official interactive card JSON', async (_kind, text) => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_card' } } })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      await adapter.send(makeRow(text, { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' }))
+      const [call] = sentCalls(calls)
+      expect(call.init?.method).toBe('POST')
+      expect(call.url).toBe('https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')
+      const request = JSON.parse(String(call.init?.body)) as { msg_type: string; content: string }
+      expect(request.msg_type).toBe('interactive')
+      const card = JSON.parse(request.content) as { header: { title: { tag: string; content: string } }; elements: { tag: string; text: { tag: string; content: string } }[] }
+      expect(card.header.title).toEqual({ tag: 'plain_text', content: 'ds-agent · 助手 🌱' })
+      expect(card.elements).toHaveLength(1)
+      expect(card.elements[0]).toMatchObject({ tag: 'div', text: { tag: 'lark_md', content: text } })
+      expect(JSON.stringify(card)).not.toContain('button')
+      expect(card.header.title.content).toBe('ds-agent · 助手 🌱')
+    })
+  })
+
+  it('treats JSON, mention tags, and button declarations as body text only', async () => {
+    await withFormat(undefined, async () => {
+      const body = '## Details\n```json\n{"buttons":[{"text":"do it"}]}\n```\n<at user_id="ou_fake">name</at>'
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_card' } } })
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(body))
+      const req = JSON.parse(String(sentCalls(calls)[0]?.init?.body)) as { content: string }
+      const card = JSON.parse(req.content) as { elements: { text: { content: string } }[] }
+      expect(card.elements).toHaveLength(1)
+      expect(card.elements[0]?.text.content).toBe(body)
+      expect(JSON.stringify(card)).not.toContain('"tag":"button"')
+      expect(JSON.stringify(card)).not.toContain('"tag":"action"')
+    })
+  })
+
+  it('forces structured replies to text when FEISHU_REPLY_FORMAT=text', async () => {
+    await withFormat('text', async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_text' } } })
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('# Heading\n- item'))
+      const request = JSON.parse(String(sentCalls(calls)[0]?.init?.body))
+      expect(request.msg_type).toBe('text')
+      expect(request.content).toBe(JSON.stringify({ text: '# Heading\n- item' }))
+    })
+  })
+
+  it('preserves Chinese and emoji in serialized card content', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_card' } } })
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('## 完成 ✅\n- 你好 🌱'))
+      const request = JSON.parse(String(sentCalls(calls)[0]?.init?.body)) as { content: string }
+      expect(request.content).toContain('ds-agent')
+      expect(request.content).toContain('完成 ✅')
+      expect(request.content).toContain('你好 🌱')
+    })
+  })
+
+  it('truncates oversize card content by UTF-8 bytes and sends only one valid request', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'sent_card' } } })
+      const text = '## 结论 ✅\n```ts\n' + '界🙂'.repeat(20_000)
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text))
+      const sent = sentCalls(calls)
+      expect(sent).toHaveLength(1)
+      const req = JSON.parse(String(sent[0]?.init?.body)) as { msg_type: string; content: string }
+      expect(req.msg_type).toBe('interactive')
+      expect(Buffer.byteLength(req.content, 'utf8')).toBeLessThanOrEqual(FEISHU_CARD_CONTENT_LIMIT_BYTES)
+      const card = JSON.parse(req.content) as { elements: { text: { content: string } }[] }
+      expect(card.elements[0]?.text.content).toContain('## 结论 ✅')
+      expect(card.elements[0]?.text.content).toContain('内容已截断')
+      expect(card.elements[0]?.text.content.match(/^```/gm)).toHaveLength(2)
+      expect(card.elements[0]?.text.content).toContain('ticket_durable_1')
+    })
+  })
+
+  it('falls back once to text only for documented card rejection codes', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const count = calls.filter(call => call.url.includes('/open-apis/im/v1/messages')).length
+        return count === 1
+          ? { status: 400, body: { code: 230099, msg: 'card content rejected' } }
+          : { body: { code: 0, data: { message_id: 'sent_text' } } }
+      })
+      const result = await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('## Structured\n- body'))
+      const sent = sentCalls(calls)
+      expect(sent).toHaveLength(2)
+      expect(JSON.parse(String(sent[0]?.init?.body)).msg_type).toBe('interactive')
+      expect(JSON.parse(String(sent[1]?.init?.body))).toMatchObject({ msg_type: 'text', content: JSON.stringify({ text: '## Structured\n- body' }) })
+      expect(result.externalId).toBe('sent_text')
+    })
+  })
+
+  it('does not send a text follow-up after a hung request timeout or HTTP 429', async () => {
+    await withFormat(undefined, async () => {
+      const timeoutCalls: { url: string; init?: RequestInit }[] = []
+      const hangingFetch = async (url: string, init?: RequestInit): Promise<Response> => {
+        timeoutCalls.push({ url, init })
+        if (url.includes('tenant_access_token')) {
+          return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }))
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal
+          if (!signal) return reject(new Error('request hung without abort signal'))
+          const abort = () => reject(signal.reason ?? new Error('aborted'))
+          if (signal.aborted) abort()
+          else signal.addEventListener('abort', abort, { once: true })
+        })
+      }
+      await expect(new FeishuOutboxAdapter(new FeishuClient(config, hangingFetch, 20)).send(makeRow('## Structured\n- body'))).rejects.toThrow()
+      expect(sentCalls(timeoutCalls)).toHaveLength(1)
+      expect(JSON.parse(String(sentCalls(timeoutCalls)[0]?.init?.body)).msg_type).toBe('interactive')
+
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { status: 429, body: { code: 999, msg: 'rate limited' } })
+      await expect(new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('## Structured\n- body'))).rejects.toThrow()
+      expect(sentCalls(calls)).toHaveLength(1)
+      expect(JSON.parse(String(sentCalls(calls)[0]?.init?.body)).msg_type).toBe('interactive')
+    })
   })
 })

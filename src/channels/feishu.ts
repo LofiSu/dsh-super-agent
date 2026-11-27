@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import type { OutboxRow, Trigger } from '../shared/types.ts'
 import type { OutboundAdapter } from './outbox-adapter.ts'
+import { hasFeishuMarkdownStructure, renderFeishuMarkdownCard } from './feishu-card.ts'
 
 /**
  * Production Feishu/Lark IM channel.
@@ -221,6 +222,21 @@ export class FeishuClient {
     return this.request<{ message_id: string }>(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, {
       method: 'POST',
       body: { msg_type: 'text', content: JSON.stringify({ text }) },
+    })
+  }
+
+  async sendInteractive(chatId: string, content: string): Promise<{ message_id: string }> {
+    return this.request<{ message_id: string }>('/open-apis/im/v1/messages', {
+      method: 'POST',
+      query: { receive_id_type: 'chat_id' },
+      body: { receive_id: chatId, msg_type: 'interactive', content },
+    })
+  }
+
+  async replyInteractive(messageId: string, content: string): Promise<{ message_id: string }> {
+    return this.request<{ message_id: string }>(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, {
+      method: 'POST',
+      body: { msg_type: 'interactive', content },
     })
   }
 
@@ -636,10 +652,29 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
     }
     const messageId = row.target.message_id
     const chatId = row.target.chat_id
+    if (!messageId && !chatId) throw new Error(`feishu outbox row ${row.id} has no chat_id/message_id`)
+
+    const sendText = (): Promise<{ message_id: string }> => messageId
+      ? this.client.replyText(messageId, row.text)
+      : this.client.sendText(chatId!, row.text)
+    const format = process.env.FEISHU_REPLY_FORMAT?.trim().toLowerCase()
     let result: { message_id: string }
-    if (messageId) result = await this.client.replyText(messageId, row.text)
-    else if (chatId) result = await this.client.sendText(chatId, row.text)
-    else throw new Error(`feishu outbox row ${row.id} has no chat_id/message_id`)
+    if (format !== 'text' && hasFeishuMarkdownStructure(row.text)) {
+      const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
+      try {
+        result = messageId
+          ? await this.client.replyInteractive(messageId, rendered.content)
+          : await this.client.sendInteractive(chatId!, rendered.content)
+      } catch (error) {
+        // Official send-message errors: 230025 is the documented card/content
+        // size limit; 230099 means Feishu rejected card content creation.
+        // Other API/transport errors may have an unknown delivery outcome.
+        if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
+        result = await sendText()
+      }
+    } else {
+      result = await sendText()
+    }
     if (!result.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
     this.log(`[feishu] outbound message_id=${result.message_id} chat=${chatId ?? '-'} inReplyTo=${messageId ?? '-'}`)
     return { externalId: result.message_id }
