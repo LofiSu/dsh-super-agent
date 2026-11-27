@@ -30,6 +30,20 @@ See [runtime configuration and acceptance status](PARITY.md).
 The sidecar stores profiles, turns, teams and proposals in its local
 `bots.db`. Keep this database when updating or rolling back the plugin.
 
+## Run a Bot on an SSH host
+
+On the remote host, make `bot-ssh-worker.mjs` and `bot-context.mjs` available
+in the same directory. Add an executable named `dsh-bot-runtime-v1` to the
+SSH user's non-interactive PATH. For example, an owner-managed wrapper can
+export `DSH_BOT_REMOTE_BIN` as the absolute path to an executable ds-agent CLI
+launcher, load its provider configuration, and exec Node with the worker
+script and its arguments. The remote CLI must support `tool-scope-capabilities`.
+
+Register a working SSH alias in Bots → 运行设备. Its host key must already
+be trusted, and SSH must work without interactive prompts. After the worker
+handshake, the host becomes selectable for ds-agent. Remote turns use the
+conversation-only scope.
+
 ## Trigger a Bot from a local workflow
 
 Set a local ds-agent Bot to conversation-only. In its trigger settings, save

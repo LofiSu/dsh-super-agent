@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { sshHostArguments } from './bot-ssh.mjs';
 
 /** Read owner-managed device names. Connectivity is supplied by a transport. */
 export async function readConfiguredDevices(home) {
@@ -33,13 +34,10 @@ export async function readDeviceInventory(home) {
 }
 
 export async function probeSshHost(alias) {
-  if (!/^[a-z0-9][a-z0-9._-]{0,79}$/i.test(alias)) throw new RangeError('Invalid SSH alias.');
+  const args = sshHostArguments(alias);
   const { execFile } = await import('node:child_process');
   return new Promise(resolve => {
-    execFile('/usr/bin/ssh', [
-      '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-      '-o', 'StrictHostKeyChecking=yes', '-o', 'ClearAllForwardings=yes',
-      '-o', 'ForwardAgent=no', '-o', 'PermitLocalCommand=no', '--', alias, 'true',
-    ], { timeout: 8000, maxBuffer: 65536 }, error => resolve(!error)).stdin.end();
+    execFile('/usr/bin/ssh', [...args, 'true'],
+      { timeout: 8000, maxBuffer: 65536 }, error => resolve(!error)).stdin.end();
   });
 }

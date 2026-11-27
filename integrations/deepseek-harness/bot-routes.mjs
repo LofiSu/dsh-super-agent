@@ -6,7 +6,7 @@ function memberTurnId(teamId, dispatchId, botId) {
 }
 
 /** Mount behind host authentication. Reject cross-origin requests before reading state. */
-export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, remoteDevices = [], probeHost, proposalToken, supportsConversationScope }) {
+export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, remoteDevices = [], probeHost, proposalToken, supportsConversationScope, resolveRemoteDevice }) {
   const activeDispatches = new Map();
   const runtimes = new Map(Object.entries(adapters));
   if (runTurn) runtimes.set('ds-agent', runTurn);
@@ -24,7 +24,9 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       registry.close();
     }
     const entries = Array.isArray(inventory) ? inventory : inventory.devices;
-    for (const { id, label, adapters: remoteAdapters = {}, connected } of [...entries, ...saved.filter(device => !entries.some(entry => entry.id === device.id))]) {
+    const configured = [...entries, ...saved.filter(device => !entries.some(entry => entry.id === device.id))];
+    const resolved = resolveRemoteDevice ? await Promise.all(configured.map(resolveRemoteDevice)) : configured;
+    for (const { id, label, adapters: remoteAdapters = {}, connected } of resolved) {
       if (!/^[a-z0-9-]{1,80}$/.test(id) || deviceRuntimes.has(id)) {
         throw new Error('Invalid or duplicate device ID.');
       }

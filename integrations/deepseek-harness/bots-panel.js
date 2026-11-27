@@ -737,7 +737,7 @@ function mountBotsPanel(ctx, React, request) {
             h('label', null, '编辑头像', h('select', {
               value: bot.avatar ?? 'initial', onChange: event => void updateAvatar(bot.id, event.target.value),
             }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
-            h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。')),
+            h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (bot.device === 'local' ? (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。') : '工具权限由远程运行时执行。')),
             h('button', { type: 'submit' }, '保存配置'))),
         bot.toolScope === 'conversation' && h(BotTrigger, { key: bot.id, bot }),
         h(Conversation, { key: bot.id, bot }));
