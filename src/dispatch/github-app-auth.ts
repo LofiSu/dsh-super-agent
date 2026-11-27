@@ -306,6 +306,7 @@ export class GithubAppAuthService {
         delete childEnv.GH_TOKEN
         delete childEnv.GH_ENTERPRISE_TOKEN
         delete childEnv.GITHUB_ENTERPRISE_TOKEN
+        childEnv.GIT_CONFIG_GLOBAL = '/dev/null'
         const child = spawn('git', args, {
           cwd: opts.cwd,
           stdio: ['ignore', 'pipe', 'pipe'],

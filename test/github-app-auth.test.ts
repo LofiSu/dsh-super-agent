@@ -294,6 +294,7 @@ describe('GithubAppAuthService git child environment', () => {
       'GH_TOKEN',
       'GH_ENTERPRISE_TOKEN',
       'GITHUB_ENTERPRISE_TOKEN',
+      'GIT_CONFIG_GLOBAL',
     ] as const
     const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
     try {
@@ -305,7 +306,7 @@ describe('GithubAppAuthService git child environment', () => {
       const gitStub = path.join(binDir, 'git')
       writeFileSync(
         gitStub,
-        '#!/bin/sh\nprintf "%s\\n" "${PATH-unset}" "${GIT_CONFIG_KEY_0-unset}" "${GIT_CONFIG_VALUE_0-unset}" "${GITHUB_TOKEN-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}"\n',
+        '#!/bin/sh\nprintf "%s\\n" "${PATH-unset}" "${GIT_CONFIG_KEY_0-unset}" "${GIT_CONFIG_VALUE_0-unset}" "${GITHUB_TOKEN-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}" "${GIT_CONFIG_GLOBAL-unset}"\n',
         { mode: 0o700 },
       )
 
@@ -323,7 +324,7 @@ describe('GithubAppAuthService git child environment', () => {
         ['ls-remote', `https://github.com/${REPO}.git`],
         { cwd: process.cwd() },
       )
-      const [childPath, gitConfigKey, gitConfigValue, githubToken, ghToken, ghEnterpriseToken, githubEnterpriseToken] = result.stdout.trim().split('\n')
+      const [childPath, gitConfigKey, gitConfigValue, githubToken, ghToken, ghEnterpriseToken, githubEnterpriseToken, gitConfigGlobal] = result.stdout.trim().split('\n')
 
       expect(result.code).toBe(0)
       expect(childPath).toContain(binDir)
@@ -333,6 +334,65 @@ describe('GithubAppAuthService git child environment', () => {
       expect(ghToken).toBe('unset')
       expect(ghEnterpriseToken).toBe('unset')
       expect(githubEnterpriseToken).toBe('unset')
+      expect(gitConfigGlobal).toBe('/dev/null')
+    } finally {
+      for (const key of envKeys) {
+        const value = oldEnv[key]
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores HOME and inherited global Git config while retaining the installation extraheader', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-git-global-config-'))
+    const envKeys = ['PATH', 'HOME', 'GIT_CONFIG_GLOBAL'] as const
+    const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
+    try {
+      const homeDir = path.join(tempDir, 'home')
+      fs.mkdirSync(homeDir)
+      const homeConfig = path.join(homeDir, '.gitconfig')
+      const inheritedConfig = path.join(tempDir, 'inherited.gitconfig')
+      writeFileSync(homeConfig, [
+        '[user]',
+        '\trsiProbe = rsi_home_gitconfig_probe_20261127',
+        '[credential]',
+        '\thelper = evil-home-helper-fixture',
+        '[http "https://github.com/"]',
+        '\textraheader = Authorization: Bearer user_global_gitconfig_token_fixture',
+        '[url "https://evil.example.invalid/"]',
+        '\tinsteadOf = https://github.com/',
+        '',
+      ].join('\n'))
+      writeFileSync(inheritedConfig, '[user]\n\trsiInheritedProbe = rsi_inherited_gitconfig_probe_20261127\n')
+      process.env.HOME = homeDir
+      delete process.env.GIT_CONFIG_GLOBAL
+
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      const pemFile = path.join(tempDir, 'app.pem')
+      writeFileSync(pemFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
+      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), process.cwd()).githubApp!
+      const service = new GithubAppAuthService(cfg, REPO, mockGithubFetch({
+        token: 'ghs_installation_token_fixture',
+      }))
+      const runConfigList = async () => (await service.createAuthenticatedGitRun()(
+        ['config', '--list', '--show-origin', '--show-scope'],
+        { cwd: process.cwd() },
+      )).stdout
+
+      const homeConfigOutput = await runConfigList()
+      expect(homeConfigOutput).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(homeConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
+      expect(homeConfigOutput).not.toContain('evil-home-helper-fixture')
+      expect(homeConfigOutput).not.toContain('user_global_gitconfig_token_fixture')
+      expect(homeConfigOutput).not.toContain('evil.example.invalid')
+
+      process.env.GIT_CONFIG_GLOBAL = inheritedConfig
+      const inheritedConfigOutput = await runConfigList()
+      expect(inheritedConfigOutput).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(inheritedConfigOutput).not.toContain('rsi_inherited_gitconfig_probe_20261127')
+      expect(inheritedConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
     } finally {
       for (const key of envKeys) {
         const value = oldEnv[key]
