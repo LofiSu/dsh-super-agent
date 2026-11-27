@@ -230,6 +230,39 @@ describe('redactGithubAuthSecret', () => {
     expect(out).toContain('[REDACTED]')
   })
 
+  it('redacts JWT-shaped installation tokens and PKCS#8 PEM blocks', () => {
+    const dotted = 'ghs_eyJhbGciOiJSUzI1NiJ9.eyJzaXRlIjoiaW5zdGFsbGF0aW9uIn0.signature_part'
+    const hyphenated = 'ghs_abc-def.ghi-jkl.mno-pqr'
+    const pem = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0B\n-----END PRIVATE KEY-----'
+    const out = redactGithubAuthSecret(`${dotted} ${hyphenated} ${pem}`)
+    expect(out).not.toContain('eyJhbGciOiJSUzI1NiJ9')
+    expect(out).not.toContain('signature_part')
+    expect(out).not.toContain('abc-def')
+    expect(out).not.toContain('ghi-jkl')
+    expect(out).not.toContain('MIIEvQIB')
+    expect(out).not.toContain('BEGIN PRIVATE KEY')
+    expect(out).not.toContain('END PRIVATE KEY')
+    expect(out).not.toContain('-----')
+    expect(out.match(/ghs_\[REDACTED\]/g)).toHaveLength(2)
+    expect(out).toContain('[PEM REDACTED]')
+  })
+
+  it('redacts PEM before truncating an API error diagnostic', async () => {
+    const pemBody = `-----BEGIN PRIVATE KEY-----\n${'MIIEvQIBADANBgkqhkiG9w0B'.repeat(20)}\n-----END PRIVATE KEY-----`
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(pemBody, { status: 401 })))
+    try {
+      await bootstrapDispatchGithubAuth(authBlock({}, fixturePem()), REPO, process.cwd())
+      expect.fail('expected bootstrap to throw')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      expect(msg).not.toContain('MIIEvQIB')
+      expect(msg).not.toContain('BEGIN PRIVATE KEY')
+      expect(msg).toContain('[PEM REDACTED]')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('redacts through bootstrap failure path', async () => {
     const pem = fixturePem()
     const failWith = 'ghs_supersecret_in_error_body'

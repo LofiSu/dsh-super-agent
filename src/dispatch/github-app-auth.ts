@@ -30,9 +30,9 @@ export interface GithubDispatchAuthConfig {
 /** Redact secrets from error messages (never log PEM, JWT, installation tokens). */
 export function redactGithubAuthSecret(text: string): string {
   let out = text
-  out = out.replace(/ghs_[A-Za-z0-9_]+/gi, 'ghs_[REDACTED]')
+  out = out.replace(/ghs_[A-Za-z0-9_.-]+/gi, 'ghs_[REDACTED]')
   out = out.replace(/Bearer\s+[^\s"]+/gi, 'Bearer [REDACTED]')
-  out = out.replace(/BEGIN [A-Z ]+PRIVATE KEY[\s\S]*?END [A-Z ]+PRIVATE KEY/g, '[PEM REDACTED]')
+  out = out.replace(/-{0,5}BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}[\s\S]*?-{0,5}END (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}/g, '[PEM REDACTED]')
   out = out.replace(/x-access-token:[^@\s]+/gi, 'x-access-token:[REDACTED]')
   return out
 }
@@ -125,7 +125,7 @@ async function fetchGithubJson<T>(urlPath: string, opts: FetchJsonOpts): Promise
   const res = await fetch(url, { method: opts.method ?? 'GET', headers, body })
   const text = await res.text()
   if (!res.ok) {
-    throw safeUserError(redactGithubAuthSecret(`GitHub API ${res.status}: ${text.slice(0, 200)}`))
+    throw safeUserError(`GitHub API ${res.status}: ${redactGithubAuthSecret(text).slice(0, 200)}`)
   }
   if (!text.trim()) return undefined as T
   return JSON.parse(text) as T
@@ -258,7 +258,7 @@ export class GithubAppAuthService {
             resolve(stdout)
             return
           }
-          reject(safeUserError(`gh failed (exit ${code}): ${(stderr || stdout).trim().slice(0, 400)}`))
+          reject(safeUserError(`gh failed (exit ${code}): ${redactGithubAuthSecret((stderr || stdout).trim()).slice(0, 400)}`))
         })
         child.stdin.end(input ?? '')
       })().catch(reject)
