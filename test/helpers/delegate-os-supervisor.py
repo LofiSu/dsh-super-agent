@@ -21,6 +21,10 @@ class SupervisorInterrupted(Exception):
 
 
 def interrupt(_signum, _frame):
+    # The wrapper deadline and parent-death notification can both arrive
+    # before run() enters its cleanup block. Unwind only once.
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     raise SupervisorInterrupted('supervisor interrupted')
 
 
