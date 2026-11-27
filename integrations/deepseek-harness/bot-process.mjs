@@ -25,7 +25,11 @@ export function runBotProcess(executable, args, { cwd, env, signal, timeout, kil
       if (failure) return;
       failure = reason;
       kill('SIGTERM');
-      escalation = setTimeout(() => kill('SIGKILL'), killDelay);
+      escalation = setTimeout(() => {
+        kill('SIGKILL');
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }, killDelay);
     };
     const abort = () => stop(signal.reason ?? new Error('Bot turn aborted'));
     const timer = setTimeout(() => stop(new Error('Bot CLI timed out')), timeout);
