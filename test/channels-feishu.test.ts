@@ -911,6 +911,34 @@ describe('Feishu client and outbox', () => {
     expect(source.cursorMs).toBe(staleAt)
   })
 
+  it('aborts a hung history list request when the source signal aborts', async () => {
+    let listStarted!: () => void
+    const started = new Promise<void>(resolve => { listStarted = resolve })
+    let listSignal: AbortSignal | undefined
+    const fetchImpl = async (input: string, init?: RequestInit): Promise<Response> => {
+      if (input.includes('tenant_access_token')) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }))
+      }
+      listSignal = init?.signal as AbortSignal | undefined
+      listStarted()
+      return new Promise<Response>((_resolve, reject) => {
+        listSignal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+    }
+    const source = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', {
+      sinceMs: 1761958000000,
+      config,
+    })
+    const controller = new AbortController()
+    const startedAt = Date.now()
+    const pulling = source.pull(controller.signal)
+    await started
+    controller.abort()
+    await expect(pulling).rejects.toThrow()
+    expect(Date.now() - startedAt).toBeLessThan(500)
+    expect(listSignal?.aborted).toBe(true)
+  })
+
   it('bounds a hung official chat-mode lookup and honors shutdown abort', async () => {
     let chatStarted!: () => void
     const started = new Promise<void>(resolve => { chatStarted = resolve })

@@ -205,7 +205,7 @@ describe('deployment resident channel lifecycle', () => {
     await rt.finish()
   })
 
-  it('feishu loop does not advance cursor when ingress aborts under saturation', async () => {
+  it('feishu loop advances only through an ingested prefix when ingress aborts', async () => {
     const rt = Runtime.create({
       home: tempHome(),
       model: new MockModel(),
@@ -255,7 +255,8 @@ describe('deployment resident channel lifecycle', () => {
     ])
     expect(ingested).toEqual(['feishu_hold'])
     const cursor = rt.store.getDoc<{ chatId: string; lastCreateTimeMs: number }>('feishu_cursor', 'cursor')
-    expect(cursor).toBeUndefined()
+    expect(cursor).toEqual({ chatId: 'oc_test', lastCreateTimeMs: 1_761_958_800_000 })
+    expect(source.cursorMs).toBe(1_761_958_800_000)
     await rt.finish()
   })
 

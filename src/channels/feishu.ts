@@ -496,6 +496,7 @@ export class FeishuSource {
     const items = await this.client.listMessages(this.chatId, {
       startTimeSec,
       pageSize: this.pageSize,
+      signal,
     })
     const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()

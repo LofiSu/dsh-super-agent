@@ -150,8 +150,10 @@ are sent directly to the chat without a `message_id`.
 
 `ds-agent serve --feishu` runs an inbound Feishu poll loop alongside the daemon
 timer. The loop lives in `src/cli/feishu.ts` and mirrors `src/cli/channel-loop.ts`
-(the shared iMessage loop): pull, ingest, persist the cursor, await
-`jobsSettled()`, flush the durable outbox, then sleep abortably between polls.
+(the shared iMessage loop): pull, ingest, persist the cursor, request a
+non-blocking `jobsSettled()` drain, flush the durable outbox, then sleep abortably
+between polls. The history request receives the loop's abort signal, so shutdown
+cancels an in-flight message-list fetch.
 
 Requirements, validated before `Runtime.create` and before any network call:
 
@@ -199,18 +201,19 @@ ds-agent channels check --feishu --check-chat # token + chat metadata + at most 
   reason is printed and the exit code is 1.
 
 **Cursor semantics.** The loop stores one document, `feishu_cursor/cursor`, as
-`{ chatId, lastCreateTimeMs }`, where `lastCreateTimeMs` is the highest message
-`create_time` observed by `FeishuSource`. Seed precedence is: explicit
+`{ chatId, lastCreateTimeMs }`. Seed precedence is: explicit
 `--since`/`FEISHU_SINCE` (positive finite ms) > stored cursor for this chat >
-`FeishuSource` default `now - 5 minutes`. The cursor is written only after a
-successful pull and ingest, and only when it advances. On restart the stored
-value is passed back to `FeishuSource`, so the previous window is not replayed.
-`FeishuSource` queries one second before the cursor to catch messages sharing a
-boundary second; any overlap is deduped by Trigger id (`feishu_<message_id>`) in
-`Runtime.ingest`, so a message already processed is never processed twice. If
-the cursor write fails, the source cursor is restored to the beginning of that
-pull and the full window is retried. A stored cursor whose `chatId` differs from
-the current chat is ignored.
+`FeishuSource` default `now - 5 minutes`. After a fully ingested pull, the cursor
+advances to the highest message time observed by the source. If ingestion fails,
+it advances only through the last successfully ingested trigger; the failed
+message and later messages remain available on the next poll and after restart.
+If no trigger was confirmed, the source returns to the cursor at pull start. A
+cursor write failure restores the source cursor to that same start. On restart
+the stored value is passed back to `FeishuSource`. It queries one second before
+the cursor to catch same-second messages; overlap is deduped by Trigger id
+(`feishu_<message_id>`) in `Runtime.ingest`, so a message already processed is
+never processed twice. A stored cursor whose `chatId` differs from the current
+chat is ignored.
 
 **Admission semantics.** The loop calls `runtime.ingest(trigger)` with the
 Trigger returned by `feishuTriggerFromMessage`; it does not bypass the ingress
@@ -233,9 +236,9 @@ both in-flight polls and their drains (jobs, outbox flush), closes the iMessage
 API, and only then runs `Runtime.finish()` to stop the daemon and close SQLite.
 The loops never close the Runtime or the clients; `serve` owns them. A failed
 pull is logged and retried with bounded exponential backoff (cap 30s). An
-ingest error restores the source cursor to the beginning of that pull, so the
-next poll replays the window and durable trigger-id dedupe handles any earlier
-successful items. A TCC/Full
+ingest error restores the source cursor to the last confirmed trigger, so the
+next poll replays from the failed message and durable trigger-id dedupe handles
+any overlap. A TCC/Full
 Disk Access denial is terminal for the iMessage loop (not retried forever), names
 the exact System Settings path, and leaves a combined Feishu loop and the daemon
 running.
