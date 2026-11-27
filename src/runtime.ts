@@ -530,6 +530,7 @@ export class Runtime {
   private readonly admission: AdmissionRules
   /** Kept so finish() can close external MCP server processes. */
   private readonly tools: ToolRegistry
+  private readonly localEnv: LocalEnv
   private readonly remoteResultWait?: RemoteMeshResultWait
   /** Shared slot-release/cancel path, bound in the factory closure. */
   private readonly releaseSlot: (ticketId: string) => void
@@ -592,6 +593,7 @@ export class Runtime {
     batchWindowMs: number
     admission: AdmissionRules
     tools: ToolRegistry
+    localEnv: LocalEnv
     remoteResultWait?: RemoteMeshResultWait
     releaseSlot: (ticketId: string) => void
     remoteCancelSends: Map<string, Set<Promise<void>>>
@@ -628,6 +630,7 @@ export class Runtime {
     this.batchWindowMs = parts.batchWindowMs
     this.admission = parts.admission
     this.tools = parts.tools
+    this.localEnv = parts.localEnv
     this.remoteResultWait = parts.remoteResultWait
     this.releaseSlot = parts.releaseSlot
     this.remoteCancelSends = parts.remoteCancelSends
@@ -636,6 +639,13 @@ export class Runtime {
 
   static create(opts: RuntimeOptions): Runtime {
     const baseEnv = opts.env ?? process.env
+    const toolScope = baseEnv.DS_AGENT_TOOL_SCOPE
+    if (toolScope !== undefined && toolScope !== 'conversation') {
+      throw new UserError('DS_AGENT_TOOL_SCOPE must be conversation when set')
+    }
+    const allowedToolNames = toolScope === 'conversation'
+      ? new Set(['list_tasks', 'reply_user', 'report_to_router', 'read_object'])
+      : undefined
     // Owner-gated and off when `connectors.json` is absent. A malformed file
     // fails here, before SQLite or a network client is opened. Credentials are
     // read only after an explicit enable.
@@ -827,7 +837,9 @@ export class Runtime {
     }
     for (const shard of opts.routerShards ?? []) routerShards.register(shard)
     const workerMesh = new WorkerMeshRegistry([{ id: instanceId, capacity: meshCapacity }])
-    const placement = WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
+    const placement = allowedToolNames
+      ? new WorkerPlacement(instanceId, workerMesh)
+      : WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
     // Retention keeps the durable index bounded: 1000 entries / 90 days by
     // default, with 0 disabling either dimension.
     const retention = memoryRetentionFromEnv(baseEnv, opts.memoryRetention)
@@ -1867,6 +1879,7 @@ export class Runtime {
         baseEnv,
       })
     const tools = new ToolRegistry({
+      allowedToolNames,
       store,
       ports: bindRolePorts(engine),
       env,
@@ -1936,7 +1949,7 @@ export class Runtime {
         return disposition?.shards?.length ? disposition.shards : ['default']
       },
       pickNode: (ticketId, ticket) => {
-        const need = requiredMeshCapabilities(baseEnv)
+        const need = allowedToolNames ? [] : requiredMeshCapabilities(baseEnv)
         const nodeId = placement.pickNode(ticketId, need)
         if (nodeId) {
           metrics.increment('mesh.assigned')
@@ -2283,6 +2296,7 @@ export class Runtime {
       batchWindowMs: opts.batchWindowMs ?? 0,
       admission,
       tools,
+      localEnv: env,
       remoteResultWait: late.remoteResultWait,
       releaseSlot: ticketId => releaseSlot(ticketId),
       remoteCancelSends,
@@ -3380,6 +3394,13 @@ export class Runtime {
   async jobsSettled(): Promise<void> {
     this.flushEvals()
     await this.harness.jobsSettled()
+  }
+
+  /** Stop detached tools before an isolated CLI turn exits on cancellation. */
+  interruptLocalTools(): void {
+    this.localEnv.killShells()
+    this.localAgents?.killAll()
+    this.browserErrands?.killAll()
   }
 
   /** Wait for assessments and jobs, stop the daemon, and close SQLite. */

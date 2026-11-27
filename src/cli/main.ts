@@ -168,6 +168,7 @@ function help(): void {
   pnpm demo:feishu          real Feishu message API smoke (needs app creds)
   pnpm ds-agent init
   pnpm ds-agent tasks
+  pnpm ds-agent mcp              # dsh-super-bot stdio MCP server
   pnpm ds-agent panel            # Panel · Execution (tickets, mandate, executor, outbox)
   pnpm ds-agent receipt <ticketId> [--json] # read-only execution evidence from local state
   pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
@@ -342,11 +343,18 @@ async function withRuntime(
     jobDelayMs: 20,
     watchdogIntervalMs: 60_000,
   })
+  const interrupt = () => {
+    runtime.interruptLocalTools()
+    process.exit(143)
+  }
+  const botTurn = process.env.DS_AGENT_BOT_TURN === '1'
+  if (botTurn) process.once('SIGTERM', interrupt)
   runtime.start()
   try {
     await work(runtime)
     await runtime.finish()
   } finally {
+    if (botTurn) process.removeListener('SIGTERM', interrupt)
     if (runtime.store.isOpen) {
       runtime.daemon.stop()
       runtime.store.close()
@@ -518,6 +526,10 @@ async function main(): Promise<void> {
     console.log(readPackageVersion())
     return
   }
+  if (cmd === 'tool-scope-capabilities') {
+    console.log('ds-agent-tool-scope:conversation')
+    return
+  }
   if (!cmd || cmd === 'help' || cmd === '--help') {
     help()
     return
@@ -532,6 +544,11 @@ async function main(): Promise<void> {
     const store = new Store(home)
     store.close()
     console.log(`initialized ${home}`)
+    return
+  }
+  if (cmd === 'mcp') {
+    const { runBotMcp } = await import('./bot-mcp.ts')
+    await runBotMcp(home)
     return
   }
   if (cmd === 'tasks') {

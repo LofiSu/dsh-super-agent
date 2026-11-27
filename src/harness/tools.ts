@@ -76,6 +76,7 @@ export interface ToolDeps {
   fill?: { vault: FillVault; target?: FillTarget }
   /** Owner-configured browser errands. Absent means the browser tools are off. */
   browserErrands?: BrowserErrands
+  allowedToolNames?: ReadonlySet<string>
 }
 
 interface ToolDef extends ToolSpec {
@@ -129,18 +130,22 @@ export class ToolRegistry {
   }
 
   async specsFor(role: Role): Promise<ToolSpec[]> {
-    const specs = this.tools.filter(tool => tool.roles.includes(role)).map(({ name, description, parameters }) => ({
+    const allowed = this.deps.allowedToolNames
+    const specs = this.tools.filter(tool => tool.roles.includes(role) && (!allowed || allowed.has(tool.name))).map(({ name, description, parameters }) => ({
       name,
       description,
       parameters,
     }))
     // MCP tools are external capabilities for Workers. The Router decides and
     // the Watchdog fails stuck work; neither may reach a third-party server.
-    if (role === 'worker' && this.deps.mcp) specs.push(...await this.deps.mcp.specs())
+    if (role === 'worker' && this.deps.mcp && !allowed) specs.push(...await this.deps.mcp.specs())
     return specs
   }
 
   async invoke(call: ToolCall, session: ToolSession): Promise<unknown> {
+    if (this.deps.allowedToolNames && !this.deps.allowedToolNames.has(call.name)) {
+      throw new UserError(`tool ${call.name} is not available in this runtime`)
+    }
     if (call.name.startsWith('mcp__')) {
       if (session.role !== 'worker' || !this.deps.mcp) {
         throw new UserError(`tool ${call.name} is not available to ${session.role}`)
