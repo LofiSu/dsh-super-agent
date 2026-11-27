@@ -33,8 +33,13 @@ export interface DispatchServeOptions {
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve()
   return new Promise(resolve => {
-    const t = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => { clearTimeout(t); resolve() }, { once: true })
+    const finish = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, ms)
+    signal?.addEventListener('abort', finish, { once: true })
   })
 }
 
@@ -48,10 +53,9 @@ export async function runDispatchServeLoop(options: DispatchServeOptions): Promi
   const poll = options.pollAdapter
   let failures = 0
 
-  const ctxByJob = new Map<string, { issueTitle: string; issueBody: string }>()
-
   while (!options.signal?.aborted) {
     try {
+      const ctxByJob = new Map<string, { issueTitle: string; issueBody: string }>()
       if (config.github.enabled && poll) {
         const cursor = store.getDoc<{ seededAt: string }>(DISPATCH_CURSOR_KIND, DISPATCH_CURSOR_ID)
         const seededAt = cursor?.seededAt ?? new Date().toISOString()
