@@ -99,6 +99,13 @@ test('host advertises configured adapters and dispatches to the selected Agent',
     const bot = await (await post('', { ...input, engine: 'codex' })).json();
     const turn = await (await post('/' + bot.id + '/turns', { id: 'request-1', prompt: 'Hello' })).json();
     assert.equal(turn.reply, 'Codex result');
+    const profile = '/' + bot.id + '/profile';
+    assert.equal((await post(profile, { ...input, engine: 'claude' })).status, 400);
+    assert.equal((await post(profile, { ...input, engine: 'ds-agent' })).status, 200);
+    const next = await (await post('/' + bot.id + '/turns', { id: 'request-2', prompt: 'Continue' })).json();
+    assert.equal(next.reply, 'wrong adapter');
+    const history = await (await route(new Request(url + '/' + bot.id + '/turns', { headers }))).json();
+    assert.deepEqual(history.turns.map(item => item.reply), ['Codex result', 'wrong adapter']);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -30,11 +30,12 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
     }
     return Response.json({ bots: [...profiles], devices: [{ id: 'local', label: '本机 Mac', status: 'ready', engines: ['ds-agent'] }] });
   });
-  assert.equal(slots.get('sidebar.panellist').entry.label, 'Bots');
+  assert.equal(slots.get('sidebar.panellist').entry.label(), 'Bots');
   const render = () => { cursor = 0; return slots.get('main').component(); };
   render();
   effects.shift()();
   await new Promise(setImmediate);
+  assert.match(JSON.stringify(render()), /创建你的第一个 Bot/);
   render().children[1].children[1].props.onClick();
   const findForm = () => render().children.find(child => child?.tag === 'form');
   findForm().children[0].children[1].props.onChange({ target: { value: '项目跟进' } });

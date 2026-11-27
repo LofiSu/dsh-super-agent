@@ -82,11 +82,15 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
     return { name, purpose };
   }
 
-  function normalizeProfile(input) {
-    const identity = normalizeIdentity(input);
-    if (!devices.some(device => device.id === input.device && device.status === 'ready' && device.engines.includes(input.engine))) {
+  function validateRuntime(deviceId, engine) {
+    if (!devices.some(device => device.id === deviceId && device.status === 'ready' && device.engines.includes(engine))) {
       throw new RangeError('The selected Agent is unavailable on this device.');
     }
+  }
+
+  function normalizeProfile(input) {
+    const identity = normalizeIdentity(input);
+    validateRuntime(input.device, input.engine);
     const avatar = input.avatar ?? 'initial';
     if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');
     return { ...identity, device: input.device, engine: input.engine, avatar };
@@ -100,9 +104,20 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
   return {
     close: () => db.close(),
     list: () => list.all(),
-    updateIdentity(id, input) {
+    updateProfile(id, input) {
+      const current = db.prepare('SELECT * FROM bot_profiles WHERE id = ?').get(id);
+      if (!current) return undefined;
       const { name, purpose } = normalizeIdentity(input);
-      return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ? WHERE id = ? RETURNING *').get(name, purpose, id);
+      const device = input.device ?? current.device;
+      const engine = input.engine ?? current.engine;
+      if (device !== current.device || engine !== current.engine) {
+        validateRuntime(device, engine);
+        if (db.prepare("SELECT 1 FROM bot_turns WHERE botId = ? AND status = 'running'").get(id)) {
+          return null;
+        }
+      }
+      return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ?, device = ?, engine = ? WHERE id = ? RETURNING *')
+        .get(name, purpose, device, engine, id);
     },
     setAvatar(id, avatar) {
       if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');

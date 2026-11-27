@@ -97,7 +97,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         return json({ error: 'Invalid JSON' }, 400);
       }
     }
-    const needsDevices = pathname === '/api/bots' || ((conversation || dispatch || offers || decision) && request.method === 'POST');
+    const needsDevices = pathname === '/api/bots' || ((conversation || dispatch || offers || decision || profile) && request.method === 'POST');
     const { devices, deviceRuntimes, warning } = needsDevices ? await readDevices() : {};
     const registry = openBotRegistry(home, devices);
     async function executeTurn(bot, id, prompt, signal) {
@@ -201,7 +201,8 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       }
       if (profile) {
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-        const bot = registry.updateIdentity(profile[1], input);
+        const bot = registry.updateProfile(profile[1], input);
+        if (bot === null) return json({ error: 'Wait for the running turn before changing Agent or device' }, 409);
         return bot ? json(bot, 200) : json({ error: 'Bot not found' }, 404);
       }
       if (avatar) {
