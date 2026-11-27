@@ -201,19 +201,6 @@ function peerIdOf(headers: A2AHeaderBag): string {
   return value
 }
 
-/**
- * Read and validate the authenticated peer id without verifying the request.
- * The HTTP handler uses this to resolve the per-peer secret; the full
- * verification path still re-reads and re-validates the header.
- */
-export function readA2APeerId(headers: A2AHeaderBag): string | undefined {
-  try {
-    return peerIdOf(headers)
-  } catch {
-    return undefined
-  }
-}
-
 type HeaderRead =
   | { ok: true; value: string }
   | { ok: false; reason: 'missing' | 'malformed' }
