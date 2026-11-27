@@ -257,6 +257,55 @@ describe('worker mandate scope', () => {
     expect(runtime.log.text()).not.toContain('kept ticket open for revised mandate')
   })
 
+  it('builds a FOLLOWUP prompt from the ticket after mandate activation', async () => {
+    const prompts: string[] = []
+    const runtime = start(new ScriptedModel(request => {
+      const prompt = lastPrompt(request)
+      if (request.role !== 'worker') return { text: 'finished' }
+      prompts.push(prompt)
+      if (!prompt.startsWith('FOLLOWUP')) return { text: 'task turn finished' }
+      return {
+        toolCalls: [{
+          id: 'followup-ready',
+          name: 'report_to_router',
+          args: {
+            ticketId: field(prompt, 'ticketId'),
+            text: 'done under the active mandate',
+            deliver: true,
+            kind: 'ready',
+          },
+        }],
+      }
+    }))
+    const decision = issue192Fixture(runtime, 'trg_followup_revised_scope')
+    const ticketId = decision.ticketId!
+    const ticket = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    runtime.engine.assignmentStarted(ticketId, ticket.assignments[0]!.id, `worker_${ticketId}`)
+
+    const activateMandate = runtime.engine.assignmentMandateActivated.bind(runtime.engine)
+    runtime.engine.assignmentMandateActivated = id => {
+      const live = runtime.store.getDoc<Ticket>('ticket', id)!
+      live.mandate.scope = scopeB
+      runtime.store.putDoc('ticket', id, live)
+      activateMandate(id)
+    }
+
+    await runtime.harness.deliver(ticketId, imTrigger({
+      id: 'trg_followup_direct',
+      thread: 'github/issue-192',
+      text: '重新测一下这个',
+    }))
+    await runtime.jobsSettled()
+
+    const followup = prompts.find(prompt => prompt.startsWith('FOLLOWUP'))
+    expect(followup).toBeDefined()
+    expect(followup).toContain(`scope=${scopeB}`)
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    expect(latest.assignments.at(-1)?.mandateScopeAtStart).toBe(scopeB)
+    expect(latest.ended?.outcome).toBe('ready')
+    expect(runtime.log.text()).not.toContain('kept ticket open for revised mandate')
+  })
+
   it('delivers a revised scope during a local RESUME Worker turn', async () => {
     const prompts: string[] = []
     let releaseResume!: () => void

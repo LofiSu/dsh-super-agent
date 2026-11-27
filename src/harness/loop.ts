@@ -666,17 +666,28 @@ export class Harness {
     const sessionId = workerSessionId(ticketId)
     this.bookWorkerTurn(ticketId)
     return this.track(this.enqueue(sessionId, async () => {
-      const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
+      const ticket = this.opts.store.isOpen
+        ? this.opts.store.getDoc<Ticket>('ticket', ticketId)
+        : undefined
       if (!ticket || ticket.ended) {
-        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${ticket ? 'ended' : 'missing'}`)
+        const reason = !this.opts.store.isOpen ? 'store-closed' : ticket ? 'ended' : 'missing'
+        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${reason}`)
         return
       }
       this.opts.assignmentMandateActivated?.(ticketId)
-      const mode = ticket.speculative ? 'speculative' : 'normal'
+      const live = this.opts.store.isOpen
+        ? this.opts.store.getDoc<Ticket>('ticket', ticketId)
+        : undefined
+      if (!live || live.ended) {
+        const reason = !this.opts.store.isOpen ? 'store-closed' : live ? 'ended' : 'missing'
+        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${reason}`)
+        return
+      }
+      const mode = live.speculative ? 'speculative' : 'normal'
       const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
-      if (ticket.mandate.scope) lines.push(`scope=${ticket.mandate.scope}`)
+      if (live.mandate.scope) lines.push(`scope=${live.mandate.scope}`)
       // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
-      const owned = spillId ?? ticket.spillId ?? ''
+      const owned = spillId ?? live.spillId ?? ''
       if (owned) lines.push(`spillId=${owned}`)
       const refs = formatRefs(trigger.refs)
       if (refs) lines.push(refs)
