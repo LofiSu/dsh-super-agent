@@ -6,7 +6,7 @@
  * evaluator child ships under dist/scripts so a published package can run it
  * with plain node (no tsx, no src/).
  */
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { copyFileSync, cpSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -40,6 +40,16 @@ function main(): void {
   console.log(
     `copied ${RUNTIME_ASSETS.length + 1} asset(s) to dist: ${[...RUNTIME_ASSETS, 'scripts/evolution-eval-child.mjs'].join(', ')}`,
   )
+  const pstack = path.join(root, 'dist/pstack')
+  rmSync(pstack, { recursive: true, force: true })
+  cpSync(path.join(root, 'vendor/pstack'), pstack, {
+    recursive: true,
+    filter: source => {
+      const name = path.basename(source)
+      return name !== 'node_modules' && name !== '.DS_Store' && !name.endsWith('.log')
+    },
+  })
+  console.log('copied pstack workflows to dist/pstack')
 }
 
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : ''

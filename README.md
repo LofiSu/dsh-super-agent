@@ -497,3 +497,13 @@ Built on Node.js, TypeScript, `node:sqlite`, `tsx`, and Vitest — no agent fram
 [MIT](./LICENSE)
 
 [![Star History Chart](https://api.star-history.com/svg?repos=LofiSu/dsh-super-agent&type=Date)](https://star-history.com/#LofiSu/dsh-super-agent&Date)
+
+### pstack engineering workflows
+
+Use `/poteto-mode <task>` in a ds-agent conversation or describe a software
+engineering task. The agent loads the relevant pstack playbook and uses the
+configured ds-agent model, tools, and specialists. List the available
+documents with `pnpm ds-agent skills`. Existing approval rules apply.
+
+Repository development uses the project-local pstack skill. See the
+[upstream source and host adapters](vendor/pstack/UPSTREAM.md).

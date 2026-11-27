@@ -157,7 +157,7 @@ export interface RuntimeOptions {
    * `local-agents.json` in `home`, then `DS_AGENT_LOCAL_AGENTS`.
    */
   localAgents?: LocalAgentSpec[]
-  /** Owner-authored playbooks. Defaults to `skills/<id>/SKILL.md` in `home`. */
+  /** Playbook catalog. Defaults to pstack plus owner skills from `home`. */
   skills?: SkillRegistry
   /**
    * Owner-configured browser errands. Defaults to `browser-errands.json` in
@@ -772,7 +772,7 @@ export class Runtime {
     }
     const skills = opts.skills ?? SkillRegistry.fromHome(opts.home, line => log.info(line))
     if (skills.size) {
-      log.info(`[skill] configured skills=${skills.list().map(skill => skill.id).join(',')}`)
+      log.info(`[skill] loaded ${skills.size} workflow documents`)
     }
     // The scheduler is built before the Runtime exists; the closure forwards
     // into Runtime.ingest once construction finishes, so routines take the

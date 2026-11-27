@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { cliTrigger } from '../src/channels/cli.ts'
 import { imTrigger } from '../src/channels/im.ts'
 import { bindRolePorts } from '../src/core/role-ports.ts'
 import { LocalEnv } from '../src/env/local-env.ts'
@@ -97,6 +98,28 @@ function reportingModel(prompts: string[] = []): ScriptedModel {
 }
 
 describe('Runtime service integration', () => {
+  it('passes a pstack request and both workflow documents through the CLI ticket to the worker', async () => {
+    let mode = ''
+    let playbook = ''
+    let prompt = ''
+    const runtime = start({ model: new ScriptedModel(request => {
+      if (request.role !== 'worker') return { text: 'router-ok' }
+      prompt = request.messages.map(message => message.content).join(' ')
+      const workflow = request.messages.filter(message => message.role === 'tool' && message.name === 'read_skill')
+      mode = workflow[0]?.content ?? ''
+      playbook = workflow[1]?.content ?? ''
+      if (workflow.length >= 2) return { text: 'workflow loaded' }
+      const skill = workflow.length ? 'pstack-playbook-bug-fix' : 'poteto-mode'
+      return { toolCalls: [{ id: skill, name: 'read_skill', args: { skill } }] }
+    }) })
+    const request = '/poteto-mode Reproduce the login timeout'
+    runtime.ingest(cliTrigger({ text: request }))
+    await runtime.jobsSettled()
+    expect(prompt).toContain(request)
+    expect(mode).toContain('Non-negotiables')
+    expect(playbook).toContain('Verify on the same surface')
+  })
+
   it('resumes a trigger-only interrupted ingress and leaves completed retries duplicate', () => {
     const runtime = start()
     const trigger = imTrigger({ id: 'trg_interrupted_ingress', thread: 'recovery/topic', text: 'synthetic event' })

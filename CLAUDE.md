@@ -39,7 +39,7 @@ directory-based milestone naming; `pnpm lint` enforces this.
 ## 1. Single loop ownership
 
 The main Claude Code session is the only owner of the project-level
-orchestration loop. The `autonomous-engineering` skill defines that loop.
+orchestration loop. Use the project-local `pstack` skill for engineering work. It loads the upstream playbooks and maps them to this repository’s tools and gates.
 
 Stop hooks are safety guards, not schedulers.
 

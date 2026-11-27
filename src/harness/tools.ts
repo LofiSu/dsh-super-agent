@@ -1003,7 +1003,7 @@ function skillTools(registry: SkillRegistry): ToolDef[] {
   return [
     {
       name: 'read_skill',
-      description: 'Load the full instructions for one owner-authored skill by id.',
+      description: 'Load the full instructions for one bundled or owner-authored skill by id.',
       parameters: schema({
         skill: { type: 'string', description: 'Skill id from the Skills section of the system prompt.' },
       }),
