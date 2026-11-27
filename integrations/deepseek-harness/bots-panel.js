@@ -23,6 +23,7 @@ function mountBotsPanel(ctx, React, request) {
     const [draft, setDraft] = React.useState('');
     const [sending, setSending] = React.useState(false);
     const [notice, setNotice] = React.useState('');
+    const pendingTurn = React.useRef(null);
     const endpoint = '/api/bots/' + bot.id + '/turns';
 
     React.useEffect(() => {
@@ -48,19 +49,25 @@ function mountBotsPanel(ctx, React, request) {
       event.preventDefault();
       const prompt = draft.trim();
       if (!ready || sending || !prompt) return;
+      if (pendingTurn.current?.prompt !== prompt) pendingTurn.current = { id: crypto.randomUUID(), prompt };
       setSending(true);
       setNotice('');
       try {
         const response = await request(endpoint, {
           method: 'POST',
-          body: JSON.stringify({ id: crypto.randomUUID(), prompt }),
+          body: JSON.stringify(pendingTurn.current),
         });
         if (!response.ok) throw new Error();
         const turn = await response.json();
-        setTurns(current => [...current, turn]);
+        if (turn.status === 'running') {
+          setNotice('上一条消息仍在执行。稍后再次发送可查看结果。');
+          return;
+        }
+        setTurns(current => [...current.filter(item => item.id !== turn.id), turn]);
+        pendingTurn.current = null;
         setDraft('');
       } catch {
-        setNotice('未能确认发送结果。重新打开会话可查看已保存的记录。');
+        setNotice('未能确认发送结果。再次发送同一条消息可恢复结果。');
       } finally {
         setSending(false);
       }
@@ -505,7 +512,12 @@ function mountBotsPanel(ctx, React, request) {
       section === 'hosts' && deviceWarning && h('p', { role: 'status' }, deviceWarning),
       editing && h('dialog', {
         className: 'bots-dialog',
-        ref: dialog => { if (dialog && !dialog.open) dialog.showModal(); },
+        ref: dialog => {
+          if (dialog && !dialog.open) {
+            dialog.showModal();
+            dialog.querySelector('input[name=name]')?.focus();
+          }
+        },
         'aria-label': '新建 Bot',
         onCancel: event => { event.preventDefault(); if (!saving) setEditing(false); },
       }, h('form', { className: 'bots-create', 'aria-label': '新建 Bot', onSubmit: create, onKeyDown: event => {

@@ -6,11 +6,13 @@ import { test } from 'node:test';
 test('sidebar panel creates a profile and restores it on remount', async () => {
   const profiles = [];
   const effects = [];
+  const requests = [];
   const slots = new Map();
   let hooks = [];
   let cursor = 0;
   const React = {
     useEffect: effect => effects.push(effect),
+    useRef(initial) { return this.useState(() => ({ current: initial }))[0]; },
     createElement: (tag, props, ...children) => ({ tag, props, children }),
     useState(initial) {
       const index = cursor++;
@@ -23,7 +25,14 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
     FormData: class { constructor(fields) { this.fields = fields; } get(key) { return this.fields[key]; } },
   });
   const navigation = [];
-  const openBots = mount({ layout: { selectPanel: id => navigation.push(id) }, slots: { inject: (_, register) => register(), register: (entry, component) => slots.set(entry.name, { entry, component }) } }, React, async (_, options) => {
+  const openBots = mount({ layout: { selectPanel: id => navigation.push(id) }, slots: { inject: (_, register) => register(), register: (entry, component) => slots.set(entry.name, { entry, component }) } }, React, async (path, options) => {
+    if (path.endsWith('/turns')) {
+      if (!options) return Response.json({ turns: [] });
+      requests.push(JSON.parse(options.body));
+      if (requests.length === 1) throw new Error('Lost response');
+      if (requests.length === 2) return Response.json({ id: 'bot-1', status: 'running' });
+      return Response.json({ id: 'bot-1', status: 'completed', prompt: requests.at(-1).prompt, reply: '恢复成功' });
+    }
     if (options) {
       const bot = { ...JSON.parse(options.body), id: 'bot-1' };
       profiles.push(bot);
@@ -60,5 +69,21 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
   render();
   effects.shift()();
   await new Promise(setImmediate);
-  assert.match(JSON.stringify(render()), /花生.*ds-agent.*整理任务进度/);
+  const dashboard = render();
+  assert.match(JSON.stringify(dashboard), /花生.*ds-agent.*整理任务进度/);
+  const cards = dashboard.children.find(child => Array.isArray(child) && child[0]?.tag === 'article');
+  cards[0].children[0].children[2].props.onClick();
+  const selectedCards = render().children.find(child => Array.isArray(child) && child[0]?.tag === 'article');
+  const conversation = selectedCards[0].children.at(-1);
+  hooks = [];
+  effects.length = 0;
+  const renderConversation = () => { cursor = 0; return conversation.tag(conversation.props); };
+  renderConversation();
+  effects.shift()();
+  await new Promise(setImmediate);
+  const formFor = () => renderConversation().children.find(child => child?.tag === 'form');
+  formFor().children[0].children[1].props.onChange({ target: { value: '我的消息' } });
+  for (let attempt = 0; attempt < 3; attempt++) await formFor().props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(requests.map(turn => turn.id), ['bot-1', 'bot-1', 'bot-1']);
+  assert.match(JSON.stringify(renderConversation()), /恢复成功/);
 });

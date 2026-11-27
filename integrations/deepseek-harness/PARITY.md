@@ -17,7 +17,7 @@ interface for the following workflows.
 
 | Workflow | Verified evidence | Remaining |
 | --- | --- | --- |
-| Bot profiles and chat | Installed host created a local Bot, persisted two real ds-agent replies across restart, and used the saved reply in a follow-up. | Click through creation and conversation recovery in the native desktop window. |
+| Bot profiles and chat | Native desktop created a Bot, switched it to Codex, received a real reply, and reopened the conversation with its reply intact. Earlier installed-host tests covered ds-agent persistence across restart. | Repeat the live ds-agent journey through the desktop UI. |
 | Runtime selection | Installed host advertised four runtimes after a restart without adapter environment overrides. Codex and Harness returned and persisted real replies. | Claude Code returned a quota error. Verify each selection in the desktop window. |
 | Host registration | Installed host registered grokbot and returned an offline status after SSH closed before authentication. | Pair a reachable device and run a real remote turn. |
 | Proposal and approval | Installed MCP submitted a pending offer without creating a Bot. Isolated host approval returned the same Bot on replay. | Approve or reject in the native desktop window. Verify an initial run if enabled. |
