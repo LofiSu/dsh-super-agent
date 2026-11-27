@@ -351,8 +351,17 @@ describe('GithubAppAuthService git child environment', () => {
     const envKeys = ['PATH', 'HOME', 'GIT_CONFIG_GLOBAL'] as const
     const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
     try {
+      const repoDir = path.join(tempDir, 'repo')
       const homeDir = path.join(tempDir, 'home')
+      fs.mkdirSync(repoDir)
       fs.mkdirSync(homeDir)
+      const cleanGitEnv = {
+        ...process.env,
+        HOME: homeDir,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }
+      execFileSync('git', ['init', repoDir], { env: cleanGitEnv, stdio: 'ignore' })
       const homeConfig = path.join(homeDir, '.gitconfig')
       const inheritedConfig = path.join(tempDir, 'inherited.gitconfig')
       writeFileSync(homeConfig, [
@@ -373,27 +382,29 @@ describe('GithubAppAuthService git child environment', () => {
       const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
       const pemFile = path.join(tempDir, 'app.pem')
       writeFileSync(pemFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
-      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), process.cwd()).githubApp!
+      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), repoDir).githubApp!
       const service = new GithubAppAuthService(cfg, REPO, mockGithubFetch({
         token: 'ghs_installation_token_fixture',
       }))
       const runConfigList = async () => (await service.createAuthenticatedGitRun()(
         ['config', '--list', '--show-origin', '--show-scope'],
-        { cwd: process.cwd() },
+        { cwd: repoDir },
       )).stdout
+      const expectIsolatedConfig = (output: string) => {
+        expect(output).toContain('Authorization: Basic [REDACTED]')
+        expect(output).not.toContain('rsi_home_gitconfig_probe_20261127')
+        expect(output).not.toContain('evil-home-helper-fixture')
+        expect(output).not.toContain('user_global_gitconfig_token_fixture')
+        expect(output).not.toContain('evil.example.invalid')
+        expect(output).not.toContain('rsi_inherited_gitconfig_probe_20261127')
+      }
 
       const homeConfigOutput = await runConfigList()
-      expect(homeConfigOutput).toContain('Authorization: Basic [REDACTED]')
-      expect(homeConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
-      expect(homeConfigOutput).not.toContain('evil-home-helper-fixture')
-      expect(homeConfigOutput).not.toContain('user_global_gitconfig_token_fixture')
-      expect(homeConfigOutput).not.toContain('evil.example.invalid')
+      expectIsolatedConfig(homeConfigOutput)
 
       process.env.GIT_CONFIG_GLOBAL = inheritedConfig
       const inheritedConfigOutput = await runConfigList()
-      expect(inheritedConfigOutput).toContain('Authorization: Basic [REDACTED]')
-      expect(inheritedConfigOutput).not.toContain('rsi_inherited_gitconfig_probe_20261127')
-      expect(inheritedConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
+      expectIsolatedConfig(inheritedConfigOutput)
     } finally {
       for (const key of envKeys) {
         const value = oldEnv[key]
