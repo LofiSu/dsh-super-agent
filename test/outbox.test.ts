@@ -358,6 +358,12 @@ describe('durable outbox', () => {
       if (input.includes('tenant_access_token')) {
         return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }))
       }
+      const body = JSON.parse(String(init?.body)) as { uuid: string }
+      const sending = store.listOutbox()[0]!
+      const metadata = JSON.parse(sending.target.__ds_feishu_text_progress!) as { sendUuids: Record<string, string> }
+      expect(Object.values(metadata.sendUuids)).toContain(body.uuid)
+      expect(body.uuid).toBeTruthy()
+      expect(body.uuid.length).toBeLessThanOrEqual(50)
       requests.push({ url: input, body: String(init?.body) })
       sendRequests += 1
       if (sendRequests === 2) {
@@ -404,6 +410,9 @@ describe('durable outbox', () => {
     expect(total).toBeTruthy()
     expect(retryTexts).toHaveLength(Number(total) - 1)
     expect(retryTexts[0]).toBe(requestTexts[1])
+    const uuidOf = (request: { body: string }): string => String((JSON.parse(request.body) as { uuid: string }).uuid)
+    expect(uuidOf(retryRequests[0]!)).toBe(uuidOf(requests[1]!))
+    expect(uuidOf(requests[0]!)).not.toBe(uuidOf(requests[1]!))
     expect(acceptedTexts.slice(1).every(chunk => /^（续 \d+\/\d+）\n/.test(chunk))).toBe(true)
     expect(acceptedTexts.every(chunk => chunk.includes(`/${total}）`))).toBe(true)
     expect(acceptedTexts.map(chunk => chunk.replace(/^（(?:续 )?\d+\/\d+）\n/, '')).join('')).toBe(text)

@@ -525,11 +525,14 @@ describe('Feishu client and outbox', () => {
     expect(calls.filter(call => call.url.includes('tenant_access_token'))).toHaveLength(1)
     const send = calls.find(call => call.url.includes('/im/v1/messages?'))!
     expect(send.url).toContain('receive_id_type=chat_id')
-    expect(JSON.parse(String(send.init?.body))).toEqual({
+    const request = JSON.parse(String(send.init?.body)) as { uuid: string }
+    expect(request).toMatchObject({
       receive_id: 'oc_chat',
       msg_type: 'text',
       content: JSON.stringify({ text: 'hello' }),
     })
+    expect(request.uuid).toMatch(/^[0-9a-f-]{36}$/)
+    expect(request.uuid.length).toBeLessThanOrEqual(50)
     expect((send.init?.headers as Record<string, string>).Authorization).toBe('Bearer tok_1')
   })
 
@@ -553,7 +556,9 @@ describe('Feishu client and outbox', () => {
     }
     const result = await adapter.send(row)
     expect(result.externalId).toBe('om_reply')
-    expect(calls.some(call => call.url.endsWith('/im/v1/messages/om_1/reply'))).toBe(true)
+    const reply = calls.find(call => call.url.endsWith('/im/v1/messages/om_1/reply'))!
+    expect(reply).toBeTruthy()
+    expect((JSON.parse(String(reply.init?.body)) as { uuid: string }).uuid).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   it('polls a real chat through FeishuSource and maps messages to Triggers', async () => {
@@ -1067,14 +1072,38 @@ describe('Feishu Markdown card outbox formatting', () => {
       const [call] = sentCalls(calls)
       expect(call.init?.method).toBe('POST')
       expect(call.url).toBe('https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')
-      const request = JSON.parse(String(call.init?.body)) as { msg_type: string; content: string }
+      const request = JSON.parse(String(call.init?.body)) as { msg_type: string; content: string; uuid: string }
       expect(request.msg_type).toBe('interactive')
+      expect(request.uuid).toMatch(/^[0-9a-f-]{36}$/)
+      expect(request.uuid.length).toBeLessThanOrEqual(50)
       const card = JSON.parse(request.content) as { header: { title: { tag: string; content: string } }; elements: { tag: string; text: { tag: string; content: string } }[] }
       expect(card.header.title).toEqual({ tag: 'plain_text', content: 'ds-agent · 助手 🌱' })
       expect(card.elements).toHaveLength(1)
       expect(card.elements[0]).toMatchObject({ tag: 'div', text: { tag: 'lark_md', content: text } })
       expect(JSON.stringify(card)).not.toContain('button')
       expect(card.header.title.content).toBe('ds-agent · 助手 🌱')
+    })
+  })
+
+  it('uses distinct uuids for different text hashes and chunk indexes', async () => {
+    await withFormat('text', async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: `sent_${sentCalls(calls).length}` } } })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const first = makeRow('same route, first content')
+      const second = makeRow('same route, different content')
+      await adapter.sendWithProgress(first, () => undefined)
+      await adapter.sendWithProgress(second, () => undefined)
+      const uuids = sentCalls(calls).map(call => String((JSON.parse(String(call.init?.body)) as { uuid: string }).uuid))
+      expect(uuids).toHaveLength(2)
+      expect(new Set(uuids).size).toBe(2)
+
+      const chunks = '界🙂'.repeat(30_000)
+      await adapter.sendWithProgress(makeRow(chunks), () => undefined)
+      const chunkUuids = sentCalls(calls).slice(2).map(call => String((JSON.parse(String(call.init?.body)) as { uuid: string }).uuid))
+      expect(chunkUuids.length).toBeGreaterThan(1)
+      expect(new Set(chunkUuids).size).toBe(chunkUuids.length)
     })
   })
 
@@ -1139,6 +1168,53 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
+  it('persists split chunk uuids before send and reuses them after an ack-window crash', async () => {
+    await withFormat('text', async () => {
+      const createdByUuid = new Map<string, string>()
+      const requests: { url: string; body: Record<string, unknown> }[] = []
+      const { fn } = fakeFetch((url, init) => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        requests.push({ url, body })
+        const uuid = String(body.uuid)
+        let messageId = createdByUuid.get(uuid)
+        if (!messageId) {
+          messageId = `created_${createdByUuid.size + 1}`
+          createdByUuid.set(uuid, messageId)
+        }
+        return { body: { code: 0, data: { message_id: messageId } } }
+      })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const text = '界🙂'.repeat(30_000)
+      let target: OutboxRow['target'] = { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' }
+      let threwAfterFirstAck = false
+      await expect(adapter.sendWithProgress(makeRow(text, target), (next, externalId) => {
+        if (externalId && !threwAfterFirstAck) {
+          threwAfterFirstAck = true
+          throw new Error('simulated crash before accepted progress')
+        }
+        target = next
+      })).rejects.toThrow(/simulated crash/)
+
+      const firstAttempt = requests[0]!.body
+      const firstUuid = String(firstAttempt.uuid)
+      expect(firstUuid).toMatch(/^[0-9a-f-]{32,36}$/)
+      expect(firstUuid.length).toBeLessThanOrEqual(50)
+      expect(target.__ds_feishu_text_progress).toBeTruthy()
+      expect(createdByUuid.size).toBe(1)
+      const acceptedFirstId = createdByUuid.get(firstUuid)
+
+      const result = await adapter.sendWithProgress(makeRow(text, target), next => { target = next })
+      expect(result.externalId).toBe(acceptedFirstId)
+      expect(requests.filter(request => request.body.uuid === firstUuid)).toHaveLength(2)
+      expect(createdByUuid.get(firstUuid)).toBe(acceptedFirstId)
+      expect(createdByUuid.size).toBeGreaterThan(1)
+      const uuids = requests.map(request => String(request.body.uuid))
+      expect(new Set(uuids).size).toBe(createdByUuid.size)
+      expect(requests.every(request => request.url.endsWith('/om_source/reply'))).toBe(true)
+    })
+  })
+
   it('sends complete oversized text in marked in-chat chunks within the request body limit', async () => {
     await withFormat(undefined, async () => {
       const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
@@ -1167,6 +1243,35 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
+  it('reuses a persisted interactive uuid when the caller loses the accepted result', async () => {
+    await withFormat(undefined, async () => {
+      const createdByUuid = new Map<string, string>()
+      const calls: { url: string; body: Record<string, unknown> }[] = []
+      const { fn } = fakeFetch((url, init) => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        calls.push({ url, body })
+        const uuid = String(body.uuid)
+        let messageId = createdByUuid.get(uuid)
+        if (!messageId) {
+          messageId = `card_${createdByUuid.size + 1}`
+          createdByUuid.set(uuid, messageId)
+        }
+        return { body: { code: 0, data: { message_id: messageId } } }
+      })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const row = makeRow('## Structured\n- body', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' })
+      let durableTarget = row.target
+      const firstResult = await adapter.sendWithProgress(row, target => { durableTarget = target })
+      const retryResult = await adapter.sendWithProgress({ ...row, target: durableTarget }, () => undefined)
+      expect(firstResult.externalId).toBe(retryResult.externalId)
+      expect(calls).toHaveLength(2)
+      expect(calls[0]?.body.uuid).toBe(calls[1]?.body.uuid)
+      expect(createdByUuid.size).toBe(1)
+      expect(calls.every(call => call.url.endsWith('/om_source/reply'))).toBe(true)
+    })
+  })
+
   it('falls back once to text only for documented card rejection codes', async () => {
     await withFormat(undefined, async () => {
       const { fn, calls } = fakeFetch(url => {
@@ -1179,8 +1284,11 @@ describe('Feishu Markdown card outbox formatting', () => {
       const result = await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('## Structured\n- body'))
       const sent = sentCalls(calls)
       expect(sent).toHaveLength(2)
-      expect(JSON.parse(String(sent[0]?.init?.body)).msg_type).toBe('interactive')
-      expect(JSON.parse(String(sent[1]?.init?.body))).toMatchObject({ msg_type: 'text', content: JSON.stringify({ text: '## Structured\n- body' }) })
+      const cardRequest = JSON.parse(String(sent[0]?.init?.body)) as { msg_type: string; uuid: string }
+      const textRequest = JSON.parse(String(sent[1]?.init?.body)) as { msg_type: string; content: string; uuid: string }
+      expect(cardRequest.msg_type).toBe('interactive')
+      expect(textRequest).toMatchObject({ msg_type: 'text', content: JSON.stringify({ text: '## Structured\n- body' }) })
+      expect(cardRequest.uuid).not.toBe(textRequest.uuid)
       expect(result.externalId).toBe('sent_text')
     })
   })
