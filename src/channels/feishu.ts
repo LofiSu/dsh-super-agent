@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import type { OutboxRow, Trigger } from '../shared/types.ts'
-import type { OutboundAdapter } from './outbox-adapter.ts'
+import type { OutboxProgress, OutboundAdapter } from './outbox-adapter.ts'
 import { FEISHU_CARD_CONTENT_LIMIT_BYTES, hasFeishuMarkdownStructure, renderFeishuMarkdownCard } from './feishu-card.ts'
 
 /** Feishu documents a 150 KB maximum for serialized text-message request bodies. */
@@ -9,6 +9,7 @@ export const FEISHU_TEXT_REQUEST_LIMIT_BYTES = 150 * 1024
 // Reserve ample room for the send API's receive_id envelope without using a real
 // chat id. This also safely covers the smaller reply API request body.
 const FEISHU_RECEIVE_ID_RESERVE = 'x'.repeat(256)
+const FEISHU_TEXT_PROGRESS_KEY = '__ds_feishu_text_progress'
 
 function textRequestBodyBytes(text: string): number {
   return Buffer.byteLength(JSON.stringify({
@@ -697,6 +698,14 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
   ) {}
 
   async send(row: OutboxRow): Promise<{ externalId: string }> {
+    return this.sendRow(row)
+  }
+
+  async sendWithProgress(row: OutboxRow, onProgress: OutboxProgress): Promise<{ externalId: string }> {
+    return this.sendRow(row, onProgress)
+  }
+
+  private async sendRow(row: OutboxRow, onProgress?: OutboxProgress): Promise<{ externalId: string }> {
     const provider = row.target.provider
     if (provider && provider !== 'feishu') {
       throw new Error(`im outbox row ${row.id} targets ${provider}, not feishu`)
@@ -712,11 +721,34 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
         ? [text]
         : splitFeishuText(text)
-      let firstResult: { message_id: string } | undefined
-      for (const chunk of chunks) {
-        const sent = await sendTextBody(chunk)
+      const textHash = crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+      let progress: { textHash: string; nextChunk: number; total: number; firstExternalId: string } | undefined
+      try {
+        const saved = JSON.parse(row.target[FEISHU_TEXT_PROGRESS_KEY] ?? '') as typeof progress
+        if (saved && saved.textHash === textHash && saved.total === chunks.length
+          && Number.isInteger(saved.nextChunk) && saved.nextChunk > 0 && saved.nextChunk <= chunks.length
+          && typeof saved.firstExternalId === 'string' && saved.firstExternalId.length > 0) {
+          progress = saved
+        }
+      } catch {
+        // Old rows and malformed progress metadata safely start from the first chunk.
+      }
+      let firstResult: { message_id: string } | undefined = progress
+        ? { message_id: progress.firstExternalId }
+        : undefined
+      for (let index = progress?.nextChunk ?? 0; index < chunks.length; index += 1) {
+        const sent = await sendTextBody(chunks[index]!)
         if (!sent.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
         firstResult ??= sent
+        if (chunks.length > 1 && onProgress) {
+          const next = {
+            textHash,
+            nextChunk: index + 1,
+            total: chunks.length,
+            firstExternalId: firstResult.message_id,
+          }
+          onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(next) }, firstResult.message_id)
+        }
       }
       if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
       return firstResult

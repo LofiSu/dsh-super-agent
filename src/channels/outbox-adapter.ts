@@ -3,9 +3,12 @@ import type { OutboxRow } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
 
 /** One real-channel sender. `channel` must match the Row's norms key (`im`, `github`, `cli`). */
+export type OutboxProgress = (target: Record<string, string>, externalId?: string) => void
+
 export interface OutboundAdapter {
   readonly channel: string
   send(row: OutboxRow): Promise<{ externalId: string }>
+  sendWithProgress?(row: OutboxRow, onProgress: OutboxProgress): Promise<{ externalId: string }>
 }
 
 /**
@@ -115,7 +118,11 @@ export class Outbox {
       }
       try {
         recordOutboxSendStart(this.store, row, now)
-        const result = await adapter.send(row)
+        const result = adapter.sendWithProgress
+          ? await adapter.sendWithProgress(row, (target, externalId) => {
+            this.store.updateSendingOutboxProgress(row.id, target, externalId)
+          })
+          : await adapter.send(row)
         this.store.markOutboxSent(row.id, result.externalId)
         this.store.markReplySent(row.replyId)
         finishOutboxSendOperation(this.store, row, 'completed', now, result.externalId)

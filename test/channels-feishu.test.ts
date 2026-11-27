@@ -1145,10 +1145,12 @@ describe('Feishu Markdown card outbox formatting', () => {
         ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
         : { body: { code: 0, data: { message_id: `sent_${sentCalls(calls).length}` } } })
       const text = '## 结论 ✅\n```ts\n' + '界🙂'.repeat(30_000)
-      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text))
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text, {
+        provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source',
+      }))
       const sent = sentCalls(calls)
       expect(sent.length).toBeGreaterThan(1)
-      expect(sent.every(call => call.url === 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id')).toBe(true)
+      expect(sent.every(call => call.url === 'https://open.feishu.cn/open-apis/im/v1/messages/om_source/reply')).toBe(true)
       const messages = sent.map(call => {
         const body = String(call.init?.body)
         expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(FEISHU_TEXT_REQUEST_LIMIT_BYTES)
