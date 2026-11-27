@@ -12,7 +12,7 @@ test('generated desktop host reports its bound port and serves Bot inventory', a
   const launcher = join(root, 'launcher');
   let host;
   try {
-    writeFileSync(launcher, "#!/bin/sh\nprintf '%s\\n' ds-agent-tool-scope:conversation\n", { mode: 0o700 });
+    writeFileSync(launcher, "#!/bin/sh\ntest -f .bot-checkout-fixture || exit 1\nprintf '%s\\n' ds-agent-tool-scope:conversation\n", { mode: 0o700 });
     writeFileSync(file, `
 import http from 'node:http';
 import fs from 'node:fs';
@@ -45,9 +45,12 @@ export function startDesktopServer({ port }) {
     execFileSync(process.execPath, [fileURLToPath(new URL('./install-host.mjs', import.meta.url)), file]);
     const state = join(root, 'state');
     mkdirSync(state);
+    const botCheckout = join(root, 'bot-checkout');
+    mkdirSync(botCheckout);
+    writeFileSync(join(botCheckout, '.bot-checkout-fixture'), 'fixture');
     const notExecutable = join(root, 'not-executable');
     writeFileSync(notExecutable, 'fixture', { mode: 0o600 });
-    writeFileSync(join(state, 'bot-runtimes.json'), JSON.stringify({ codex: root, claude: notExecutable }));
+    writeFileSync(join(state, 'bot-runtimes.json'), JSON.stringify({ codex: root, claude: notExecutable, dsAgentCheckout: botCheckout }));
     const { startDesktopServer } = await import(pathToFileURL(file));
     host = await startDesktopServer({ port: 0 });
     assert.ok(host.port > 0);
