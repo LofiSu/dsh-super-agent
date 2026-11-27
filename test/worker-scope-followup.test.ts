@@ -55,6 +55,11 @@ function dispatchModel(
   gateTask?: Promise<void>,
   scopeForDispatch: () => string = () => scopeA,
   redispatch?: { value: boolean },
+  gateFollowup?: Promise<void>,
+  reportFollowups = true,
+  reportTasks = true,
+  gateResume?: Promise<void>,
+  reportResumes = true,
 ): ScriptedModel {
   const reportedWorkerPrompts = new Set<string>()
   return new ScriptedModel(async request => {
@@ -62,6 +67,11 @@ function dispatchModel(
     if (request.role === 'worker') {
       if (!prompts.includes(prompt)) prompts.push(prompt)
       if (prompt.startsWith('TASK') && gateTask) await gateTask
+      if (prompt.startsWith('FOLLOWUP') && gateFollowup) await gateFollowup
+      if (prompt.startsWith('RESUME') && gateResume) await gateResume
+      if (prompt.startsWith('FOLLOWUP') && !reportFollowups) return { text: 'finished follow-up' }
+      if (prompt.startsWith('TASK') && !reportTasks) return { text: 'task turn finished' }
+      if (prompt.startsWith('RESUME') && !reportResumes) return { text: 'resume turn finished' }
       if (!reportedWorkerPrompts.has(prompt)) {
         reportedWorkerPrompts.add(prompt)
         return {
@@ -247,6 +257,38 @@ describe('worker mandate scope', () => {
     expect(runtime.log.text()).not.toContain('kept ticket open for revised mandate')
   })
 
+  it('delivers a revised scope during a local RESUME Worker turn', async () => {
+    const prompts: string[] = []
+    let releaseResume!: () => void
+    const resumeGate = new Promise<void>(resolve => { releaseResume = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(
+      prompts, undefined, () => scope, redispatch, undefined, true, false, resumeGate, false,
+    ))
+    const triggerId = 'trg_resume_followup_active'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+    runtime.engine.pause(ticketId, { reason: 'test pause' })
+
+    const resuming = runtime.resume(ticketId, { reason: 'human verified' })
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('RESUME'))).toBe(true))
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    scope = scopeB
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    releaseResume()
+    await resuming
+    await runtime.jobsSettled()
+
+    const followup = prompts.find(prompt => prompt.startsWith('FOLLOWUP'))
+    expect(followup).toContain(`scope=${scopeB}`)
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended?.outcome).toBe('ready')
+  })
+
   it('re-dispatch with a new scope reaches the active worker through dispatch_work', async () => {
     const prompts: string[] = []
     let releaseWorker!: () => void
@@ -275,6 +317,39 @@ describe('worker mandate scope', () => {
     expect(runtime.log.text()).toContain('Evals.decide remandate')
     const workerStarts = runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []
     expect(workerStarts).toHaveLength(1)
+  })
+
+  it('keeps queued and running FOLLOWUP turns active after the original TASK settles', async () => {
+    const prompts: string[] = []
+    let releaseTask!: () => void
+    const taskGate = new Promise<void>(resolve => { releaseTask = resolve })
+    let releaseFollowup!: () => void
+    const followupGate = new Promise<void>(resolve => { releaseFollowup = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, taskGate, () => scope, redispatch, followupGate, false))
+    runtime.ingest(directTrigger('trg_followup_active'))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_followup_active', envelope.id, redispatch)
+    releaseTask()
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('FOLLOWUP'))).toBe(true))
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+
+    scope = 'verify the revised acceptance points from issue #192'
+    await dispatchAgain(runtime, 'trg_followup_active', envelope.id, redispatch)
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    releaseFollowup()
+    await vi.waitFor(() => expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(2))
+    await runtime.jobsSettled()
+
+    const followups = prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))
+    expect(followups[0]).toContain(`scope=${scopeB}`)
+    expect(followups[1]).toContain(`scope=${scope}`)
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
   })
 
   it('unchanged scope re-dispatch does not enqueue an extra worker turn', async () => {

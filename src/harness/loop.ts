@@ -169,8 +169,8 @@ export class Harness {
   private readonly routersReady = new Set<string>()
   /** FIFO of Workers waiting for mesh capacity. Owned by the scheduler, not the registry. */
   private readonly queued: { ticketId: string; resolve: () => void }[] = []
-  /** Tickets whose Worker turn promise has not settled yet. */
-  private readonly activeWorkers = new Set<string>()
+  /** Number of booked or running local Worker turns for each ticket. */
+  private readonly activeWorkers = new Map<string, number>()
   private readonly queueLimit: number
   private draining = false
 
@@ -408,7 +408,7 @@ export class Harness {
     try {
       work = this.startWorkerTurn(ticket, node)
     } catch (error) {
-      this.activeWorkers.delete(ticket.id)
+      this.settleWorkerTurn(ticket.id)
       if (node) this.opts.releaseNode?.(ticket.id)
       this.opts.log(`[harness] worker failed ticketId=${ticket.id} error=${String(error)}`)
       if (node) this.pump()
@@ -512,7 +512,7 @@ export class Harness {
     } catch (error) {
       // startWorkerTurn marks the ticket active before Engine callbacks run.
       // If one throws, neither the active marker nor the mesh reservation may leak.
-      this.activeWorkers.delete(entry.ticketId)
+      this.settleWorkerTurn(entry.ticketId)
       this.opts.releaseNode?.(entry.ticketId)
       this.opts.log(`[harness] queued worker failed ticketId=${entry.ticketId} error=${String(error)}`)
       entry.resolve()
@@ -534,6 +534,16 @@ export class Harness {
       },
     )
     this.track(work)
+  }
+
+  private bookWorkerTurn(ticketId: string): void {
+    this.activeWorkers.set(ticketId, (this.activeWorkers.get(ticketId) ?? 0) + 1)
+  }
+
+  private settleWorkerTurn(ticketId: string): void {
+    const remaining = (this.activeWorkers.get(ticketId) ?? 0) - 1
+    if (remaining > 0) this.activeWorkers.set(ticketId, remaining)
+    else this.activeWorkers.delete(ticketId)
   }
 
   /**
@@ -563,18 +573,17 @@ export class Harness {
       this.opts.log(`[harness] worker skipped ticketId=${ticket.id} no-assignment`)
       return Promise.resolve()
     }
+    this.bookWorkerTurn(ticket.id)
     if (node && this.opts.isRemoteNode?.(node)) {
-      this.activeWorkers.add(ticket.id)
       this.opts.log(`[mesh] remote dispatch ticketId=${ticket.id} node=${node}`)
       this.opts.assignmentStarted(ticket.id, assignment.id, sessionId)
       this.opts.assignmentPlaced(ticket.id, assignment.id, node)
       const work = (this.opts.dispatchRemote?.(ticket, node) ?? Promise.resolve())
       return work.finally(() => {
-        this.activeWorkers.delete(ticket.id)
+        this.settleWorkerTurn(ticket.id)
         this.pump()
       })
     }
-    this.activeWorkers.add(ticket.id)
     this.opts.log(`[harness] ExecutorSession start session=${sessionId} ticketId=${ticket.id} role=worker`)
     this.opts.assignmentStarted(ticket.id, assignment.id, sessionId)
     if (node) this.opts.assignmentPlaced(ticket.id, assignment.id, node)
@@ -582,7 +591,7 @@ export class Harness {
       sessionId,
       () => this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node)),
     ).finally(() => {
-      this.activeWorkers.delete(ticket.id)
+      this.settleWorkerTurn(ticket.id)
       this.pump()
     })
   }
@@ -655,6 +664,7 @@ export class Harness {
       return Promise.resolve()
     }
     const sessionId = workerSessionId(ticketId)
+    this.bookWorkerTurn(ticketId)
     return this.track(this.enqueue(sessionId, async () => {
       const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
       if (!ticket || ticket.ended) {
@@ -671,7 +681,7 @@ export class Harness {
       const refs = formatRefs(trigger.refs)
       if (refs) lines.push(refs)
       return this.run(sessionId, 'worker', ticketId, lines.join('\n'))
-    }))
+    }).finally(() => this.settleWorkerTurn(ticketId)))
   }
 
   /**
@@ -713,6 +723,7 @@ export class Harness {
       && this.opts.isRemoteNode?.(candidate.node) === true
       && !(candidate.report && TERMINAL_REPORT_KINDS.has(candidate.report.kind))
     const resumeRemoteInProgress = remoteInProgress(assignment)
+    const localResume = !resumeThroughMesh && !resumeRemoteInProgress
     const sessionId = workerSessionId(ticket.id)
     const since = ticket.collab?.resumes.at(-1)?.pausedAt
     const pending = since
@@ -720,6 +731,7 @@ export class Harness {
       : []
     const mode = ticket.speculative ? 'speculative' : 'normal'
     this.running.add(ticket.id)
+    if (localResume) this.bookWorkerTurn(ticket.id)
     const shards = this.opts.singleSession
       ? []
       : this.opts.routerSessions?.(ticket) ?? ['default']
@@ -842,6 +854,7 @@ export class Harness {
       .then(() => undefined)
       .finally(() => {
         this.running.delete(ticket.id)
+        if (localResume) this.settleWorkerTurn(ticket.id)
       })
     return this.track(work)
   }
