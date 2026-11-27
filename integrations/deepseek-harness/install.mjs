@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { prepareBotInstall } from './install-integrity.mjs';
 import { join } from 'node:path';
 
 const path = process.argv[2] ?? join(homedir(), 'Documents/deepseek-harness/ds-super-agent-tab/client.js');
@@ -17,11 +18,12 @@ const source = previous ? readFileSync(path + '.before-bots', 'utf8') : installe
   }
   const panel = readFileSync(new URL('./bots-panel.js', import.meta.url), 'utf8').trimEnd()
     .split('\n').map(line => '    ' + line).join('\n');
-  const updated = source.replace(factory, () => factory + '\n' + panel)
+  const generated = source.replace(factory, () => factory + '\n' + panel)
     .replace(apply, () => apply + '\n        const openBots = mountBotsPanel(ctx, React, request);')
     .replace(props, 'function Desktop({ t, openBots }) {')
     .replace(header, () => "          h('button', { type: 'button', className: 'dsd-share', onClick: openBots }, 'Bots'),\n" + header)
     .replace(render, 'return h(Desktop, { t, openBots });');
+  const updated = prepareBotInstall(installed, generated, previous);
   if (updated === installed) {
     console.log('Bots panel already installed:', path);
     process.exit(0);

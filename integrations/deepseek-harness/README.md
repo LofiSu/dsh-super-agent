@@ -56,6 +56,10 @@ conversation-only mode revokes it.
 
 ## Revert the plugin
 
+The installers check generated files before upgrading. If an earlier install has
+no integrity stamp or contains edits, keep a copy of the current file and
+reapply the integration to a supported unmodified plugin file.
+
 The installers keep the first unmodified files as `client.js.before-bots`
 and `desktop-server.js.before-bot-api`. Later upgrades save numbered backups.
 With the desktop closed and the sidecar stopped, restore both files from

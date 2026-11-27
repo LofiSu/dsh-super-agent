@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -68,6 +68,12 @@ export function startDesktopServer({ port }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
     });
     assert.equal(gatedTrigger.status, 403);
+    const edited = readFileSync(file, 'utf8') + '\n// owner modification\n';
+    writeFileSync(file, edited);
+    assert.throws(() => execFileSync(process.execPath, [fileURLToPath(new URL('./install-host.mjs', import.meta.url)), file], {
+      stdio: 'pipe',
+    }), /cannot verify the current file/);
+    assert.equal(readFileSync(file, 'utf8'), edited);
   } finally {
     await host?.close();
     rmSync(root, { recursive: true, force: true });
