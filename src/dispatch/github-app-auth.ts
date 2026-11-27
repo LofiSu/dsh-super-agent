@@ -301,10 +301,15 @@ export class GithubAppAuthService {
           GIT_CONFIG_NOSYSTEM: '1',
           GIT_TERMINAL_PROMPT: '0',
         }
+        const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env }
+        delete childEnv.GITHUB_TOKEN
+        delete childEnv.GH_TOKEN
+        delete childEnv.GH_ENTERPRISE_TOKEN
+        delete childEnv.GITHUB_ENTERPRISE_TOKEN
         const child = spawn('git', args, {
           cwd: opts.cwd,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, ...env },
+          env: childEnv,
         })
         let stdout = ''
         let stderr = ''
