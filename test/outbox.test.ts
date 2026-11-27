@@ -420,6 +420,58 @@ describe('durable outbox', () => {
     store.close()
   })
 
+  it('gets the current outbox row by id', () => {
+    const store = tempStore()
+    store.enqueueOutbox(row())
+
+    expect(store.getOutbox('missing')).toBeUndefined()
+    expect(store.claimOutbox('outbox_1')).toBe(true)
+    expect(store.getOutbox('outbox_1')).toMatchObject({ id: 'outbox_1', status: 'sending' })
+    store.close()
+  })
+
+  it('sends the freshly reloaded row after a concurrent retry updates progress', async () => {
+    const store = tempStore()
+    store.enqueueOutbox(row())
+    const listDueOutbox = store.listDueOutbox.bind(store)
+    let interleaved = false
+    store.listDueOutbox = now => {
+      const snapshot = listDueOutbox(now)
+      if (!interleaved) {
+        interleaved = true
+        expect(snapshot[0]?.target.__ds_feishu_text_progress).toBeUndefined()
+        expect(store.claimOutbox('outbox_1')).toBe(true)
+        const progress = JSON.stringify({ nextChunk: 2, sendUuids: { '2': 'uuid_reserved_by_other_flusher' } })
+        store.updateSendingOutboxProgress('outbox_1', {
+          ...snapshot[0]!.target,
+          __ds_feishu_text_progress: progress,
+        }, 'accepted_chunk_1')
+        store.markOutboxRetry('outbox_1', 'later chunk failed', new Date(Date.now() - 1_000).toISOString(), 2)
+      }
+      return snapshot
+    }
+
+    let sentRow: OutboxRow | undefined
+    const adapter: OutboundAdapter = {
+      channel: 'github',
+      send: async outboxRow => {
+        sentRow = outboxRow
+        return { externalId: '4242' }
+      },
+    }
+    const outbox = new Outbox(store, [adapter])
+
+    expect(await outbox.flush()).toEqual({ sent: 1, failed: 0, pending: 0 })
+    expect(sentRow?.status).toBe('sending')
+    expect(sentRow?.attempts).toBe(2)
+    expect(sentRow?.externalId).toBe('accepted_chunk_1')
+    expect(JSON.parse(sentRow?.target.__ds_feishu_text_progress ?? '{}')).toMatchObject({
+      nextChunk: 2,
+      sendUuids: { '2': 'uuid_reserved_by_other_flusher' },
+    })
+    store.close()
+  })
+
   it('flushes through the matching adapter and records the provider id', async () => {
     const store = tempStore()
     store.addReply({
@@ -605,6 +657,36 @@ describe('durable outbox', () => {
     expect(after.status).toBe('sent')
     expect(after.externalId).toBe('4242')
     expect(store.getDoc<ExternalOperationRecord>(EXTERNAL_OP_KIND, 'outbox_outbox_1')?.phase).toBe('completed')
+    store.close()
+  })
+
+  it('prevents two Outbox instances from sending a row while the first send is active', async () => {
+    const store = tempStore()
+    store.enqueueOutbox(row())
+    let calls = 0
+    let signalStarted!: () => void
+    let releaseSend!: () => void
+    const started = new Promise<void>(resolve => { signalStarted = resolve })
+    const blockedSend = new Promise<void>(resolve => { releaseSend = resolve })
+    const adapter: OutboundAdapter = {
+      channel: 'github',
+      send: async () => {
+        calls += 1
+        signalStarted()
+        await blockedSend
+        return { externalId: '4242' }
+      },
+    }
+    const first = new Outbox(store, [adapter])
+    const second = new Outbox(store, [adapter])
+
+    const firstFlush = first.flush()
+    await started
+    expect(await second.flush()).toEqual({ sent: 0, failed: 0, pending: 0 })
+    expect(calls).toBe(1)
+    releaseSend()
+    expect(await firstFlush).toEqual({ sent: 1, failed: 0, pending: 0 })
+    expect(calls).toBe(1)
     store.close()
   })
 

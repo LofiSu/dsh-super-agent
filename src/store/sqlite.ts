@@ -627,6 +627,11 @@ export class Store {
     return rows.map(outboxFromRow)
   }
 
+  getOutbox(id: string): OutboxRow | undefined {
+    const row = this.db.prepare('SELECT * FROM outbox WHERE id = ?').get(id) as Record<string, string | null> | undefined
+    return row ? outboxFromRow(row) : undefined
+  }
+
   /** Receipt metadata for one Ticket, excluding body, target, and error fields. */
   listReceiptOutbox(
     ticketId: string,

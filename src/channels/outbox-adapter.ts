@@ -98,68 +98,70 @@ export class Outbox {
     for (const row of this.store.listDueOutbox(now)) {
       // Claim first: two flushers (or two processes) must not send the same row.
       if (!this.store.claimOutbox(row.id)) continue
-      const adapter = this.adapters.find(item => item.channel === row.channel)
+      const claimedRow = this.store.getOutbox(row.id)
+      if (!claimedRow) continue
+      const adapter = this.adapters.find(item => item.channel === claimedRow.channel)
       if (!adapter) {
         // Local CLI output has no remote hop; keep it non-blocking but explicit.
-        if (row.channel === 'cli') {
-          this.store.markOutboxSent(row.id, `cli_${row.id}`)
-          this.store.markReplySent(row.replyId)
-          finishOutboxSendOperation(this.store, row, 'completed', now, `cli_${row.id}`)
+        if (claimedRow.channel === 'cli') {
+          this.store.markOutboxSent(claimedRow.id, `cli_${claimedRow.id}`)
+          this.store.markReplySent(claimedRow.replyId)
+          finishOutboxSendOperation(this.store, claimedRow, 'completed', now, `cli_${claimedRow.id}`)
           sent += 1
-          this.log(`[outbox] sent outboxId=${row.id} channel=cli externalId=cli_${row.id}`)
+          this.log(`[outbox] sent outboxId=${claimedRow.id} channel=cli externalId=cli_${claimedRow.id}`)
           continue
         }
-        const error = `no outbound adapter for channel ${row.channel}`
-        this.store.markOutboxFailed(row.id, error)
-        finishOutboxSendOperation(this.store, row, 'failed', now, error)
+        const error = `no outbound adapter for channel ${claimedRow.channel}`
+        this.store.markOutboxFailed(claimedRow.id, error)
+        finishOutboxSendOperation(this.store, claimedRow, 'failed', now, error)
         failed += 1
-        this.log(`[outbox] failed outboxId=${row.id} channel=${row.channel} error=${error}`)
+        this.log(`[outbox] failed outboxId=${claimedRow.id} channel=${claimedRow.channel} error=${error}`)
         continue
       }
       try {
-        recordOutboxSendStart(this.store, row, now)
+        recordOutboxSendStart(this.store, claimedRow, now)
         const result = adapter.sendWithProgress
-          ? await adapter.sendWithProgress(row, (target, externalId) => {
-            this.store.updateSendingOutboxProgress(row.id, target, externalId)
+          ? await adapter.sendWithProgress(claimedRow, (target, externalId) => {
+            this.store.updateSendingOutboxProgress(claimedRow.id, target, externalId)
           })
-          : await adapter.send(row)
-        this.store.markOutboxSent(row.id, result.externalId)
-        this.store.markReplySent(row.replyId)
-        finishOutboxSendOperation(this.store, row, 'completed', now, result.externalId)
+          : await adapter.send(claimedRow)
+        this.store.markOutboxSent(claimedRow.id, result.externalId)
+        this.store.markReplySent(claimedRow.replyId)
+        finishOutboxSendOperation(this.store, claimedRow, 'completed', now, result.externalId)
         sent += 1
-        this.log(`[outbox] sent outboxId=${row.id} channel=${row.channel} externalId=${result.externalId}`)
+        this.log(`[outbox] sent outboxId=${claimedRow.id} channel=${claimedRow.channel} externalId=${result.externalId}`)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (error instanceof PermanentDeliveryError) {
-          this.store.markOutboxFailed(row.id, message)
-          finishOutboxSendOperation(this.store, row, 'failed', now, message)
+          this.store.markOutboxFailed(claimedRow.id, message)
+          finishOutboxSendOperation(this.store, claimedRow, 'failed', now, message)
           failed += 1
           this.log(
-            `[outbox] failed outboxId=${row.id} channel=${row.channel} permanent=true error=${message}`,
+            `[outbox] failed outboxId=${claimedRow.id} channel=${claimedRow.channel} permanent=true error=${message}`,
           )
           continue
         }
-        const attempts = (row.attempts ?? 0) + 1
+        const attempts = (claimedRow.attempts ?? 0) + 1
         if (attempts >= MAX_ATTEMPTS) {
-          this.store.markOutboxFailed(row.id, message)
-          finishOutboxSendOperation(this.store, row, 'failed', now, message)
+          this.store.markOutboxFailed(claimedRow.id, message)
+          finishOutboxSendOperation(this.store, claimedRow, 'failed', now, message)
           failed += 1
-          this.log(`[outbox] failed outboxId=${row.id} channel=${row.channel} attempts=${attempts} error=${message}`)
+          this.log(`[outbox] failed outboxId=${claimedRow.id} channel=${claimedRow.channel} attempts=${attempts} error=${message}`)
         } else {
-          const base = retryBaseMs(row)
+          const base = retryBaseMs(claimedRow)
           // Standard rows keep the historical 1s..60s curve. A proactive row
           // starts at 10 minutes; its cap scales with the base so a restart
           // cannot turn one failed contact into a tight retry burst.
           const cap = base > DEFAULT_RETRY_BASE_MS ? base * 8 : DEFAULT_RETRY_CAP_MS
           const delay = Math.min(cap, base * 2 ** attempts)
           const nextAttemptAt = new Date(Date.now() + delay).toISOString()
-          this.store.markOutboxRetry(row.id, message, nextAttemptAt, attempts)
+          this.store.markOutboxRetry(claimedRow.id, message, nextAttemptAt, attempts)
           // The throw is a known failed attempt, not an interrupted in-flight
           // send: close the started op so restart recovery does not treat it
           // as unknown_outcome. The next due flush records a new start.
-          finishOutboxSendOperation(this.store, row, 'failed', now, message)
+          finishOutboxSendOperation(this.store, claimedRow, 'failed', now, message)
           this.log(
-            `[outbox] retry outboxId=${row.id} channel=${row.channel} attempts=${attempts} next=${nextAttemptAt} error=${message}`,
+            `[outbox] retry outboxId=${claimedRow.id} channel=${claimedRow.channel} attempts=${attempts} next=${nextAttemptAt} error=${message}`,
           )
         }
       }
