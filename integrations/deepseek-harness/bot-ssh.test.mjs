@@ -40,7 +40,9 @@ process.exitCode = child.status ?? 1;
     const device = await resolve(configured);
     assert.equal(device.connected, true);
     assert.equal(await device.adapters['ds-agent'](
-      { name: 'QA', purpose: 'Answer' }, 'QA prompt with ";"', [],
+      { name: 'QA', purpose: '答'.repeat(1000) }, 'QA prompt with ";"' + '问'.repeat(5900), [
+        { status: 'completed', prompt: '背'.repeat(3800), reply: '景'.repeat(3900) },
+      ],
     ), 'Remote reply');
     assert.deepEqual(await resolve({ ...configured, alias: 'unavailable' }), { ...configured, alias: 'unavailable' });
   } finally {

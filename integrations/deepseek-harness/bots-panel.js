@@ -467,6 +467,14 @@ function mountBotsPanel(ctx, React, request) {
       }
     }
 
+    async function refreshDevices() {
+      const response = await request('/api/bots');
+      if (!response.ok) throw new Error('无法刷新运行设备。');
+      const data = await response.json();
+      setDevices(data.devices ?? []);
+      setDeviceWarning(data.warning ?? '');
+    }
+
     async function addHost(event) {
       event.preventDefault();
       if (saving) return;
@@ -482,6 +490,7 @@ function mountBotsPanel(ctx, React, request) {
         const device = await response.json();
         setDevices(current => [...current, device]);
         setAddingHost(false);
+        await refreshDevices();
       } catch (error) {
         setError(error.message);
       } finally {
@@ -496,8 +505,9 @@ function mountBotsPanel(ctx, React, request) {
       try {
         const response = await request('/api/bots/devices/' + device.id + '/probe', { method: 'POST', body: '{}' });
         if (!response.ok) throw new Error();
-        const { reachable } = await response.json();
-        setProbeNotice(device.label + (reachable ? ' · SSH 可达，Agent 尚未连接' : ' · SSH 连接失败'));
+        const { reachable, runtimeReady } = await response.json();
+        await refreshDevices();
+        setProbeNotice(device.label + (runtimeReady ? ' · Agent 已就绪' : reachable ? ' · SSH 可达，Agent 尚未连接' : ' · SSH 连接失败'));
       } catch {
         setProbeNotice('无法检查 SSH 连接。');
       } finally {

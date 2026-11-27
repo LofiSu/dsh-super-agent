@@ -25,7 +25,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     }
     const entries = Array.isArray(inventory) ? inventory : inventory.devices;
     const configured = [...entries, ...saved.filter(device => !entries.some(entry => entry.id === device.id))];
-    const resolved = resolveRemoteDevice ? await Promise.all(configured.map(resolveRemoteDevice)) : configured;
+    const resolved = resolveRemoteDevice ? await Promise.all(configured.map(device => resolveRemoteDevice(device))) : configured;
     for (const { id, label, adapters: remoteAdapters = {}, connected } of resolved) {
       if (!/^[a-z0-9-]{1,80}$/.test(id) || deviceRuntimes.has(id)) {
         throw new Error('Invalid or duplicate device ID.');
@@ -211,7 +211,9 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         const device = registry.listDevices().find(entry => entry.id === probe[1]);
         if (!device) return json({ error: 'Host not found' }, 404);
         if (!probeHost) return json({ error: 'SSH check unavailable' }, 503);
-        return json({ reachable: await probeHost(device.alias) }, 200);
+        const reachable = await probeHost(device.alias);
+        const refreshed = resolveRemoteDevice && await resolveRemoteDevice(device, { refresh: true });
+        return json({ reachable, runtimeReady: refreshed?.connected }, 200);
       }
       if (addDevice) {
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);

@@ -76,6 +76,21 @@ describe('ToolRegistry with an MCP source', () => {
     await expect(tools.invoke({ id: 'allowed', name: 'list_tasks', args: {} }, { sessionId: 'router', role: 'router' })).resolves.toBeDefined()
   })
 
+  it('uses only local placement when the conversation scope is enabled', () => {
+    runtime = freshRuntime({
+      env: {
+        DS_AGENT_TOOL_SCOPE: 'conversation',
+        DS_AGENT_REMOTE_MESH: JSON.stringify([{
+          id: 'remote', url: 'http://127.0.0.1:9999', peerId: 'remote',
+          secret: 'fixture', capabilities: ['external'],
+        }]),
+        DS_AGENT_MESH_REQUIRED_CAPABILITIES: 'external',
+      },
+    })
+    expect(runtime.placement.remote).toBeUndefined()
+    expect(runtime.placement.pickNode('local-check')).toBe(runtime.placement.localNodeId)
+  })
+
   it('refuses MCP tool calls from the router role', async () => {
     runtime = freshRuntime()
     const tools = registry({

@@ -21,7 +21,7 @@ try {
     const chunks = [];
     for await (const chunk of process.stdin) {
       size += chunk.length;
-      if (size > 32 * 1024) throw new Error();
+      if (size > 128 * 1024) throw new Error();
       chunks.push(chunk);
     }
     const { prompt } = JSON.parse(Buffer.concat(chunks).toString('utf8'));

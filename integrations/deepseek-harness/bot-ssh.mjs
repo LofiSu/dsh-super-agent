@@ -27,10 +27,10 @@ export function createSshBotTransport({ executable = '/usr/bin/ssh' } = {}) {
   }
 
   const probes = new Map();
-  return async function resolveSshDevice(device) {
+  return async function resolveSshDevice(device, { refresh = false } = {}) {
     if (!device.alias) return device;
     let probe = probes.get(device.alias);
-    if (!probe || probe.expires <= Date.now()) {
+    if (refresh || !probe || probe.expires <= Date.now()) {
       const ready = request(device.alias, 'capabilities').then(
         result => result?.protocol === protocol && result.engine === 'ds-agent', () => false,
       );

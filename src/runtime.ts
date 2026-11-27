@@ -834,7 +834,9 @@ export class Runtime {
     }
     for (const shard of opts.routerShards ?? []) routerShards.register(shard)
     const workerMesh = new WorkerMeshRegistry([{ id: instanceId, capacity: meshCapacity }])
-    const placement = WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
+    const placement = allowedToolNames
+      ? new WorkerPlacement(instanceId, workerMesh)
+      : WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
     // Retention keeps the durable index bounded: 1000 entries / 90 days by
     // default, with 0 disabling either dimension.
     const retention = memoryRetentionFromEnv(baseEnv, opts.memoryRetention)
@@ -1944,7 +1946,7 @@ export class Runtime {
         return disposition?.shards?.length ? disposition.shards : ['default']
       },
       pickNode: (ticketId, ticket) => {
-        const need = requiredMeshCapabilities(baseEnv)
+        const need = allowedToolNames ? [] : requiredMeshCapabilities(baseEnv)
         const nodeId = placement.pickNode(ticketId, need)
         if (nodeId) {
           metrics.increment('mesh.assigned')
