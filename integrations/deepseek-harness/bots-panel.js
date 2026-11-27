@@ -424,7 +424,7 @@ function mountBotsPanel(ctx, React, request) {
       try {
         const [device, engine] = JSON.parse(fields.get('runtime'));
         const response = await request('/api/bots/' + id + '/profile', {
-          method: 'POST', body: JSON.stringify({ name: fields.get('name'), purpose: fields.get('purpose'), device, engine }),
+          method: 'POST', body: JSON.stringify({ name: fields.get('name'), purpose: fields.get('purpose'), device, engine, toolScope: fields.get('toolScope') ?? undefined }),
         });
         if (!response.ok) throw new Error();
         const saved = await response.json();
@@ -599,11 +599,16 @@ function mountBotsPanel(ctx, React, request) {
                 const value = JSON.stringify([device.id, engine]);
                 return h('option', { key: value, value }, device.label + ' · ' + engine);
               })))),
+            bot.device === 'local' && bot.engine === 'ds-agent' &&
+              (bot.toolScope === 'conversation' || devices.find(device => device.id === 'local')?.toolScopes?.includes('conversation')) &&
+              h('label', null, '工具权限', h('select', { name: 'toolScope', defaultValue: bot.toolScope ?? 'default' },
+                h('option', { value: 'default' }, '运行时默认'),
+                h('option', { value: 'conversation' }, '仅会话'))),
             h('button', { type: 'submit' }, '保存配置'))),
         selected === bot.id && h('label', null, '编辑头像', h('select', {
           value: bot.avatar ?? 'initial', onChange: event => void updateAvatar(bot.id, event.target.value),
         }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
-        selected === bot.id && h('p', null, runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。'),
+        selected === bot.id && h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。')),
         selected === bot.id && h(Conversation, { bot }))));
   }
 

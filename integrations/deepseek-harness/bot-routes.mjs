@@ -6,13 +6,14 @@ function memberTurnId(teamId, dispatchId, botId) {
 }
 
 /** Mount behind host authentication. Reject cross-origin requests before reading state. */
-export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, remoteDevices = [], probeHost, proposalToken }) {
+export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, remoteDevices = [], probeHost, proposalToken, supportsConversationScope }) {
   const activeDispatches = new Map();
   const runtimes = new Map(Object.entries(adapters));
   if (runTurn) runtimes.set('ds-agent', runTurn);
   const engines = [...new Set(['ds-agent', ...runtimes.keys()])];
   async function readDevices() {
     const devices = [{ id: 'local', label: '本机 Mac', status: 'ready', engines }];
+    if (await supportsConversationScope?.()) devices[0].toolScopes = ['conversation'];
     const deviceRuntimes = new Map([['local', runtimes]]);
     const inventory = typeof remoteDevices === 'function' ? await remoteDevices() : remoteDevices;
     const registry = openBotRegistry(home);
@@ -110,6 +111,10 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       }
       const available = devices.find(device => device.id === bot.device)?.status === 'ready';
       const execute = available && deviceRuntimes.get(bot.device)?.get(bot.engine);
+      if (bot.toolScope === 'conversation' &&
+          (bot.device !== 'local' || bot.engine !== 'ds-agent' || !devices[0].toolScopes?.includes('conversation'))) {
+        return { body: { error: 'Required Bot tool scope unavailable' }, status: 503 };
+      }
       if (!execute) return { body: { error: 'Bot execution unavailable' }, status: 503 };
       const { started, turn } = registry.beginTurn(bot.id, id, prompt);
       if (!started) return { body: turn, status: 200 };
@@ -202,7 +207,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       if (profile) {
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
         const bot = registry.updateProfile(profile[1], input);
-        if (bot === null) return json({ error: 'Wait for the running turn before changing Agent or device' }, 409);
+        if (bot === null) return json({ error: 'Wait for the running turn before changing runtime or permissions' }, 409);
         return bot ? json(bot, 200) : json({ error: 'Bot not found' }, 404);
       }
       if (avatar) {

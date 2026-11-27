@@ -66,6 +66,9 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
     if (!db.prepare('PRAGMA table_info(bot_profiles)').all().some(column => column.name === 'avatar')) {
       db.exec("ALTER TABLE bot_profiles ADD COLUMN avatar TEXT NOT NULL DEFAULT 'initial'");
     }
+    if (!db.prepare('PRAGMA table_info(bot_profiles)').all().some(column => column.name === 'toolScope')) {
+      db.exec("ALTER TABLE bot_profiles ADD COLUMN toolScope TEXT NOT NULL DEFAULT 'default' CHECK (toolScope IN ('default', 'conversation'))");
+    }
     db.exec('COMMIT');
   } catch (error) {
     db.close();
@@ -97,10 +100,18 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
   }
 
   function create(input) {
-    const profile = { ...normalizeProfile(input), id: randomUUID(), createdAt: new Date().toISOString() };
+    const profile = { ...normalizeProfile(input), toolScope: 'default', id: randomUUID(), createdAt: new Date().toISOString() };
     insert.run(profile.id, profile.name, profile.purpose, profile.device, profile.engine, profile.createdAt, profile.avatar);
     return profile;
   }
+  function validateToolScope(device, engine, scope) {
+    if (scope === 'default') return;
+    if (scope !== 'conversation' || device !== 'local' || engine !== 'ds-agent' ||
+        !devices.find(entry => entry.id === device)?.toolScopes?.includes(scope)) {
+      throw new RangeError('The selected Agent does not support this tool scope.');
+    }
+  }
+
   return {
     close: () => db.close(),
     list: () => list.all(),
@@ -110,14 +121,17 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       const { name, purpose } = normalizeIdentity(input);
       const device = input.device ?? current.device;
       const engine = input.engine ?? current.engine;
-      if (device !== current.device || engine !== current.engine) {
+      const targetChanged = device !== current.device || engine !== current.engine;
+      const toolScope = input.toolScope ?? current.toolScope;
+      if (targetChanged || toolScope !== current.toolScope) {
         validateRuntime(device, engine);
+        validateToolScope(device, engine, toolScope);
         if (db.prepare("SELECT 1 FROM bot_turns WHERE botId = ? AND status = 'running'").get(id)) {
           return null;
         }
       }
-      return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ?, device = ?, engine = ? WHERE id = ? RETURNING *')
-        .get(name, purpose, device, engine, id);
+      return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ?, device = ?, engine = ?, toolScope = ? WHERE id = ? RETURNING *')
+        .get(name, purpose, device, engine, toolScope, id);
     },
     setAvatar(id, avatar) {
       if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');

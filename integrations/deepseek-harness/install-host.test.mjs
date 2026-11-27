@@ -18,6 +18,7 @@ import path from 'node:path';
 const HOME = ${JSON.stringify(join(root, 'state'))};
 const DESKTOP_SECRET = 'fixture';
 const log = () => {};
+const runCli = async () => ({ code: 0, stdout: 'ds-agent-tool-scope:conversation' });
 const isAllowedHost = host => /^127\\.0\\.0\\.1:\\d+$/.test(host);
 const send = (res, status, body) => { res.writeHead(status); res.end(JSON.stringify(body)); };
 export function startDesktopServer({ port }) {
@@ -54,6 +55,7 @@ export function startDesktopServer({ port }) {
     const snapshot = await response.json();
     assert.deepEqual(snapshot.bots, []);
     assert.deepEqual(snapshot.devices[0].engines, ['ds-agent']);
+    assert.deepEqual(snapshot.devices[0].toolScopes, ['conversation']);
     const unknown = await fetch(host.url + '/api/bots/not-a-route', {
       headers: { Origin: 'dsh-app://app', 'X-Ds-Desktop': 'fixture' },
     });

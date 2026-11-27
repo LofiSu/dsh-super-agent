@@ -519,6 +519,10 @@ async function main(): Promise<void> {
     console.log(readPackageVersion())
     return
   }
+  if (cmd === 'tool-scope-capabilities') {
+    console.log('ds-agent-tool-scope:conversation')
+    return
+  }
   if (!cmd || cmd === 'help' || cmd === '--help') {
     help()
     return

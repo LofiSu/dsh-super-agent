@@ -80,6 +80,34 @@ test('conversation invokes its adapter once and persists the reply', async () =>
   }
 });
 
+test('saved Bot tool scope prevents execution after runtime support is lost', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-bot-scope-'));
+  const origin = 'dsh-app://app';
+  const url = 'http://127.0.0.1:4328/api/bots';
+  const headers = { Origin: origin, 'Content-Type': 'application/json' };
+  let supported = true;
+  const observed = [];
+  const route = createBotRoutes({
+    home, allowedOrigin: origin,
+    supportsConversationScope: () => supported,
+    runTurn: async bot => { observed.push(bot.toolScope); return 'Reply'; },
+  });
+  const post = (path, data) => route(new Request(url + path, { method: 'POST', headers, body: JSON.stringify(data) }));
+  try {
+    const input = { name: 'Scoped Bot', purpose: 'Answer questions', device: 'local', engine: 'ds-agent' };
+    const bot = await (await post('', input)).json();
+    assert.equal((await post('/' + bot.id + '/profile', { ...input, toolScope: 'conversation' })).status, 200);
+    assert.equal((await post('/' + bot.id + '/turns', { id: 'first', prompt: 'Hello' })).status, 201);
+    supported = false;
+    assert.equal((await post('/' + bot.id + '/turns', { id: 'second', prompt: 'Hello' })).status, 503);
+    assert.deepEqual(observed, ['conversation']);
+    const snapshot = await (await route(new Request(url, { headers }))).json();
+    assert.equal(snapshot.bots[0].toolScope, 'conversation');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('host advertises configured adapters and dispatches to the selected Agent', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-bot-adapters-'));
   const origin = 'dsh-app://app';
