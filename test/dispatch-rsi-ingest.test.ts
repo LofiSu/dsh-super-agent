@@ -1,6 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import dns from 'node:dns/promises'
+import https from 'node:https'
+import { EventEmitter } from 'node:events'
+import { Readable } from 'node:stream'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseGithubAuthBlock, redactGithubAuthSecret } from '../src/dispatch/github-app-auth.ts'
 import { loadDispatchOwnerConfigSync } from '../src/dispatch/config.ts'
 import {
   acceptanceFromInstinctEvidenceColumn,
@@ -33,6 +38,46 @@ function docsDir(home: string): string {
 }
 
 describe('trusted-fetch redirects', () => {
+  beforeEach(() => {
+    vi.spyOn(dns, 'lookup').mockImplementation((async () => [{ address: '93.184.216.34', family: 4 }]) as unknown as typeof dns.lookup)
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('connects using only the validated DNS record and preserves the URL hostname', async () => {
+    const get = vi.spyOn(https, 'get')
+    const mockGet = (url: URL, options: https.RequestOptions, callback: (response: unknown) => void) => {
+      expect(url.hostname).toBe('example.com')
+      expect(options.agent).toBe(false)
+      expect(options.rejectUnauthorized).toBe(true)
+      const pinned = vi.fn()
+      options.lookup?.(url.hostname, { all: true }, pinned)
+      expect(pinned).toHaveBeenCalledWith(null, [{ address: '93.184.216.34', family: 4 }])
+      const mockBody = Readable.from([Buffer.from('pinned')])
+      callback(Object.assign(mockBody, { statusCode: 200, headers: {} }))
+      return new EventEmitter()
+    }
+    get.mockImplementation(mockGet as unknown as typeof https.get)
+    const result = await trustedFetch('https://example.com/', { allowHosts: ['example.com'] })
+    expect(result.body).toBe('pinned')
+    expect(get).toHaveBeenCalledOnce()
+  })
+
+  it('stops consuming the stream at the byte limit', async () => {
+    const cancel = vi.fn()
+    const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
+      controller.enqueue(Buffer.from('abcdefgh'))
+      if (pull.mock.calls.length > 2) controller.error(new Error('read past the byte limit'))
+    })
+    const response = new Response(new ReadableStream({ pull, cancel }))
+    const result = await trustedFetch('https://example.com/', {
+      allowHosts: ['example.com'],
+      fetchImpl: vi.fn().mockResolvedValue(response),
+      maxBytes: 4,
+    })
+    expect(result.body).toBe('abcd')
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
   it('follows allowlisted https redirect and returns body', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response('', { status: 302, headers: { Location: 'https://example.com/final' } }))
@@ -52,7 +97,7 @@ describe('trusted-fetch redirects', () => {
     await expect(trustedFetch('https://example.com/', {
       allowHosts: ['example.com', '127.0.0.1'],
       fetchImpl: fetchImpl as typeof fetch,
-    })).rejects.toThrow(/private|allowlist/i)
+    })).rejects.toThrow(/blocked address/i)
   })
 
   it('refuses redirect to host outside allowlist', async () => {
@@ -85,9 +130,9 @@ describe('trusted-fetch SSRF', () => {
   }
 
   it('refuses IPv4-mapped loopback host when allowlisted', async () => {
-    await expect(trustedFetch('https://::ffff:127.0.0.1/', {
-      allowHosts: ['::ffff:127.0.0.1'],
-    })).rejects.toThrow()
+    await expect(trustedFetch('https://[::ffff:127.0.0.1]/', {
+      allowHosts: ['::ffff:7f00:1'],
+    })).rejects.toThrow(/private|blocked/i)
   })
 
   it('refuses IPv4-mapped loopback hex when allowlisted', async () => {
@@ -98,6 +143,8 @@ describe('trusted-fetch SSRF', () => {
 
   it.each([
     ['172.16.0.1', '172.16.0.1'],
+    ['172.31.255.255', '172.31.255.255'],
+    ['IPv6 link-local', '[fe90::1]'],
     ['192.168.1.1', '192.168.1.1'],
     ['169.254.169.254', '169.254.169.254'],
     ['IPv4-mapped 172.16.0.1', '[::ffff:ac10:1]'],
@@ -125,6 +172,34 @@ describe('trusted-fetch SSRF', () => {
   it('refuses IPv6 unspecified when allowlisted', async () => {
     await expect(trustedFetch('https://[::]/', { allowHosts: ['::'] }))
       .rejects.toThrow(/private|blocked/i)
+  })
+})
+
+describe('GitHub App auth defense', () => {
+  it('redacts dotted installation tokens, Basic headers and plain or algorithm-specific key blocks', () => {
+    expect(redactGithubAuthSecret('ghs_app_header.payload-segment.signature')).toBe('ghs_[REDACTED]')
+    expect(redactGithubAuthSecret('Authorization: Basic sample-encoded-credential')).toBe('Authorization: Basic [REDACTED]')
+    for (const type of ['PRIVATE KEY', 'RSA PRIVATE KEY', 'EC PRIVATE KEY']) {
+      expect(redactGithubAuthSecret(`-----BEGIN ${type}-----\nfixture\n-----END ${type}-----`)).toBe('[PEM REDACTED]')
+    }
+  })
+
+  it('rejects an external key link whose target is inside the repository root', () => {
+    const home = tempHome()
+    const repo = path.join(home, 'repository')
+    fs.mkdirSync(repo)
+    const target = path.join(repo, 'key.pem')
+    const link = path.join(home, 'key.pem')
+    fs.writeFileSync(target, 'fixture', { mode: 0o600 })
+    fs.symlinkSync(target, link)
+    expect(() => parseGithubAuthBlock({
+      mode: 'github-app',
+      appId: '1',
+      clientId: 'fixture-client',
+      installationId: '2',
+      expectedSlug: 'fixture-app',
+      privateKeyFile: link,
+    }, repo)).toThrow(/outside the repository/)
   })
 })
 

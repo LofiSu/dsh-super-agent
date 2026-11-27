@@ -1,5 +1,7 @@
 import dns from 'node:dns/promises'
+import https from 'node:https'
 import net from 'node:net'
+import { Readable } from 'node:stream'
 import { UserError } from '../shared/errors.ts'
 
 export interface TrustedFetchOptions {
@@ -77,26 +79,86 @@ function hostAllowed(host: string, allowHosts: readonly string[]): boolean {
   return allowHosts.some(a => normalizeHostname(a).toLowerCase() === h)
 }
 
-async function assertResolvesPublic(hostname: string): Promise<void> {
-  if (net.isIP(hostname)) {
-    if (isPrivateIp(hostname)) throw new UserError(`trusted-fetch: refused private IP ${hostname}`)
-    return
-  }
-  const results = await dns.lookup(hostname, { all: true, verbatim: true })
-  for (const r of results) {
-    if (isPrivateIp(r.address)) {
-      throw new UserError(`trusted-fetch: ${hostname} resolves to blocked address ${r.address}`)
-    }
-  }
-}
-
-async function validateRequestUrl(url: URL, allowHosts: readonly string[]): Promise<void> {
+async function validateRequestUrl(url: URL, allowHosts: readonly string[]): Promise<{ address: string; family: number }> {
   if (url.protocol !== 'https:') throw new UserError('trusted-fetch: only https:// allowed')
+  if (url.username || url.password) throw new UserError('trusted-fetch: URL credentials refused')
   const host = normalizeHostname(url.hostname)
   if (!hostAllowed(host, allowHosts)) {
     throw new UserError(`trusted-fetch: host ${url.hostname} not in allowlist`)
   }
-  await assertResolvesPublic(host)
+  const family = net.isIP(host)
+  const addresses = family ? [{ address: host, family }] : await dns.lookup(host, { all: true })
+  const selected = addresses[0]
+  if (!selected) throw new UserError('trusted-fetch: host has no resolved addresses')
+  for (const address of addresses) {
+    if (isPrivateIp(address.address)) {
+      throw new UserError(`trusted-fetch: ${host} resolves to blocked address ${address.address}`)
+    }
+  }
+  return selected
+}
+
+interface ResponseBody {
+  getReader(): {
+    read(): Promise<{ done?: boolean; value?: Uint8Array }>
+    cancel(): Promise<void>
+    releaseLock(): void
+  }
+  cancel(): Promise<void>
+}
+
+interface HopResponse {
+  status: number
+  body: ResponseBody | null
+  location: string | null | undefined
+}
+
+function requestPinned(
+  url: URL,
+  { address, family }: { address: string; family: number },
+  signal: AbortSignal,
+): Promise<HopResponse> {
+  return new Promise((resolve, reject) => {
+    // Preserve the original Host header and TLS identity. Disable connection
+    // reuse and let only the validated address reach the socket.
+    const lookup: net.LookupFunction = (_host, opts, callback) => {
+      if (opts.all) callback(null, [{ address, family }])
+      else callback(null, address, family)
+    }
+    const request = https.get(url, {
+      agent: false,
+      rejectUnauthorized: true,
+      signal,
+      lookup,
+    }, response => {
+      resolve({
+        status: response.statusCode ?? 0,
+        body: Readable.toWeb(response),
+        location: response.headers.location,
+      })
+    })
+    request.once('error', reject)
+  })
+}
+
+async function readBody(body: HopResponse['body'], maxBytes: number): Promise<string> {
+  if (!body) return ''
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let remaining = maxBytes
+  try {
+    while (remaining > 0) {
+      const { value, done } = await reader.read()
+      if (done || !value) break
+      const chunk = value.subarray(0, remaining)
+      chunks.push(chunk)
+      remaining -= chunk.byteLength
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 /**
@@ -114,36 +176,34 @@ export async function trustedFetch(
   }
   if (url.protocol === 'file:') throw new UserError('trusted-fetch: file:// refused')
 
-  const fetchImpl = options.fetchImpl ?? fetch
+  const max = options.maxBytes ?? 512_000
+  if (!Number.isSafeInteger(max) || max < 0) throw new UserError('trusted-fetch: invalid byte limit')
   const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS
   let current = url.toString()
   let hops = 0
 
   while (true) {
     const parsed = new URL(current)
-    await validateRequestUrl(parsed, options.allowHosts)
-
-    const res = await fetchImpl(parsed.toString(), {
-      method: 'GET',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(30_000),
-    })
-
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location')
-      if (!loc) throw new UserError('trusted-fetch: redirect without Location')
-      if (hops >= maxRedirects) throw new UserError('trusted-fetch: too many redirects')
-      hops += 1
-      const next = new URL(loc, parsed)
-      if (next.protocol !== 'https:') throw new UserError('trusted-fetch: redirect must stay on https')
-      current = next.toString()
-      continue
+    const address = await validateRequestUrl(parsed, options.allowHosts)
+    const signal = AbortSignal.timeout(30_000)
+    let res: HopResponse
+    if (options.fetchImpl) {
+      const response = await options.fetchImpl(parsed.toString(), { method: 'GET', redirect: 'manual', signal })
+      res = { status: response.status, body: response.body, location: response.headers.get('location') }
+    } else {
+      res = await requestPinned(parsed, address, signal)
     }
 
-    if (!res.ok) throw new UserError(`trusted-fetch: HTTP ${res.status}`)
-    const buf = Buffer.from(await res.arrayBuffer())
-    const max = options.maxBytes ?? 512_000
-    const body = buf.slice(0, max).toString('utf8')
-    return { url: parsed.toString(), body, fetchedAt: new Date().toISOString() }
+    if (res.status >= 200 && res.status < 300) {
+      const body = await readBody(res.body, max)
+      return { url: parsed.toString(), body, fetchedAt: new Date().toISOString() }
+    }
+
+    await res.body?.cancel().catch(() => undefined)
+    if (res.status < 300 || res.status >= 400) throw new UserError(`trusted-fetch: HTTP ${res.status}`)
+    if (!res.location) throw new UserError('trusted-fetch: redirect without Location')
+    if (hops >= maxRedirects) throw new UserError('trusted-fetch: too many redirects')
+    hops += 1
+    current = new URL(res.location, parsed).toString()
   }
 }
