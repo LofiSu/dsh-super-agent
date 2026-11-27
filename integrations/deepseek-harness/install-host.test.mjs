@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -38,6 +38,11 @@ export function startDesktopServer({ port }) {
 }
 `);
     execFileSync(process.execPath, [fileURLToPath(new URL('./install-host.mjs', import.meta.url)), file]);
+    const state = join(root, 'state');
+    mkdirSync(state);
+    const notExecutable = join(root, 'not-executable');
+    writeFileSync(notExecutable, 'fixture', { mode: 0o600 });
+    writeFileSync(join(state, 'bot-runtimes.json'), JSON.stringify({ codex: root, claude: notExecutable }));
     const { startDesktopServer } = await import(pathToFileURL(file));
     host = await startDesktopServer({ port: 0 });
     assert.ok(host.port > 0);
@@ -46,7 +51,9 @@ export function startDesktopServer({ port }) {
       headers: { Origin: 'dsh-app://app', 'X-Ds-Desktop': 'fixture' },
     });
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).bots, []);
+    const snapshot = await response.json();
+    assert.deepEqual(snapshot.bots, []);
+    assert.deepEqual(snapshot.devices[0].engines, ['ds-agent']);
   } finally {
     await host?.close();
     rmSync(root, { recursive: true, force: true });

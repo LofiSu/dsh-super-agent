@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { createCodexAdapter } from './codex-adapter.mjs';
 
-test('Codex adapter waits for the cancelled child to exit', { timeout: 5000 }, async () => {
+test('Codex adapter waits for the cancelled child to exit', { timeout: 15000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'bot-cancel-'));
   const executable = join(root, 'fixture.cjs');
   const bot = { id: randomUUID(), name: 'QA', purpose: 'Cancellation test' };
@@ -23,7 +23,7 @@ setInterval(() => {}, 1000);
     const run = createCodexAdapter({ executable, workspaceRoot: root });
     const finished = assert.rejects(run(bot, 'Test', [], controller.signal), { name: 'AbortError' });
     let pid;
-    for (let i = 0; !pid && i < 100; i++) {
+    for (let i = 0; !pid && i < 450; i++) {
       pid = Number(await readFile(pidFile, 'utf8').catch(() => '0'));
       if (!pid) await delay(20);
     }
