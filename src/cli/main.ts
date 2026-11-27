@@ -168,6 +168,7 @@ function help(): void {
   pnpm demo:feishu          real Feishu message API smoke (needs app creds)
   pnpm ds-agent init
   pnpm ds-agent tasks
+  pnpm ds-agent mcp              # dsh-super-bot stdio MCP server
   pnpm ds-agent panel            # Panel · Execution (tickets, mandate, executor, outbox)
   pnpm ds-agent receipt <ticketId> [--json] # read-only execution evidence from local state
   pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
@@ -532,6 +533,11 @@ async function main(): Promise<void> {
     const store = new Store(home)
     store.close()
     console.log(`initialized ${home}`)
+    return
+  }
+  if (cmd === 'mcp') {
+    const { runBotMcp } = await import('./bot-mcp.ts')
+    await runBotMcp(home)
     return
   }
   if (cmd === 'tasks') {
