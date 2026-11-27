@@ -69,11 +69,12 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
   effects.shift()();
   await new Promise(setImmediate);
   const dashboard = render();
-  assert.match(JSON.stringify(dashboard), /花生.*ds-agent.*整理任务进度/);
-  const cards = dashboard.children.find(child => Array.isArray(child) && child[0]?.tag === 'article');
-  cards[0].children[0].children[2].props.onClick();
-  const selectedCards = render().children.find(child => Array.isArray(child) && child[0]?.tag === 'article');
-  const conversation = selectedCards[0].children.at(-1);
+  const workspace = tree => tree.children.find(child => child?.props?.className === 'bots-workspace');
+  assert.match(JSON.stringify(workspace(dashboard)), /花生.*整理任务进度/);
+  workspace(dashboard).children[0].children[1].props.onClick();
+  const detail = workspace(render()).children[1];
+  assert.match(JSON.stringify(detail), /花生.*ds-agent/);
+  const conversation = detail.children.at(-1);
   hooks = [];
   effects.length = 0;
   const renderConversation = () => { cursor = 0; return conversation.tag(conversation.props); };

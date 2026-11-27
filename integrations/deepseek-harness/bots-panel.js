@@ -1,4 +1,4 @@
-// New Bot dialog layout adapted from stablyai/orca at 16852f2d.
+// New Bot dialog and Bot row layout adapted from stablyai/orca at 16852f2d.
 /*
 MIT License
 
@@ -48,6 +48,7 @@ function mountBotsPanel(ctx, React, request) {
     const [sending, setSending] = React.useState(false);
     const [notice, setNotice] = React.useState('');
     const pendingTurn = React.useRef(null);
+    const transcript = React.useRef(null);
     const endpoint = '/api/bots/' + bot.id + '/turns';
 
     React.useEffect(() => {
@@ -68,6 +69,11 @@ function mountBotsPanel(ctx, React, request) {
       void load();
       return () => { active = false; };
     }, [endpoint]);
+
+    React.useEffect(() => {
+      const viewport = transcript.current;
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    }, [turns]);
 
     async function send(event) {
       event.preventDefault();
@@ -98,12 +104,13 @@ function mountBotsPanel(ctx, React, request) {
     }
 
     const labels = { running: '执行中', failed: '执行失败', interrupted: '已中断' };
-    return h('section', { 'aria-label': bot.name + ' 会话' },
-      ...turns.map(turn => h('article', { key: turn.id },
+    return h('section', { className: 'bots-conversation', 'aria-label': bot.name + ' 会话' },
+      h('div', { className: 'bots-transcript', ref: transcript },
+        ...turns.map(turn => h('article', { className: 'bots-turn', key: turn.id },
         h('p', { style: { whiteSpace: 'pre-wrap' } }, turn.prompt),
-        h('p', { style: { whiteSpace: 'pre-wrap' } }, turn.reply || labels[turn.status]))),
+        h('p', { style: { whiteSpace: 'pre-wrap' } }, turn.reply || labels[turn.status])))),
       notice && h('p', { role: 'alert' }, notice),
-      h('form', { onSubmit: send },
+      h('form', { className: 'bots-composer', onSubmit: send },
         h('label', null, '消息', h('textarea', {
           required: true, maxLength: 2400, value: draft, disabled: sending,
           onChange: event => setDraft(event.target.value),
@@ -352,6 +359,7 @@ function mountBotsPanel(ctx, React, request) {
     const [editing, setEditing] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
     const [error, setError] = React.useState('');
+    const activeBot = profiles.find(bot => bot.id === selected);
 
     React.useEffect(() => {
       let active = true;
@@ -492,13 +500,28 @@ function mountBotsPanel(ctx, React, request) {
         .dsh-bots .bots-nav{display:flex;gap:6px;flex-wrap:wrap;margin:20px 0}
         .dsh-bots .bots-nav button{border-color:transparent;margin:0}
         .dsh-bots .bots-nav button[aria-pressed=true]{border-color:var(--bot-line)}
-        .dsh-bots .bots-card-header{display:flex;align-items:center;gap:14px}
-        .dsh-bots .bots-card-header .bots-icon{flex:none;margin:0}
-        .dsh-bots .bots-card-header h2{overflow-wrap:anywhere}
-        .dsh-bots .bots-card-header>div{flex:1;min-width:0}
-        .dsh-bots .bots-card-header>button{flex:none}
-        .dsh-bots .bots-description{margin:12px 0 0;white-space:pre-wrap}
-        .dsh-bots .bots-hero-actions{display:flex;flex-wrap:wrap;gap:8px}.dsh-bots .bots-hero-actions button+button{margin-left:0}
+        .dsh-bots .bots-workspace{display:grid;grid-template-columns:minmax(200px,28%) minmax(0,1fr);border:1px solid var(--bot-line);border-radius:14px;height:clamp(340px,calc(100dvh - 220px),720px);overflow:hidden}
+        .dsh-bots .bots-list{padding:10px;border-right:1px solid var(--bot-line);min-width:0;overflow:auto;background:color-mix(in srgb,currentColor 3%,transparent)}
+        .dsh-bots .bots-list h2{font-size:13px;margin:7px 8px 10px}
+        .dsh-bots .bots-list button{display:flex;align-items:center;gap:9px;width:100%;margin:2px 0;padding:7px;border-color:transparent;text-align:left}
+        .dsh-bots .bots-list button[aria-current=true]{border-color:var(--bot-line);background:var(--bot-tint)}
+        .dsh-bots .bots-list .bots-icon{width:33px;height:33px;flex:none;margin:0;border-radius:10px}
+        .dsh-bots .bots-row-text{display:grid;gap:2px;min-width:0}
+        .dsh-bots .bots-row-text>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .dsh-bots .bots-detail{min-width:0;min-height:0;padding:18px;display:flex;flex-direction:column;overflow:auto}
+        .dsh-bots .bots-detail>header{align-items:first baseline;border-bottom:1px solid var(--bot-line);padding-bottom:12px}
+        .dsh-bots .bots-detail>header details{flex:none}
+        .dsh-bots .bots-detail>details>summary{cursor:pointer;margin:10px 0}
+        .dsh-bots .bots-conversation{display:flex;flex:1;flex-direction:column;min-height:180px}
+        .dsh-bots .bots-transcript{flex:1;min-height:0;overflow:auto;padding-right:4px}
+        .dsh-bots .bots-conversation .bots-turn{border:0;padding:0;margin:16px 0}
+        .dsh-bots .bots-turn p{padding:9px 12px;margin:5px 0;max-width:90%;width:fit-content;border-radius:10px}
+        .dsh-bots .bots-turn p:first-child{margin-left:auto;background:var(--bot-tint)}
+        .dsh-bots .bots-turn p:last-child{background:color-mix(in srgb,currentColor 5%,transparent)}
+        .dsh-bots .bots-composer{padding:10px;margin-bottom:0}
+        .dsh-bots .bots-composer label{margin:0 0 7px}
+        .dsh-bots .bots-composer textarea{min-height:58px}
+        @media(max-width:720px){.dsh-bots .bots-workspace{grid-template-columns:1fr;grid-template-rows:auto minmax(260px,1fr);height:auto}.dsh-bots .bots-list{border-right:0;border-bottom:1px solid var(--bot-line);max-height:220px;overflow:auto}}
         .dsh-bots h1{font-size:clamp(28px,5vw,42px);line-height:1.1;letter-spacing:-.04em;margin:0}
         .dsh-bots h2{font-size:18px;margin:0}.dsh-bots header p,.dsh-bots small{opacity:.74}
         .dsh-bots form,.dsh-bots article,.dsh-bots .bots-empty{border:1px solid var(--bot-line);border-radius:16px;padding:20px;margin:16px 0;overflow-wrap:anywhere}
@@ -624,15 +647,21 @@ function mountBotsPanel(ctx, React, request) {
         setProfiles((await response.json()).bots);
       } }),
       section === 'teams' && !loading && h(Teams, { profiles }),
-      section === 'bots' && profiles.map(bot => h('article', { key: bot.id },
-        h('header', { className: 'bots-card-header' },
+      section === 'bots' && profiles.length > 0 && h('div', { className: 'bots-workspace' },
+        h('nav', { className: 'bots-list', 'aria-label': 'Bot 列表' },
+          h('h2', null, 'Bots'),
+          ...profiles.map(bot => h('button', { key: bot.id, type: 'button', onClick: () => setSelected(bot.id),
+            'aria-current': selected === bot.id ? 'true' : undefined },
           h('span', { className: 'bots-icon', 'aria-hidden': true }, avatars[bot.avatar] && bot.avatar !== 'initial' ? avatars[bot.avatar] : Array.from(bot.name)[0]),
-          h('div', null, h('h2', null, bot.name),
-            h('small', null, `${devices.find(device => device.id === bot.device)?.label ?? bot.device} · ${bot.engine}`)),
-          h('button', { type: 'button', onClick: () => setSelected(selected === bot.id ? null : bot.id), 'aria-expanded': selected === bot.id }, selected === bot.id ? '收起会话' : '打开会话')),
-        h('p', { className: 'bots-description' }, bot.purpose),
-        selected === bot.id && h('details', null,
-          h('summary', null, '编辑 Bot'),
+          h('span', { className: 'bots-row-text' }, h('strong', null, bot.name), h('small', null, bot.purpose))))),
+        activeBot ? renderBot(activeBot) : h('section', { className: 'bots-detail' },
+          h('p', null, '选择一个 Bot 打开会话。'))));
+    function renderBot(bot) {
+      return h('section', { className: 'bots-detail', key: bot.id },
+        h('header', null, h('div', null, h('h2', null, bot.name),
+          h('small', null, `${devices.find(device => device.id === bot.device)?.label ?? bot.device} · ${bot.engine}`))),
+        h('details', null,
+          h('summary', null, 'Bot 设置'),
           h('form', { onSubmit: event => void updateProfile(event, bot.id) },
             h('label', null, '名称', h('input', { name: 'name', required: true, maxLength: 80, defaultValue: bot.name })),
             h('label', null, '职责', h('textarea', { name: 'purpose', required: true, maxLength: 1000, defaultValue: bot.purpose })),
@@ -650,12 +679,13 @@ function mountBotsPanel(ctx, React, request) {
               h('label', null, '工具权限', h('select', { name: 'toolScope', defaultValue: bot.toolScope ?? 'default' },
                 h('option', { value: 'default' }, '运行时默认'),
                 h('option', { value: 'conversation' }, '仅会话'))),
+            h('label', null, '编辑头像', h('select', {
+              value: bot.avatar ?? 'initial', onChange: event => void updateAvatar(bot.id, event.target.value),
+            }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
+            h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。')),
             h('button', { type: 'submit' }, '保存配置'))),
-        selected === bot.id && h('label', null, '编辑头像', h('select', {
-          value: bot.avatar ?? 'initial', onChange: event => void updateAvatar(bot.id, event.target.value),
-        }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
-        selected === bot.id && h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。')),
-        selected === bot.id && h(Conversation, { bot }))));
+        h(Conversation, { key: bot.id, bot }));
+    }
   }
 
   function BotIcon() {
