@@ -143,9 +143,14 @@ Outbound: `FeishuOutboxAdapter` replies in-thread with
 otherwise sends to the chat with `/open-apis/im/v1/messages`. In the default
 `FEISHU_REPLY_FORMAT=auto` mode, short plain replies stay text and replies with
 Markdown headings, lists, or fenced code use a single-column interactive card.
-Set `FEISHU_REPLY_FORMAT=text` to force the existing plain text format. Card send
-and mobile display still need mobile acceptance; this change does not cut over
-live `serve`. Feishu replies use the latest human inbound message on the selected
+Set `FEISHU_REPLY_FORMAT=text` to force the existing plain text format. Card
+content is kept under Feishu's 30 KiB card limit. If a structured reply's card
+would exceed that limit, the complete original is sent as text when its
+serialized request body fits Feishu's 150 KiB text limit. Larger bodies are split
+into clearly marked text messages sent in the same chat or reply thread, with the
+continuation messages carrying the rest of the body. Card send and mobile display
+still need mobile acceptance; this change does not cut over live `serve`. Feishu
+replies use the latest human inbound message on the selected
 thread as their quote target. When a user asks to stop quoting/replying on that
 thread, that preference is saved there and later messages are sent directly to
 the chat without a `message_id`.

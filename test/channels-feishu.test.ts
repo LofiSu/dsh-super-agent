@@ -15,7 +15,7 @@ import {
 } from '../src/channels/feishu.ts'
 import { filterTrigger, ruleClassify } from '../src/ingress/filter.ts'
 import { admissionRulesFromEnv } from '../src/runtime.ts'
-import { FEISHU_CARD_CONTENT_LIMIT_BYTES } from '../src/channels/feishu-card.ts'
+import { FEISHU_TEXT_REQUEST_LIMIT_BYTES } from '../src/channels/feishu.ts'
 import type { OutboxRow, Trigger } from '../src/shared/types.ts'
 
 const config: FeishuConfig = {
@@ -1119,23 +1119,49 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
-  it('truncates oversize card content by UTF-8 bytes and sends only one valid request', async () => {
+  it.each([
+    ['chat send', { provider: 'feishu', chat_id: 'oc_chat' } as OutboxRow['target']],
+    ['reply', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' } as OutboxRow['target']],
+  ])('sends the complete text when the card is oversized but text fits (%s)', async (_route, target) => {
     await withFormat(undefined, async () => {
       const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
         ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
-        : { body: { code: 0, data: { message_id: 'sent_card' } } })
+        : { body: { code: 0, data: { message_id: 'sent_text' } } })
       const text = '## 结论 ✅\n```ts\n' + '界🙂'.repeat(20_000)
-      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text))
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text, target))
       const sent = sentCalls(calls)
       expect(sent).toHaveLength(1)
       const req = JSON.parse(String(sent[0]?.init?.body)) as { msg_type: string; content: string }
-      expect(req.msg_type).toBe('interactive')
-      expect(Buffer.byteLength(req.content, 'utf8')).toBeLessThanOrEqual(FEISHU_CARD_CONTENT_LIMIT_BYTES)
-      const card = JSON.parse(req.content) as { elements: { text: { content: string } }[] }
-      expect(card.elements[0]?.text.content).toContain('## 结论 ✅')
-      expect(card.elements[0]?.text.content).toContain('内容已截断')
-      expect(card.elements[0]?.text.content.match(/^```/gm)).toHaveLength(2)
-      expect(card.elements[0]?.text.content).toContain('ticket_durable_1')
+      expect(req.msg_type).toBe('text')
+      expect(JSON.parse(req.content)).toEqual({ text })
+      expect(sent.some(call => JSON.parse(String(call.init?.body)).msg_type === 'interactive')).toBe(false)
+      expect(req.content).not.toContain('内容已截断')
+    })
+  })
+
+  it('sends complete oversized text in marked in-chat chunks within the request body limit', async () => {
+    await withFormat(undefined, async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: `sent_${sentCalls(calls).length}` } } })
+      const text = '## 结论 ✅\n```ts\n' + '界🙂'.repeat(30_000)
+      await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow(text))
+      const sent = sentCalls(calls)
+      expect(sent.length).toBeGreaterThan(1)
+      expect(sent.every(call => call.url === 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id')).toBe(true)
+      const messages = sent.map(call => {
+        const body = String(call.init?.body)
+        expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(FEISHU_TEXT_REQUEST_LIMIT_BYTES)
+        const request = JSON.parse(body) as { msg_type: string; content: string }
+        expect(request.msg_type).toBe('text')
+        return (JSON.parse(request.content) as { text: string }).text
+      })
+      expect(messages[0]).toMatch(/^（1\/\d+）\n## 结论 ✅/)
+      expect(messages.slice(1).every(message => /^（续 \d+\/\d+）\n/.test(message))).toBe(true)
+      const total = messages[0]?.match(/^（1\/(\d+)）/)?.[1]
+      expect(messages.every(message => message.includes(`/${total}）`))).toBe(true)
+      const original = messages.map(message => message.replace(/^（(?:续 )?\d+\/\d+）\n/, '')).join('')
+      expect(original).toBe(text)
     })
   })
 

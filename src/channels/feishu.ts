@@ -1,7 +1,58 @@
 import crypto from 'node:crypto'
 import type { OutboxRow, Trigger } from '../shared/types.ts'
 import type { OutboundAdapter } from './outbox-adapter.ts'
-import { hasFeishuMarkdownStructure, renderFeishuMarkdownCard } from './feishu-card.ts'
+import { FEISHU_CARD_CONTENT_LIMIT_BYTES, hasFeishuMarkdownStructure, renderFeishuMarkdownCard } from './feishu-card.ts'
+
+/** Feishu documents a 150 KB maximum for serialized text-message request bodies. */
+export const FEISHU_TEXT_REQUEST_LIMIT_BYTES = 150 * 1024
+
+// Reserve ample room for the send API's receive_id envelope without using a real
+// chat id. This also safely covers the smaller reply API request body.
+const FEISHU_RECEIVE_ID_RESERVE = 'x'.repeat(256)
+
+function textRequestBodyBytes(text: string): number {
+  return Buffer.byteLength(JSON.stringify({
+    receive_id: FEISHU_RECEIVE_ID_RESERVE,
+    msg_type: 'text',
+    content: JSON.stringify({ text }),
+  }), 'utf8')
+}
+
+function textChunkMarker(index: number, total: number): string {
+  return index === 1 ? `（${index}/${total}）\n` : `（续 ${index}/${total}）\n`
+}
+
+/** Split on Unicode code points while keeping each serialized send body under Feishu's cap. */
+function splitFeishuText(text: string): string[] {
+  const points = Array.from(text)
+  let totalGuess = 2
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const chunks: string[] = []
+    let offset = 0
+    while (offset < points.length) {
+      const marker = textChunkMarker(chunks.length + 1, totalGuess)
+      let low = 1
+      let high = points.length - offset
+      let best = 0
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        const candidate = marker + points.slice(offset, offset + middle).join('')
+        if (textRequestBodyBytes(candidate) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES) {
+          best = middle
+          low = middle + 1
+        } else {
+          high = middle - 1
+        }
+      }
+      if (best === 0) throw new Error('Feishu text chunk marker exceeds the request body limit')
+      chunks.push(marker + points.slice(offset, offset + best).join(''))
+      offset += best
+    }
+    if (chunks.length === totalGuess) return chunks
+    totalGuess = chunks.length
+  }
+  throw new Error('Could not determine Feishu text chunk count')
+}
 
 /**
  * Production Feishu/Lark IM channel.
@@ -654,29 +705,45 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
     const chatId = row.target.chat_id
     if (!messageId && !chatId) throw new Error(`feishu outbox row ${row.id} has no chat_id/message_id`)
 
-    const sendText = (): Promise<{ message_id: string }> => messageId
-      ? this.client.replyText(messageId, row.text)
-      : this.client.sendText(chatId!, row.text)
+    const sendTextBody = (text: string): Promise<{ message_id: string }> => messageId
+      ? this.client.replyText(messageId, text)
+      : this.client.sendText(chatId!, text)
+    const sendTextDelivery = async (text: string): Promise<{ message_id: string }> => {
+      const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
+        ? [text]
+        : splitFeishuText(text)
+      let firstResult: { message_id: string } | undefined
+      for (const chunk of chunks) {
+        const sent = await sendTextBody(chunk)
+        if (!sent.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
+        firstResult ??= sent
+      }
+      if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
+      return firstResult
+    }
     const format = process.env.FEISHU_REPLY_FORMAT?.trim().toLowerCase()
     let result: { message_id: string }
     if (format !== 'text' && hasFeishuMarkdownStructure(row.text)) {
       const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
-      try {
-        result = messageId
-          ? await this.client.replyInteractive(messageId, rendered.content)
-          : await this.client.sendInteractive(chatId!, rendered.content)
-      } catch (error) {
-        // Official send-message errors: 230025 is the documented card/content
-        // size limit; 230099 means Feishu rejected card content creation.
-        // Other API/transport errors may have an unknown delivery outcome.
-        if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
-        result = await sendText()
+      if (rendered.truncated || Buffer.byteLength(rendered.content, 'utf8') > FEISHU_CARD_CONTENT_LIMIT_BYTES) {
+        result = await sendTextDelivery(row.text)
+      } else {
+        try {
+          result = messageId
+            ? await this.client.replyInteractive(messageId, rendered.content)
+            : await this.client.sendInteractive(chatId!, rendered.content)
+        } catch (error) {
+          // Only documented format/size rejection codes guarantee that the
+          // card was rejected before acceptance and permit a text fallback.
+          if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
+          result = await sendTextDelivery(row.text)
+        }
       }
     } else {
-      result = await sendText()
+      result = await sendTextDelivery(row.text)
     }
     if (!result.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
-    this.log(`[feishu] outbound message_id=${result.message_id} chat=${chatId ?? '-'} inReplyTo=${messageId ?? '-'}`)
+    this.log(`[feishu] outbound message_id=${result.message_id}`)
     return { externalId: result.message_id }
   }
 }
