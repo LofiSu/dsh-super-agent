@@ -636,6 +636,13 @@ export class Runtime {
 
   static create(opts: RuntimeOptions): Runtime {
     const baseEnv = opts.env ?? process.env
+    const toolScope = baseEnv.DS_AGENT_TOOL_SCOPE
+    if (toolScope !== undefined && toolScope !== 'conversation') {
+      throw new UserError('DS_AGENT_TOOL_SCOPE must be conversation when set')
+    }
+    const allowedToolNames = toolScope === 'conversation'
+      ? new Set(['list_tasks', 'reply_user', 'report_to_router', 'read_object'])
+      : undefined
     // Owner-gated and off when `connectors.json` is absent. A malformed file
     // fails here, before SQLite or a network client is opened. Credentials are
     // read only after an explicit enable.
@@ -1867,6 +1874,7 @@ export class Runtime {
         baseEnv,
       })
     const tools = new ToolRegistry({
+      allowedToolNames,
       store,
       ports: bindRolePorts(engine),
       env,

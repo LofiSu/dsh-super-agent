@@ -14,7 +14,7 @@ afterEach(async () => {
   runtime = undefined
 })
 
-function registry(mcp: McpToolSourceLike): ToolRegistry {
+function registry(mcp: McpToolSourceLike, allowedToolNames?: ReadonlySet<string>): ToolRegistry {
   if (!runtime) throw new Error('runtime not created')
   return new ToolRegistry({
     store: runtime.store,
@@ -26,6 +26,7 @@ function registry(mcp: McpToolSourceLike): ToolRegistry {
     scheduleJob: () => {},
     routerTurn: async () => {},
     mcp,
+    allowedToolNames,
   })
 }
 
@@ -54,6 +55,25 @@ describe('ToolRegistry with an MCP source', () => {
 
     await tools.close()
     expect(closed).toBe(true)
+  })
+
+  it('enforces restricted runtime tools on both discovery and invocation', async () => {
+    runtime = freshRuntime()
+    const tools = registry({
+      specs: async () => { throw new Error('MCP discovery must stay off') },
+      invoke: async () => { throw new Error('MCP invocation must stay off') },
+      close: async () => {},
+    }, new Set(['list_tasks', 'report_to_router', 'read_object']))
+    const worker = { sessionId: 's', role: 'worker' } as const
+
+    expect((await tools.specsFor('worker')).map(spec => spec.name).sort()).toEqual([
+      'read_object', 'report_to_router',
+    ])
+    await expect(tools.invoke({ id: 'restricted', name: 'bash', args: {} }, worker))
+      .rejects.toThrow(/not available in this runtime/)
+    await expect(tools.invoke({ id: 'external', name: 'mcp__fake__echo', args: {} }, worker))
+      .rejects.toThrow(/not available in this runtime/)
+    await expect(tools.invoke({ id: 'allowed', name: 'list_tasks', args: {} }, { sessionId: 'router', role: 'router' })).resolves.toBeDefined()
   })
 
   it('refuses MCP tool calls from the router role', async () => {
