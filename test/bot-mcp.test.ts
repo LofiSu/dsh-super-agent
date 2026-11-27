@@ -18,7 +18,12 @@ test('dsh-super-bot exposes read-only tools over stdio', async () => {
       stderr: 'pipe',
     }))
     expect(client.getServerVersion()?.name).toBe('dsh-super-bot')
-    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['list_tasks', 'list_teams'])
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['open_dashboard', 'list_tasks', 'list_teams'])
+    const { resources } = await client.listResources()
+    expect(resources[0]?.mimeType).toBe('text/html;profile=mcp-app')
+    expect(await client.readResource({ uri: resources[0]!.uri })).toMatchObject({
+      contents: [{ text: expect.stringContaining('No teams in this snapshot.') }],
+    })
     expect(await client.callTool({ name: 'list_tasks' })).toMatchObject({
       content: [{ type: 'text', text: '[]' }],
     })

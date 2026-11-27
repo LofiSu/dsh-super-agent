@@ -1,13 +1,30 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListToolsRequestSchema, McpError, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { ticketStage } from '../core/stage.ts'
 import type { TeamRecord } from '../harness/team.ts'
 import type { Ticket } from '../shared/types.ts'
 import { visibleTickets } from '../speculate/index.ts'
 import { Store } from '../store/sqlite.ts'
 
+import { dashboardUri, renderBotDashboard } from './bot-dashboard.ts'
+
+const dashboardResource = {
+  uri: dashboardUri,
+  name: 'dsh-super-bot dashboard',
+  mimeType: 'text/html;profile=mcp-app',
+}
+
 const tools = [
+  {
+    name: 'open_dashboard',
+    description: 'Open the dsh-super-bot task and team dashboard.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+    _meta: {
+      ui: { resourceUri: dashboardUri },
+      'openai/ui': { entrypoints: [{ type: 'global' }] },
+    },
+  },
   {
     name: 'list_tasks',
     description: 'List visible ds-agent tasks and their current stages.',
@@ -27,11 +44,19 @@ const tools = [
 export async function runBotMcp(home: string): Promise<void> {
   const server = new Server(
     { name: 'dsh-super-bot', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, resources: {} } },
   )
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }))
+  server.setRequestHandler(ListResourcesRequestSchema, () => ({ resources: [dashboardResource] }))
+  server.setRequestHandler(ReadResourceRequestSchema, ({ params }) => {
+    if (params.uri !== dashboardUri) throw new McpError(ErrorCode.InvalidParams, 'Unknown resource')
+    return { contents: [{ ...dashboardResource, text: renderBotDashboard(home) }] }
+  })
   server.setRequestHandler(CallToolRequestSchema, ({ params }) => {
     const args = params.arguments ?? {}
+    if (params.name === 'open_dashboard' && Object.keys(args).length === 0) {
+      return { content: [{ type: 'text', text: 'Dashboard available in compatible hosts. Use list_tasks and list_teams for text results.' }] }
+    }
     const ticketId = args.ticketId
     const valid = params.name === 'list_tasks'
       ? Object.keys(args).length === 0
