@@ -53,11 +53,10 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
   assert.deepEqual(navigation, ['dsh-super-bot', 'ds-super-agent']);
   actions[1].props.onClick();
   const findForm = () => render().children.find(child => child?.tag === 'dialog').children[0];
-  const field = (form, label) => form.children.find(child => child?.children?.[0] === label).children[1];
-  field(findForm(), '模板').props.onChange({ target: { value: '项目跟进' } });
+  findForm().children.find(child => child?.tag === 'footer').children[0].children[1].props.onChange({ target: { value: '项目跟进' } });
   const form = findForm();
-  assert.equal(field(form, '名称').props.value, '项目跟进');
-  assert.match(field(form, '职责').props.value, /阻塞/);
+  assert.equal(form.children.find(child => child?.props?.className === 'bots-identity').children[1].props.value, '项目跟进');
+  assert.match(form.children.find(child => child?.tag === 'textarea').props.value, /阻塞/);
   let submitted = false;
   form.props.onKeyDown({ metaKey: true, key: 'Enter', preventDefault() {}, currentTarget: {
     requestSubmit: () => { submitted = true; },
