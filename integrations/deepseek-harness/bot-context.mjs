@@ -13,8 +13,10 @@ export function buildBotPrompt(bot, prompt, history) {
     recent.unshift(entry);
   }
   return [
-    'Respond to the current message. Use prior messages as conversation context.',
-    JSON.stringify({ bot: bot.name, purpose: bot.purpose, history: recent, currentMessage: prompt }),
+    'Current message:',
+    prompt,
+    'Use this Bot profile and prior messages as context:',
+    JSON.stringify({ bot: bot.name, purpose: bot.purpose, history: recent }),
   ].join('\n');
 }
 

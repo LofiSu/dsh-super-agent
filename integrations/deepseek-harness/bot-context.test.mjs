@@ -3,7 +3,16 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { readBotRouterReply } from './bot-context.mjs';
+import { buildBotPrompt, readBotRouterReply } from './bot-context.mjs';
+
+test('puts the current question in the trigger preview before long history', () => {
+  const question = 'What is 19 plus 24?';
+  const prompt = buildBotPrompt({ name: 'QA', purpose: 'Answer briefly' }, question, [
+    { status: 'completed', prompt: 'Earlier question', reply: '背景'.repeat(3600) },
+  ]);
+  assert.match(prompt.slice(0, 80), /^Current message:\nWhat is 19 plus 24\?/);
+  assert.match(prompt, /Earlier question/);
+});
 
 test('plain Router fallback uses only the latest unanswered delivery context', () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-router-reply-'));
