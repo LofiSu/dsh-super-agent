@@ -1,7 +1,7 @@
 import { renderOutbound } from '../channels/norms.ts'
 import { OUTBOX_RETRY_BASE_KEY, PROACTIVE_RETRY_BASE_MS } from '../channels/outbox-adapter.ts'
 import { maySurface } from '../speculate/gate.ts'
-import type { Ticket } from '../shared/types.ts'
+import { threadKey as makeThreadKey, type Thread, type Ticket, type Trigger } from '../shared/types.ts'
 import type { Host } from './host.ts'
 
 export class Replies {
@@ -25,12 +25,9 @@ export class Replies {
       this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=${wakeMarker} reason=conversational`)
       return
     }
-    // iMessage is a live conversation: a canned English acknowledgement before
-    // the Router has even decided whether there is work is noise, and it cannot
-    // be retracted when the Router vetoes (the sender sees "Working on it."
-    // followed by silence). Only the real result goes back to a chat.
-    if (channelFor(ticket, threadKey)?.source === 'imessage') {
-      this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=imessage reason=conversational`)
+    const channel = channelFor(ticket, threadKey)
+    if (isConversationalChannel(channel)) {
+      this.host.log(`[reply] ack-suppressed ticketId=${ticket.id} channel=${channel?.source} reason=conversational`)
       return
     }
     this.send(ticket, `Acknowledged “${ticket.title}”. Working on it.`, 'acknowledgement', threadKey)
@@ -56,10 +53,44 @@ export class Replies {
       ...(ref?.address ?? {}),
       ...(proactive ? { [OUTBOX_RETRY_BASE_KEY]: String(PROACTIVE_RETRY_BASE_MS) } : {}),
     }
+    if (ref?.source === 'im' && ref.address?.provider === 'feishu') {
+      const key = makeThreadKey({ source: ref.source, id: ref.thread })
+      const storedThread = this.host.repo.getDoc<Thread>('thread', key)
+      const triggerBelongsToSelectedThread = (trigger: Trigger): boolean => {
+        const refs = trigger.threads.length > 0
+          ? trigger.threads
+          : trigger.channel ? [{ source: trigger.channel.source, id: trigger.channel.thread }] : []
+        return refs.some(triggerRef => makeThreadKey(triggerRef) === key)
+      }
+      const stopRequested = ticket.inputs.some(input => {
+        if (input.human !== true || !input.triggerId) return false
+        const trigger = this.host.repo.getDoc<Trigger>('trigger', input.triggerId)
+        return trigger?.human === true
+          && triggerBelongsToSelectedThread(trigger)
+          && /别用回复|不要引用|别引用|(?:don't|dont|stop)\s+quot(?:e|ing)\b/i.test(trigger.text)
+      })
+      const stopQuoting = storedThread?.meta?.feishuStopQuoting === true || stopRequested
+      if (stopRequested && storedThread) {
+        storedThread.meta = { ...storedThread.meta, feishuStopQuoting: true }
+        this.host.repo.putDoc('thread', key, storedThread)
+      }
+      if (stopQuoting) {
+        delete target.message_id
+      } else {
+        const latestHuman = ticket.inputs
+          .filter(input => input.human === true && input.triggerId)
+          .map(input => this.host.repo.getDoc<Trigger>('trigger', input.triggerId!))
+          .filter((trigger): trigger is Trigger => trigger?.human === true && triggerBelongsToSelectedThread(trigger))
+          .sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
+          .at(-1)
+        const latestMessageId = latestHuman?.channel?.address?.message_id
+        if (latestMessageId) target.message_id = latestMessageId
+      }
+    }
     const rendered = renderOutbound(channel, text, ticket.id)
     // A direct chat reads like texting: one long block feels like a letter.
     // Split at paragraph/sentence boundaries into at most three bubbles.
-    const directChat = channel === 'imessage' && target.group == null
+    const directChat = (channel === 'imessage' || channel === 'im') && target.group == null
     const parts = directChat ? splitChatText(rendered) : [rendered]
     for (const [index, part] of parts.entries()) {
       const label = parts.length > 1 ? `${purpose} part=${index + 1}/${parts.length}` : purpose
@@ -138,6 +169,10 @@ export function splitChatText(text: string, maxParts = MAX_CHAT_PARTS): string[]
   const head = parts.slice(0, maxParts - 1)
   head.push(parts.slice(maxParts - 1).join('\n\n'))
   return head
+}
+
+function isConversationalChannel(channel: Ticket['channels'][number] | undefined): boolean {
+  return channel?.source === 'imessage' || channel?.source === 'im'
 }
 
 /**

@@ -298,6 +298,8 @@ export interface Ticket {
   title: string
   brief: string
   spillId?: string
+  /** Persistent 1:1 conversation envelope; not a per-message work ticket. */
+  conversation?: boolean
   mandate: Mandate
   threadKeys: string[]
   /** Subset of threadKeys whose messages are context-only for this Ticket. */

@@ -199,6 +199,7 @@ async function seedFeishuPollTrigger(
   const source = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_owner', {
     sinceMs: T0 - 60 * MIN,
     config,
+    now: () => T0,
   })
   const [trigger] = await source.pull()
   if (!trigger) throw new Error('expected a Feishu poll trigger')

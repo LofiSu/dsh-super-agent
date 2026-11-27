@@ -1,3 +1,4 @@
+import { isDirectConversationIngress } from '../core/conversation.ts'
 import type { Strength, Trigger } from '../shared/types.ts'
 
 const NOISE = /\b(lol|lmao|haha|weather|lunch)\b/i
@@ -34,7 +35,8 @@ export interface AdmissionRules {
   /**
    * When non-empty, only these group ids may pass. The id comes from the
    * channel address (`trigger.channel.address.group`), never from `meta`.
-   * A missing group is not allowed while this list is active.
+   * A missing group is not allowed while this list is active; verified Feishu
+   * p2p direct messages are outside the group rule.
    */
   groups?: string[]
   /** Always drop when `trigger.actor.id` matches, e.g. the daemon's own bot id. */
@@ -51,8 +53,22 @@ export function admissionDenial(trigger: Trigger, rules?: AdmissionRules): strin
     return 'actor-not-allowlisted'
   }
   if (rules.groups?.length) {
-    const group = trigger.channel?.address?.group?.trim()
-    if (!group || !rules.groups.includes(group)) return 'group-not-allowlisted'
+    const address = trigger.channel?.address
+    // A genuine Feishu p2p trigger has a verified p2p address marker and no
+    // group field. Direct-addressed p2p is always outside the group rule; a
+    // bot mention in p2p qualifies only without a group field, so a forged
+    // marker on a restricted group cannot bypass the allowlist.
+    const p2pAddress = trigger.channel?.source === 'im'
+      && address?.provider === 'feishu'
+      && address.chat_type === 'p2p'
+    const verifiedFeishuP2p = p2pAddress && (
+      trigger.addressed === 'direct'
+      || (trigger.addressed === 'mention' && !address?.group?.trim())
+    )
+    if (!verifiedFeishuP2p) {
+      const group = address?.group?.trim()
+      if (!group || !rules.groups.includes(group)) return 'group-not-allowlisted'
+    }
   }
   return undefined
 }
@@ -93,9 +109,7 @@ export function ruleClassify(trigger: Trigger): SemanticHit {
   // "haha" is a valid message there and must not be dropped as noise. Group
   // messages keep the noise rule: they are input, not a conversation with us.
   // Agent-to-agent traffic is not a conversation either, even when addressed.
-  const directChat = trigger.source !== 'a2a'
-    && trigger.addressed === 'direct'
-    && trigger.channel?.address?.group == null
+  const directChat = trigger.source !== 'a2a' && isDirectConversationIngress(trigger)
   if (NOISE.test(trigger.text) && !ACTION.test(trigger.text) && !directChat) {
     return { pass: false, strength: 'inferred', reason: 'noise' }
   }

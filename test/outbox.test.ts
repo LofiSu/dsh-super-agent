@@ -11,7 +11,7 @@ import {
 } from '../src/core/external-effects.ts'
 import { Replies, splitChatText } from '../src/core/replies.ts'
 import type { Host } from '../src/core/host.ts'
-import type { OutboxRow, Ticket } from '../src/shared/types.ts'
+import type { OutboxRow, Ticket, Trigger } from '../src/shared/types.ts'
 import { Store } from '../src/store/sqlite.ts'
 
 const homes: string[] = []
@@ -87,6 +87,142 @@ describe('durable outbox', () => {
     store.close()
   })
 
+  it('targets the latest human Feishu message on the selected thread', () => {
+    const store = tempStore()
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: () => undefined,
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const first: Trigger = {
+      id: 'feishu_origin', source: 'im', threads: [{ source: 'im', id: 'feishu:oc_chat' }],
+      actor: { source: 'im', id: 'alice' }, human: true, at: '2026-01-01T00:00:00.000Z',
+      text: 'start', channel: { source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }, meta: {},
+    }
+    const latest: Trigger = {
+      ...first, id: 'feishu_latest', at: '2026-01-01T00:01:00.000Z', text: 'follow up',
+      channel: { ...first.channel!, address: { ...first.channel!.address!, message_id: 'om_latest' } },
+    }
+    store.putDoc('trigger', first.id, first)
+    store.putDoc('trigger', latest.id, latest)
+    store.putDoc('thread', 'im:feishu:oc_chat', {
+      key: 'im:feishu:oc_chat', ref: { source: 'im', id: 'feishu:oc_chat' }, createdAt: first.at,
+      subscriptions: [], correlated: [], pending: [], meta: {},
+    })
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_chat'],
+      channels: [{ source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }],
+      inputs: [
+        { id: 'input_origin', kind: 'trigger', triggerId: first.id, text: first.text, at: first.at, human: true },
+        { id: 'input_latest', kind: 'trigger', triggerId: latest.id, text: latest.text, at: latest.at, human: true },
+      ],
+    })
+
+    new Replies(host).answer(feishuTicket, 'response')
+    expect(store.listOutbox('pending')[0]?.target.message_id).toBe('om_latest')
+    store.close()
+  })
+
+  it('keeps Feishu quote targets and stop-quoting preferences scoped to the selected chat', () => {
+    const store = tempStore()
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: () => undefined,
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const first: Trigger = {
+      id: 'feishu_a_origin', source: 'im', threads: [{ source: 'im', id: 'feishu:oc_a' }],
+      actor: { source: 'im', id: 'alice' }, human: true, at: '2026-01-01T00:00:00.000Z',
+      text: 'start',
+      channel: { source: 'im', thread: 'feishu:oc_a', address: { provider: 'feishu', chat_id: 'oc_a', message_id: 'om_a_origin' } }, meta: {},
+    }
+    const latestA: Trigger = {
+      ...first, id: 'feishu_a_latest', at: '2026-01-01T00:01:00.000Z', text: 'ordinary follow up',
+      channel: { ...first.channel!, address: { ...first.channel!.address!, message_id: 'om_a_latest' } },
+    }
+    const stopB: Trigger = {
+      ...first, id: 'feishu_b_stop', threads: [{ source: 'im', id: 'feishu:oc_b' }],
+      at: '2026-01-01T00:02:00.000Z', text: '别用回复了你直接给我发吧',
+      channel: { source: 'im', thread: 'feishu:oc_b', address: { provider: 'feishu', chat_id: 'oc_b', message_id: 'om_b_stop' } },
+    }
+    for (const trigger of [first, latestA, stopB]) store.putDoc('trigger', trigger.id, trigger)
+    for (const trigger of [first, stopB]) {
+      const ref = trigger.threads[0]!
+      const key = `${ref.source}:${ref.id}`
+      store.putDoc('thread', key, {
+        key, ref, createdAt: trigger.at, subscriptions: [], correlated: [], pending: [], meta: {},
+      })
+    }
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_a', 'im:feishu:oc_b'],
+      channels: [
+        { source: 'im', thread: 'feishu:oc_a', address: { provider: 'feishu', chat_id: 'oc_a', message_id: 'om_a_origin' } },
+        { source: 'im', thread: 'feishu:oc_b', address: { provider: 'feishu', chat_id: 'oc_b', message_id: 'om_b_stop' } },
+      ],
+      inputs: [first, latestA, stopB].map(trigger => ({
+        id: `input_${trigger.id}`, kind: 'trigger' as const, triggerId: trigger.id,
+        text: trigger.text, at: trigger.at, human: true,
+      })),
+    })
+
+    new Replies(host).answer(feishuTicket, 'response')
+    const target = store.listOutbox('pending')[0]?.target
+    expect(target?.chat_id).toBe('oc_a')
+    expect(target?.message_id).toBe('om_a_latest')
+    expect(store.getDoc<{ meta: Record<string, unknown> }>('thread', 'im:feishu:oc_a')?.meta.feishuStopQuoting).toBeUndefined()
+    expect(store.getDoc<{ meta: Record<string, unknown> }>('thread', 'im:feishu:oc_b')?.meta.feishuStopQuoting).toBeUndefined()
+    store.close()
+  })
+
+  it('persists a Feishu stop-quoting request and omits message_id on later sends', () => {
+    const store = tempStore()
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: () => undefined,
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const inbound: Trigger = {
+      id: 'feishu_stop', source: 'im', threads: [{ source: 'im', id: 'feishu:oc_chat' }],
+      actor: { source: 'im', id: 'alice' }, human: true, at: '2026-01-01T00:02:00.000Z',
+      text: '别用回复了你直接给我发吧',
+      channel: { source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_stop' } }, meta: {},
+    }
+    store.putDoc('trigger', inbound.id, inbound)
+    store.putDoc('thread', 'im:feishu:oc_chat', {
+      key: 'im:feishu:oc_chat', ref: { source: 'im', id: 'feishu:oc_chat' }, createdAt: inbound.at,
+      subscriptions: [], correlated: [], pending: [], meta: {},
+    })
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_chat'],
+      channels: [{ source: 'im', thread: 'feishu:oc_chat', address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_origin' } }],
+      inputs: [{ id: 'input_stop', kind: 'trigger', triggerId: inbound.id, text: inbound.text, at: inbound.at, human: true }],
+    })
+    const replies = new Replies(host)
+
+    replies.answer(feishuTicket, 'first direct response')
+    replies.answer(feishuTicket, 'later direct response')
+    const ordinary: Trigger = {
+      ...inbound, id: 'feishu_ordinary', at: '2026-01-01T00:03:00.000Z', text: 'ordinary follow up',
+      channel: { ...inbound.channel!, address: { ...inbound.channel!.address!, message_id: 'om_ordinary' } },
+    }
+    store.putDoc('trigger', ordinary.id, ordinary)
+    replies.answer({
+      ...feishuTicket,
+      inputs: [{ id: 'input_ordinary', kind: 'trigger', triggerId: ordinary.id, text: ordinary.text, at: ordinary.at, human: true }],
+    }, 'response after stop request')
+    const queued = store.listOutbox('pending')
+    expect(queued).toHaveLength(3)
+    expect(queued.every(row => !('message_id' in row.target))).toBe(true)
+    expect(store.getDoc<{ meta: Record<string, unknown> }>('thread', 'im:feishu:oc_chat')?.meta.feishuStopQuoting).toBe(true)
+    store.close()
+  })
+
   it('does not send the canned acknowledgement into an iMessage conversation', () => {
     const store = tempStore()
     const lines: string[] = []
@@ -113,6 +249,36 @@ describe('durable outbox', () => {
 
     // Only the acknowledgement is suppressed; the real answer still goes out.
     replies.answer(imessageTicket, '你好，我在。')
+    expect(store.listReplies()).toHaveLength(1)
+    expect(store.listOutbox('pending')).toHaveLength(1)
+    store.close()
+  })
+
+  it('does not send the canned acknowledgement into a Feishu conversation', () => {
+    const store = tempStore()
+    const lines: string[] = []
+    const host: Host = {
+      repo: store,
+      now: () => new Date().toISOString(),
+      log: line => { lines.push(line) },
+      metrics: { increment: () => undefined } as unknown as Host['metrics'],
+      scope: { admit: () => ({ listened: true, reason: 'test' }) },
+    }
+    const feishuTicket = ticket({
+      threadKeys: ['im:feishu:oc_chat'],
+      channels: [{
+        source: 'im',
+        thread: 'feishu:oc_chat',
+        address: { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_1' },
+      }],
+    })
+    const replies = new Replies(host)
+    replies.acknowledge(feishuTicket, 'im:feishu:oc_chat')
+    expect(store.listReplies()).toHaveLength(0)
+    expect(store.listOutbox('pending')).toHaveLength(0)
+    expect(lines.some(line => line.includes('ack-suppressed') && line.includes('channel=im'))).toBe(true)
+
+    replies.answer(feishuTicket, '在，我在。')
     expect(store.listReplies()).toHaveLength(1)
     expect(store.listOutbox('pending')).toHaveLength(1)
     store.close()

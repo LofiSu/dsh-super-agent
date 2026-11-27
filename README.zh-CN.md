@@ -97,6 +97,20 @@ pnpm ds-agent tasks                             # 查看 Ticket 及其阶段
 pnpm ds-agent panel                             # Panel · Execution
 ```
 
+`tasks` 每个 Ticket 一行，以制表符分隔：`<ticketId> <stage> <title>`。`panel` 打印 Mandate、Executor Session、工作目录、最近一次报告，以及 Outbox 的 `pending` / `sent` / `failed` 计数。
+
+`chat` 会在本进程里把这张 Ticket 跑完才返回，所以快速开始的例子通常是 `ended/ready`。`pause` 用于仍在进行中的 Ticket。在另一个使用同一 `DS_AGENT_HOME` 的终端里，从 `tasks` 读出 id（也可以用 `latest` 或唯一前缀）并暂停：
+
+```bash
+pnpm ds-agent tasks
+pnpm ds-agent pause ticket_1 --reason "waiting on staging"
+pnpm ds-agent tasks                             # person/paused
+pnpm ds-agent panel                             # 状态列是 paused
+pnpm ds-agent resume ticket_1 --reason "human verified"
+```
+
+暂停写在 SQLite 的 Ticket 上。新进程仍会列出同一张暂停中的 Ticket，`resume` 会清除暂停并继续工作（`resume` 需要真实模型）。之后 `tasks` 和 `panel` 会显示新的阶段和报告。对已经暂停的 Ticket 再执行 `pause` 会打印 `already paused`，并保留原来的暂停记录。对未暂停的 Ticket 执行 `resume` 会打印 `not paused`，且不改写该 Ticket。未知 id 会报错退出，其他 Ticket 保持不变。Ticket 处于暂停时，Watchdog 不会 nudge，也不会判它失败。
+
 状态目录是 `DS_AGENT_HOME`，未设置时为 `./.ds-agent`。`pnpm ds-agent serve` 会在持久化状态上运行 daemon 与 Watchdog 定时器，不启动入站信道轮询。要在浏览器里看只读面板：
 
 ```bash
@@ -189,8 +203,8 @@ CLI、GitHub 风格来源、Feishu、iMessage、A2A，以及本地 OpenAI 兼容
 
 ### 可观测性
 
-- `ds-agent tasks`：Ticket 及其阶段。
-- `ds-agent panel`：Panel · Execution，含 Mandate、Executor Session、目录、报告与 Outbox 投递计数。
+- `ds-agent tasks`：Ticket 及其阶段。暂停中的 Ticket 是 `person/paused`。
+- `ds-agent panel`：Panel · Execution，含 Mandate、Executor Session、目录、报告与 Outbox 投递计数。暂停中的状态是 `paused`。
 - `ds-agent health`：存储、vault 模式、机器、Watchdog。
 - `ds-agent metrics`：Ingress、Eval、订阅 bypass fan-out、投机 deliver/discard、Watchdog nudge/fail、模型延迟等计数。
 - `ds-agent memory`：最近的长期记忆条目。

@@ -1,6 +1,6 @@
 import type { Metrics } from '../metrics/metrics.ts'
 import type { SourceScope } from '../shared/ports.ts'
-import type { Decision, Ticket } from '../shared/types.ts'
+import type { Decision, Ticket, Trigger } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
 
 export interface Host {
@@ -27,6 +27,8 @@ export interface Host {
   onAssignmentEnded?: (ticketId: string) => void
   /** Gate deferred this Thread; the Main Agent should assess the queued Triggers. */
   onAssessmentNeeded?: (threadKey: string) => void
+  /** A direct 1:1 trigger was attached to the conversation envelope; start a turn. */
+  onDirectConversation?: (envelope: Ticket, trigger: Trigger, threadKey: string) => void
   /** Infrastructure cleanup for a speculative ticket that ends without delivering. */
   discardScratch?: (ticketId: string) => void
 }

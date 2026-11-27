@@ -22,6 +22,7 @@ import {
 } from './core/recovery-boundary.ts'
 import { finalizeUncertainExternalEffects } from './core/external-effects.ts'
 import { arbitrateSubscribers } from './core/intake.ts'
+import { cleanupDirectThreadSubscriptions, isConversationTicket, isDirectConversationThread } from './core/conversation.ts'
 import { withSessionRole } from './core/session-role.ts'
 import { bindRolePorts } from './core/role-ports.ts'
 import type { Host } from './core/host.ts'
@@ -1772,6 +1773,10 @@ export class Runtime {
       onQueued: (threadKey, triggerId, pending) => {
         log.info(`[ingress] batch-hook thread=${threadKey} triggerId=${triggerId} pending=${pending.length}`)
       },
+      onDirectConversation: (envelope, trigger, threadKey) => {
+        void late.harness?.conversationTurn(envelope, trigger)
+        log.info(`[conversation] turn envelope=${envelope.id} triggerId=${trigger.id} thread=${threadKey}`)
+      },
       onTicketCreated: ticket => {
         lifecycle.publish({
           kind: 'ticket.created',
@@ -1875,6 +1880,11 @@ export class Runtime {
       routerTurn: prompt => {
         if (!late.harness) throw new Error('harness is not ready')
         return late.harness.routerTurn(prompt)
+      },
+      launchWork: ticketId => {
+        if (!late.harness) throw new Error('harness is not ready')
+        const ticket = store.getDoc<Ticket>('ticket', ticketId)
+        if (ticket && !ticket.ended && !isConversationTicket(ticket)) late.harness.launch(ticket)
       },
       ...(fillVault
         ? { fill: { vault: fillVault, ...(fillTarget ? { target: fillTarget } : {}) } }
@@ -2158,7 +2168,7 @@ export class Runtime {
       queueLimit: meshQueue,
       releaseNode: ticketId => releaseSlot(ticketId),
       repliedTo: ticketId => store.listReplies().some(
-        reply => reply.ticketId === ticketId && reply.channel === 'imessage',
+        reply => reply.ticketId === ticketId && (reply.channel === 'imessage' || reply.channel === 'im'),
       ),
       stopAnsweredDirectChat: (ticket, reason) => {
         engine.decide(ticket.originTriggerId, { kind: 'stop', ticketId: ticket.id, reason })
@@ -2567,6 +2577,7 @@ export class Runtime {
     // before recovery, assessment, or the first Trigger.
     this.armResidentRouters()
     this.recoverInterrupted()
+    this.cleanupDirectConversationThreads()
     this.daemon.start({
       routines: options.routines === true,
       proactive: options.proactive === true,
@@ -2580,6 +2591,26 @@ export class Runtime {
 
   private armResidentRouters(): void {
     for (const shard of this.routerShards.list()) this.harness.armRouter(shard.id)
+  }
+
+  /** On serve startup, demote stale direct-thread subscriptions before the first poll. */
+  private cleanupDirectConversationThreads(): void {
+    if (!this.store.isOpen) return
+    const host: Host = {
+      repo: this.store,
+      now: () => new Date().toISOString(),
+      metrics: this.metrics,
+      log: line => this.log.info(line),
+      scope: { admit: () => ({ listened: true, reason: 'cleanup' }) },
+    }
+    for (const thread of this.store.listDocs<Thread>('thread')) {
+      if (!isDirectConversationThread(thread, this.store)) continue
+      this.store.atomic(() => {
+        const latest = this.store.getDoc<Thread>('thread', thread.key)
+        if (!latest) return
+        cleanupDirectThreadSubscriptions(host, latest)
+      })
+    }
   }
 
   /**

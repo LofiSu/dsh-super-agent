@@ -493,6 +493,17 @@ describe('subscription bypass rules', () => {
     expect(bypassEligible(live, follow)).toBe(false)
   })
 
+  it('reject-feishu-direct-chat', () => {
+    const live = sampleTicket('ticket_feishu', {
+      channels: [{
+        source: 'im',
+        thread: 'feishu:oc_x',
+        address: { provider: 'feishu', chat_id: 'oc_x', message_id: 'om_old' },
+      }],
+    })
+    expect(bypassEligible(live, followUp({ addressed: 'direct' }))).toBe(false)
+  })
+
   it('reject-ended-mandate', () => {
     const live = sampleTicket('ticket_1')
     expect(bypassEligible({
