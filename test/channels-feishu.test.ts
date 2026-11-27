@@ -1147,6 +1147,81 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
+  it('reuses deterministic text uuids when progress was not durably saved', async () => {
+    await withFormat('text', async () => {
+      const createdByUuid = new Map<string, string>()
+      const requests: { uuid: string; messageId: string }[] = []
+      const { fn } = fakeFetch(url => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const call = requests.at(-1)
+        if (!call) throw new Error('send request was not recorded')
+        let messageId = createdByUuid.get(call.uuid)
+        if (!messageId) {
+          messageId = `deduped_${createdByUuid.size + 1}`
+          createdByUuid.set(call.uuid, messageId)
+        }
+        return { body: { code: 0, data: { message_id: messageId } } }
+      })
+      const client = new FeishuClient(config, async (url, init) => {
+        if (!url.includes('tenant_access_token')) {
+          const body = JSON.parse(String(init?.body)) as { uuid: string }
+          requests.push({ uuid: body.uuid, messageId: '' })
+        }
+        return fn(url, init)
+      })
+      const adapter = new FeishuOutboxAdapter(client)
+      const original = makeRow('a stable text answer')
+      const firstResult = await adapter.sendWithProgress(original, () => undefined)
+      const retryResult = await adapter.sendWithProgress(original, () => undefined)
+      const firstUuid = requests[0]!.uuid
+      expect(requests[1]!.uuid).toBe(firstUuid)
+      expect(retryResult.externalId).toBe(firstResult.externalId)
+      expect(createdByUuid.size).toBe(1)
+      expect(original.target.__ds_feishu_text_progress).toBeUndefined()
+
+      requests.length = 0
+      const untrackedSendRow = makeRow('send without progress')
+      await adapter.send(untrackedSendRow)
+      await adapter.send(untrackedSendRow)
+      expect(requests[1]!.uuid).toBe(requests[0]!.uuid)
+
+      requests.length = 0
+      await adapter.send(makeRow('same text, different row id'))
+      await adapter.send({ ...makeRow('same text, different row id'), id: 'another_outbox_row' })
+      expect(requests[1]!.uuid).not.toBe(requests[0]!.uuid)
+    })
+  })
+
+  it('reuses deterministic interactive uuids when progress was not durably saved', async () => {
+    await withFormat(undefined, async () => {
+      const createdByUuid = new Map<string, string>()
+      const requests: { uuid: string }[] = []
+      const { fn } = fakeFetch((url, init) => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const body = JSON.parse(String(init?.body)) as { uuid: string }
+        requests.push({ uuid: body.uuid })
+        let messageId = createdByUuid.get(body.uuid)
+        if (!messageId) {
+          messageId = `deduped_card_${createdByUuid.size + 1}`
+          createdByUuid.set(body.uuid, messageId)
+        }
+        return { body: { code: 0, data: { message_id: messageId } } }
+      })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const original = makeRow('## Structured\n- card body')
+      const firstResult = await adapter.sendWithProgress(original, () => undefined)
+      const retryResult = await adapter.sendWithProgress(original, () => undefined)
+      expect(requests[1]!.uuid).toBe(requests[0]!.uuid)
+      expect(retryResult.externalId).toBe(firstResult.externalId)
+      expect(createdByUuid.size).toBe(1)
+
+      requests.length = 0
+      await adapter.send(original)
+      await adapter.send(original)
+      expect(requests[1]!.uuid).toBe(requests[0]!.uuid)
+    })
+  })
+
   it('treats JSON, mention tags, and button declarations as body text only', async () => {
     await withFormat(undefined, async () => {
       const body = '## Details\n```json\n{"buttons":[{"text":"do it"}]}\n```\n<at user_id="ou_fake">name</at>'
