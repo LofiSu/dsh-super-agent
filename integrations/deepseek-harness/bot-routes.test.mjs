@@ -108,6 +108,49 @@ test('saved Bot tool scope prevents execution after runtime support is lost', as
   }
 });
 
+test('a Bot trigger accepts only its bearer, fixed prompt and unique event', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-bot-trigger-'));
+  const origin = 'dsh-app://app';
+  const url = 'http://127.0.0.1:4328/api/bots';
+  const headers = { Origin: origin, 'Content-Type': 'application/json' };
+  const calls = [];
+  const options = {
+    home, allowedOrigin: origin, supportsConversationScope: () => true,
+    runTurn: async (bot, prompt) => { calls.push([bot.name, prompt]); return 'Private reply'; },
+  };
+  let route = createBotRoutes(options);
+  const post = (path, data, requestHeaders = headers) => route(new Request(url + path, {
+    method: 'POST', headers: requestHeaders, body: JSON.stringify(data),
+  }));
+  try {
+    const input = { name: 'Trigger Bot', purpose: 'Summarize', device: 'local', engine: 'ds-agent' };
+    const bot = await (await post('', input)).json();
+    const trigger = '/' + bot.id + '/trigger';
+    assert.equal((await post(trigger, { enabled: true, prompt: 'Saved prompt' })).status, 400);
+    assert.equal((await post('/' + bot.id + '/profile', { ...input, toolScope: 'conversation' })).status, 200);
+    const { token } = await (await post(trigger, { enabled: true, prompt: 'Saved prompt' })).json();
+    const caller = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
+    assert.equal((await post(trigger, { id: 'first' }, { ...caller, Origin: 'https://foreign.example' })).status, 403);
+    assert.equal((await post(trigger, { id: 'first' }, { 'Content-Type': 'application/json' })).status, 403);
+    const first = await post(trigger, { id: 'first', prompt: 'Ignored prompt' }, caller);
+    assert.equal(first.status, 201);
+    const receipt = await first.json();
+    assert.equal(receipt.status, 'completed');
+    assert.equal(receipt.reply, undefined);
+    route = createBotRoutes(options);
+    const duplicate = await post(trigger, { id: 'first' }, caller);
+    assert.equal(duplicate.status, 200);
+    assert.deepEqual(await duplicate.json(), receipt);
+    assert.deepEqual(calls, [['Trigger Bot', 'Saved prompt']]);
+    const conversation = await (await route(new Request(url + '/' + bot.id + '/turns', { headers }))).json();
+    assert.equal(conversation.turns[0].reply, 'Private reply');
+    await post(trigger, { enabled: false });
+    assert.equal((await post(trigger, { id: 'second' }, caller)).status, 403);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('host advertises configured adapters and dispatches to the selected Agent', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-bot-adapters-'));
   const origin = 'dsh-app://app';

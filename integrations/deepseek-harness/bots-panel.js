@@ -340,6 +340,61 @@ function mountBotsPanel(ctx, React, request) {
           h('button', { type: 'button', disabled: busy, onClick: () => void decide(id, 'declined') }, '拒绝'))));
   }
 
+  function BotTrigger({ bot }) {
+    const [config, setConfig] = React.useState(null);
+    const [prompt, setPrompt] = React.useState('');
+    const [token, setToken] = React.useState('');
+    const [busy, setBusy] = React.useState(false);
+    const [notice, setNotice] = React.useState('');
+    const endpoint = '/api/bots/' + bot.id + '/trigger';
+
+    React.useEffect(() => {
+      let active = true;
+      void (async () => {
+        try {
+          const response = await request(endpoint);
+          if (!response.ok) throw new Error();
+          const saved = await response.json();
+          if (active) {
+            setConfig(saved);
+            setPrompt(saved.prompt ?? '');
+          }
+        } catch {
+          if (active) setNotice('无法读取触发器。');
+        }
+      })();
+      return () => { active = false; };
+    }, [endpoint]);
+
+    async function save(enabled) {
+      setBusy(true);
+      setToken('');
+      setNotice('');
+      try {
+        const response = await request(endpoint, { method: 'POST', body: JSON.stringify({ enabled, prompt }) });
+        if (!response.ok) throw new Error();
+        const saved = await response.json();
+        setConfig({ enabled: saved.enabled });
+        if (saved.token) setToken(saved.token);
+      } catch {
+        setNotice('无法保存触发器。');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    return h('details', null,
+      h('summary', null, '本机触发器'),
+      h('form', { onSubmit: event => { event.preventDefault(); void save(true); } },
+        h('label', null, '触发时发送的消息',
+          h('textarea', { value: prompt, required: true, maxLength: 2400, onChange: event => setPrompt(event.target.value) })),
+        h('button', { type: 'submit', disabled: busy || !config }, config?.enabled ? '保存并更换令牌' : '启用触发器'),
+        config?.enabled && h('button', { type: 'button', disabled: busy, onClick: () => void save(false) }, '撤销触发器'),
+        token && h('label', null, '触发令牌（仅显示一次）', h('input', { readOnly: true, value: token })),
+        token && h('p', null, '本机地址 ', 'http://127.0.0.1:4328' + endpoint),
+        notice && h('p', { role: 'alert' }, notice)));
+  }
+
   function Bots() {
     const [template, setTemplate] = React.useState('');
     const [avatar, setAvatar] = React.useState('initial');
@@ -684,6 +739,7 @@ function mountBotsPanel(ctx, React, request) {
             }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
             h('p', null, bot.toolScope === 'conversation' ? '仅会话 · 外部工具已关闭' : (runtimePermissions[bot.engine] ?? '工具权限由目标设备配置。')),
             h('button', { type: 'submit' }, '保存配置'))),
+        bot.toolScope === 'conversation' && h(BotTrigger, { key: bot.id, bot }),
         h(Conversation, { key: bot.id, bot }));
     }
   }

@@ -45,6 +45,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
   return async function botRoutes(request) {
     const pathname = new URL(request.url).pathname;
     const conversation = /^\/api\/bots\/([a-f0-9-]{36})\/turns$/.exec(pathname);
+    const trigger = /^\/api\/bots\/([a-f0-9-]{36})\/trigger$/.exec(pathname);
     const profile = /^\/api\/bots\/([a-f0-9-]{36})\/profile$/.exec(pathname);
     const avatar = /^\/api\/bots\/([a-f0-9-]{36})\/avatar$/.exec(pathname);
     const probe = /^\/api\/bots\/devices\/(device-[a-f0-9-]{36})\/probe$/.exec(pathname);
@@ -54,7 +55,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     const decision = /^\/api\/bots\/offers\/([a-f0-9-]{36})\/decision$/.exec(pathname);
     const teams = pathname === '/api/bots/teams';
     const addDevice = pathname === '/api/bots/devices';
-    if (!cancel && !offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar && !profile) return undefined;
+    if (!cancel && !offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar && !profile && !trigger) return undefined;
     const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
     const json = (data, status) => Response.json(data, { status, headers });
     const desktop = request.headers.get('Origin') === origin;
@@ -63,7 +64,8 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     const proposal = offers && request.method === 'POST' && !request.headers.has('Origin') &&
       proposalToken?.length >= 32 && authorization.length === expected.length &&
       timingSafeEqual(authorization, expected);
-    if (!desktop && !proposal) return json({ error: 'Forbidden' }, 403);
+    const externalTrigger = trigger && request.method === 'POST' && !request.headers.has('Origin');
+    if (!desktop && !proposal && !externalTrigger) return json({ error: 'Forbidden' }, 403);
     if (desktop) headers['Access-Control-Allow-Origin'] = origin;
     if (request.method === 'OPTIONS') {
       headers['Access-Control-Allow-Methods'] = 'GET, POST';
@@ -98,7 +100,17 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         return json({ error: 'Invalid JSON' }, 400);
       }
     }
-    const needsDevices = pathname === '/api/bots' || ((conversation || dispatch || offers || decision || profile) && request.method === 'POST');
+    if (externalTrigger) {
+      const triggerRegistry = openBotRegistry(home);
+      try {
+        if (!triggerRegistry.authenticateTrigger(trigger[1], request.headers.get('Authorization') ?? '')) {
+          return json({ error: 'Forbidden' }, 403);
+        }
+      } finally {
+        triggerRegistry.close();
+      }
+    }
+    const needsDevices = pathname === '/api/bots' || ((conversation || dispatch || offers || decision || profile || externalTrigger) && request.method === 'POST');
     const { devices, deviceRuntimes, warning } = needsDevices ? await readDevices() : {};
     const registry = openBotRegistry(home, devices);
     async function executeTurn(bot, id, prompt, signal) {
@@ -204,6 +216,30 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         const { id, label } = registry.addDevice(input);
         return json({ id, label, status: 'offline', engines: [] }, 201);
       }
+      if (trigger) {
+        const botId = trigger[1];
+        if (externalTrigger) {
+          const prompt = registry.authenticateTrigger(botId, request.headers.get('Authorization') ?? '');
+          if (!prompt) return json({ error: 'Forbidden' }, 403);
+          const bot = registry.list().find(entry => entry.id === botId);
+          if (bot?.toolScope !== 'conversation') return json({ error: 'Required Bot tool scope unavailable' }, 503);
+          const eventId = input?.id;
+          if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,80}$/i.test(eventId)) {
+            return json({ error: 'Invalid trigger event ID' }, 400);
+          }
+          const id = createHash('sha256').update(JSON.stringify(['trigger', botId, eventId])).digest('hex');
+          const existing = registry.findTurn(botId, id);
+          if (existing) return json({ id, status: existing.status }, 200);
+          const { body, status } = await executeTurn(bot, id, prompt);
+          return json(body.error ? body : { id, status: body.status }, status);
+        }
+        if (!registry.list().some(entry => entry.id === botId)) return json({ error: 'Bot not found' }, 404);
+        if (request.method === 'GET') {
+          const triggerConfig = registry.readTrigger(botId);
+          return json({ enabled: Boolean(triggerConfig), ...triggerConfig }, 200);
+        }
+        return json(registry.configureTrigger(botId, input), 200);
+      }
       if (profile) {
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
         const bot = registry.updateProfile(profile[1], input);
@@ -225,7 +261,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       return request.method === 'GET' ? json({ bots: registry.list(), devices, warning }, 200) : json(registry.create(input), 201);
     } catch (error) {
       if (error instanceof RangeError) return json({ error: error.message }, 400);
-      if (error.errcode === 2067) return json({ error: teams ? 'Team name already exists' : addDevice ? 'Host alias already exists' : conversation ? 'Bot already has a running turn' : 'Bot name already exists' }, 409);
+      if (error.errcode === 2067) return json({ error: teams ? 'Team name already exists' : addDevice ? 'Host alias already exists' : (conversation || trigger) ? 'Bot already has a running turn' : 'Bot name already exists' }, 409);
       throw error;
     } finally {
       registry.close();

@@ -30,6 +30,16 @@ See [runtime configuration and acceptance status](PARITY.md).
 The sidecar stores profiles, turns, teams and proposals in its local
 `bots.db`. Keep this database when updating or rolling back the plugin.
 
+## Trigger a Bot from a local workflow
+
+Set a local ds-agent Bot to conversation-only. In its trigger settings, save
+the fixed message and copy the one-time token. Use that token as the Authorization
+bearer for a JSON POST to the displayed loopback URL. The body takes an event ID,
+for example `{"id":"daily-summary-2026-11-27"}`. Use the same ID when retrying a
+delivery. The response contains the turn ID and status. Read the reply in the Bot's
+conversation. Saving the trigger again replaces its token, and leaving
+conversation-only mode revokes it.
+
 ## Revert the plugin
 
 The installers keep the first unmodified files as `client.js.before-bots`

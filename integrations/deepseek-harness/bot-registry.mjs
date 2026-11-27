@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -52,6 +52,11 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       PRIMARY KEY (teamId, id),
       FOREIGN KEY (teamId, id) REFERENCES bot_team_dispatches(teamId, id)
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS bot_triggers (
+      botId TEXT PRIMARY KEY REFERENCES bot_profiles(id),
+      prompt TEXT NOT NULL,
+      tokenHash TEXT NOT NULL
+    ) STRICT;
     CREATE TABLE IF NOT EXISTS bot_turns (
       id TEXT PRIMARY KEY,
       botId TEXT NOT NULL REFERENCES bot_profiles(id),
@@ -69,6 +74,11 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
     if (!db.prepare('PRAGMA table_info(bot_profiles)').all().some(column => column.name === 'toolScope')) {
       db.exec("ALTER TABLE bot_profiles ADD COLUMN toolScope TEXT NOT NULL DEFAULT 'default' CHECK (toolScope IN ('default', 'conversation'))");
     }
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS revoke_bot_trigger_on_scope_change
+      AFTER UPDATE OF toolScope ON bot_profiles WHEN NEW.toolScope <> 'conversation'
+      BEGIN DELETE FROM bot_triggers WHERE botId = NEW.id; END;
+    `);
     db.exec('COMMIT');
   } catch (error) {
     db.close();
@@ -132,6 +142,34 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       }
       return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ?, device = ?, engine = ?, toolScope = ? WHERE id = ? RETURNING *')
         .get(name, purpose, device, engine, toolScope, id);
+    },
+    readTrigger(botId) {
+      return db.prepare('SELECT prompt FROM bot_triggers WHERE botId = ?').get(botId);
+    },
+    configureTrigger(botId, input) {
+      if (input?.enabled === false) {
+        db.prepare('DELETE FROM bot_triggers WHERE botId = ?').run(botId);
+        return { enabled: false };
+      }
+      const bot = db.prepare('SELECT toolScope FROM bot_profiles WHERE id = ?').get(botId);
+      const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : '';
+      if (input?.enabled !== true || bot?.toolScope !== 'conversation' || !prompt || prompt.length > 2400) {
+        throw new RangeError('Triggers require a conversation-only Bot and a valid saved prompt.');
+      }
+      const token = randomBytes(32).toString('base64url');
+      const tokenHash = createHash('sha256').update(token).digest('hex');
+      db.prepare(`
+        INSERT INTO bot_triggers (botId, prompt, tokenHash) VALUES (?, ?, ?)
+        ON CONFLICT(botId) DO UPDATE SET prompt = excluded.prompt, tokenHash = excluded.tokenHash
+      `).run(botId, prompt, tokenHash);
+      return { enabled: true, prompt, token };
+    },
+    authenticateTrigger(botId, authorization) {
+      if (!/^Bearer [A-Za-z0-9_-]{43}$/.test(authorization)) return undefined;
+      const entry = db.prepare('SELECT prompt, tokenHash FROM bot_triggers WHERE botId = ?').get(botId);
+      if (!entry) return undefined;
+      const supplied = createHash('sha256').update(authorization.slice(7)).digest();
+      return timingSafeEqual(Buffer.from(entry.tokenHash, 'hex'), supplied) ? entry.prompt : undefined;
     },
     setAvatar(id, avatar) {
       if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');

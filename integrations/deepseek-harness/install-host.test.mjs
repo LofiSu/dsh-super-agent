@@ -60,6 +60,10 @@ export function startDesktopServer({ port }) {
       headers: { Origin: 'dsh-app://app', 'X-Ds-Desktop': 'fixture' },
     });
     assert.equal(unknown.status, 404);
+    const gatedTrigger = await fetch(host.url + '/api/bots/00000000-0000-0000-0000-000000000000/trigger', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    assert.equal(gatedTrigger.status, 403);
   } finally {
     await host?.close();
     rmSync(root, { recursive: true, force: true });
