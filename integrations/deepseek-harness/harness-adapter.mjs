@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { botEnvironment } from './bot-env.mjs';
 import { buildBotPrompt } from './bot-context.mjs';
 
 const execute = promisify(execFile);
@@ -15,7 +16,7 @@ export function createHarnessAdapter({ executable, workspaceRoot, useLocalMagpie
     if (!/^[a-f0-9-]{36}$/.test(bot.id)) throw new Error('Invalid Bot ID.');
     const cwd = join(workspaceRoot, bot.id);
     await mkdir(cwd, { recursive: true, mode: 0o700 });
-    const env = { ...process.env, DSH_HOME: join(cwd, 'harness-home') };
+    const env = { ...botEnvironment(), DSH_HOME: join(cwd, 'harness-home') };
     if (useLocalMagpie && !env.DSH_BOT_MAGPIE_KEY) env.DSH_BOT_MAGPIE_KEY = 'magpie';
     const modelFlags = env.DSH_BOT_MAGPIE_KEY
       ? ['--patch', fileURLToPath(new URL('./harness-magpie.yml', import.meta.url))]

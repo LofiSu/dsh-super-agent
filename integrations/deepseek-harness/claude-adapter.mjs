@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
+import { botEnvironment } from './bot-env.mjs';
 import { buildBotPrompt } from './bot-context.mjs';
 
 const execute = promisify(execFile);
@@ -18,7 +19,7 @@ export function createClaudeAdapter({ executable, workspaceRoot }) {
       '--print', '--no-session-persistence', '--tools', '',
       '--strict-mcp-config', '--setting-sources', '',
       '--output-format', 'json', '--', buildBotPrompt(bot, prompt, history),
-    ], { cwd, signal, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+    ], { cwd, env: botEnvironment(), signal, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
     const closed = new Promise(resolve => child.child.once('close', resolve));
     child.child.stdin.end();
     const { stdout } = await child.finally(() => closed);
