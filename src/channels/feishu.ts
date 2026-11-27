@@ -145,6 +145,8 @@ export interface FeishuListOptions {
   startTimeSec?: number
   endTimeSec?: number
   pageSize?: number
+  maxPages?: number
+  signal?: AbortSignal
   threadId?: string
 }
 
@@ -168,7 +170,7 @@ function isStaleFeishuMessage(message: FeishuMessage, nowMs: number, maxAgeMs: n
 }
 
 export class FeishuApiError extends Error {
-  constructor(readonly code: number, message: string, readonly path: string) {
+  constructor(readonly code: number, message: string, readonly path: string, readonly status?: number) {
     super(`Feishu ${path} failed code=${code}: ${message}`)
     this.name = 'FeishuApiError'
   }
@@ -205,7 +207,7 @@ export class FeishuClient {
       expire?: number
     }
     if (!response.ok || json.code !== 0 || !json.tenant_access_token) {
-      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'no tenant_access_token', 'auth/v3/tenant_access_token')
+      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'no tenant_access_token', 'auth/v3/tenant_access_token', response.status)
     }
     const ttlMs = Math.max(60, Number(json.expire ?? 3600) - 60) * 1000
     this.token = { value: json.tenant_access_token, expiresAt: Date.now() + ttlMs }
@@ -230,7 +232,7 @@ export class FeishuClient {
     }))
     const json = await response.json() as { code?: number; msg?: string; data?: T }
     if (!response.ok || json.code !== 0) {
-      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path)
+      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path, response.status)
     }
     return (json.data ?? {}) as T
   }
@@ -239,7 +241,8 @@ export class FeishuClient {
   async listMessages(chatId: string, options: FeishuListOptions = {}): Promise<FeishuMessage[]> {
     const items: FeishuMessage[] = []
     let pageToken: string | undefined
-    for (let page = 0; page < 20; page += 1) {
+    const maxPages = Math.max(1, Math.min(20, Math.floor(options.maxPages ?? 20)))
+    for (let page = 0; page < maxPages; page += 1) {
       const data = await this.request<{
         items?: FeishuMessage[]
         has_more?: boolean
@@ -254,6 +257,7 @@ export class FeishuClient {
           page_size: options.pageSize ?? 50,
           page_token: pageToken,
         },
+        ...(options.signal ? { signal: options.signal } : {}),
       })
       for (const item of data.items ?? []) items.push(item)
       if (!data.has_more || !data.page_token) break
@@ -560,6 +564,7 @@ export class FeishuSource {
     const items = await this.client.listMessages(this.chatId, {
       startTimeSec,
       pageSize: this.pageSize,
+      signal,
     })
     const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()

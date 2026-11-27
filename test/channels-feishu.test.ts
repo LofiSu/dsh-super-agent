@@ -514,6 +514,18 @@ describe('Feishu webhook parser', () => {
 })
 
 describe('Feishu client and outbox', () => {
+  it('caps a history read at one page when requested, even when more pages exist', async () => {
+    const { fn, calls } = fakeFetch(url => {
+      if (url.includes('tenant_access_token')) return tokenHandler(url)
+      return { body: { code: 0, data: { items: [apiMessage()], has_more: true, page_token: 'next-page' } } }
+    })
+    const items = await new FeishuClient(config, fn).listMessages('oc_chat', { pageSize: 1, maxPages: 1 })
+    const historyCalls = calls.filter(call => call.url.includes('/open-apis/im/v1/messages?'))
+    expect(items).toHaveLength(1)
+    expect(historyCalls).toHaveLength(1)
+    expect(new URL(historyCalls[0]!.url).searchParams.get('page_size')).toBe('1')
+  })
+
   it('caches the tenant token and sends text to a chat', async () => {
     const { fn, calls } = fakeFetch((url, init) => {
       if (url.includes('tenant_access_token')) return tokenHandler(url, init)
@@ -903,6 +915,34 @@ describe('Feishu client and outbox', () => {
     const triggers = await source.pull()
     expect(triggers).toEqual([])
     expect(source.cursorMs).toBe(staleAt)
+  })
+
+  it('aborts a hung history list request when the source signal aborts', async () => {
+    let listStarted!: () => void
+    const started = new Promise<void>(resolve => { listStarted = resolve })
+    let listSignal: AbortSignal | undefined
+    const fetchImpl = async (input: string, init?: RequestInit): Promise<Response> => {
+      if (input.includes('tenant_access_token')) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }))
+      }
+      listSignal = init?.signal as AbortSignal | undefined
+      listStarted()
+      return new Promise<Response>((_resolve, reject) => {
+        listSignal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+    }
+    const source = new FeishuSource(new FeishuClient(config, fetchImpl), 'oc_chat', {
+      sinceMs: 1761958000000,
+      config,
+    })
+    const controller = new AbortController()
+    const startedAt = Date.now()
+    const pulling = source.pull(controller.signal)
+    await started
+    controller.abort()
+    await expect(pulling).rejects.toThrow()
+    expect(Date.now() - startedAt).toBeLessThan(500)
+    expect(listSignal?.aborted).toBe(true)
   })
 
   it('bounds a hung official chat-mode lookup and honors shutdown abort', async () => {
