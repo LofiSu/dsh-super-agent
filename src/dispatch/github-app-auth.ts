@@ -53,12 +53,33 @@ function assertPrivateKeyFile(file: string, cwd: string): string {
   if (!path.isAbsolute(resolved)) {
     throw safeUserError('github.auth: privateKeyFile must be an absolute path')
   }
-  if (!fs.existsSync(resolved)) {
-    throw safeUserError('github.auth: privateKeyFile does not exist')
+  let canonicalFile: string
+  let repoRoot: string
+  let workspacesRoot: string | undefined
+  try {
+    canonicalFile = fs.realpathSync(resolved)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    throw safeUserError(code === 'ENOENT' || code === 'ENOTDIR'
+      ? 'github.auth: privateKeyFile does not exist'
+      : 'github.auth: privateKeyFile is not readable')
+  }
+  try {
+    repoRoot = fs.realpathSync(cwd)
+  } catch {
+    throw safeUserError('github.auth: privateKeyFile is not readable')
+  }
+  try {
+    workspacesRoot = fs.realpathSync('/workspace')
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+      throw safeUserError('github.auth: privateKeyFile is not readable')
+    }
   }
   let stat: fs.Stats
   try {
-    stat = fs.statSync(resolved)
+    stat = fs.statSync(canonicalFile)
   } catch {
     throw safeUserError('github.auth: privateKeyFile is not readable')
   }
@@ -67,15 +88,13 @@ function assertPrivateKeyFile(file: string, cwd: string): string {
   if (mode !== 0o600 && mode !== 0o400) {
     throw safeUserError('github.auth: privateKeyFile must be mode 0600 or 0400')
   }
-  const repoRoot = path.resolve(cwd)
-  if (resolved === repoRoot || resolved.startsWith(`${repoRoot}${path.sep}`)) {
+  if (canonicalFile === repoRoot || canonicalFile.startsWith(`${repoRoot}${path.sep}`)) {
     throw safeUserError('github.auth: privateKeyFile must be outside the repository')
   }
-  const workspacesRoot = path.resolve('/workspace')
-  if (resolved.startsWith(`${workspacesRoot}${path.sep}`) || resolved === workspacesRoot) {
+  if (workspacesRoot && (canonicalFile === workspacesRoot || canonicalFile.startsWith(`${workspacesRoot}${path.sep}`))) {
     throw safeUserError('github.auth: privateKeyFile must be outside workspace roots')
   }
-  return resolved
+  return canonicalFile
 }
 
 function readPrivateKeyPem(file: string): string {

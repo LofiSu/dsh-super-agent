@@ -121,7 +121,67 @@ describe('parseGithubAuthBlock', () => {
     const cwd = tempHome()
     const pem = path.join(cwd, 'leak.pem')
     writeFileSync(pem, 'x', { mode: 0o600 })
-    expect(() => parseGithubAuthBlock(authBlock({}, pem), cwd)).toThrow(/outside the repository/)
+    try {
+      expect(() => parseGithubAuthBlock(authBlock({}, pem), cwd)).toThrow(/outside the repository/)
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses an external symlink to a PEM inside repo cwd', () => {
+    const cwd = tempHome()
+    const linkDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-link-'))
+    const pem = path.join(cwd, 'leak.pem')
+    const link = path.join(linkDir, 'app.pem')
+    writeFileSync(pem, 'x', { mode: 0o600 })
+    fs.symlinkSync(pem, link)
+    try {
+      expect(() => parseGithubAuthBlock(authBlock({}, link), cwd)).toThrow(/outside the repository/)
+    } finally {
+      fs.rmSync(linkDir, { recursive: true, force: true })
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(!(() => {
+    try {
+      fs.accessSync('/workspace', fs.constants.W_OK)
+      return true
+    } catch {
+      return false
+    }
+  })())('refuses an external symlink to a PEM under /workspace', () => {
+    const targetDir = mkdtempSync(path.join('/workspace', 'ds-agent-app-key-'))
+    const linkDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-link-'))
+    const pem = path.join(targetDir, 'app.pem')
+    const link = path.join(linkDir, 'app.pem')
+    writeFileSync(pem, 'x', { mode: 0o600 })
+    fs.symlinkSync(pem, link)
+    try {
+      expect(() => parseGithubAuthBlock(authBlock({}, link), os.tmpdir())).toThrow(/outside workspace roots/)
+    } finally {
+      fs.rmSync(linkDir, { recursive: true, force: true })
+      fs.rmSync(targetDir, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts an external symlink only by storing its canonical target', () => {
+    const targetDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-target-'))
+    const linkDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-link-'))
+    const pem = path.join(targetDir, 'app.pem')
+    const link = path.join(linkDir, 'app.pem')
+    writeFileSync(pem, 'x', { mode: 0o600 })
+    fs.symlinkSync(pem, link)
+    const cwd = tempHome()
+    try {
+      const parsed = parseGithubAuthBlock(authBlock({}, link), cwd)
+      expect(parsed.githubApp?.privateKeyFile).toBe(fs.realpathSync(pem))
+      expect(parsed.githubApp?.privateKeyFile).not.toBe(link)
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+      fs.rmSync(linkDir, { recursive: true, force: true })
+      fs.rmSync(targetDir, { recursive: true, force: true })
+    }
   })
 
   it('refuses missing github-app fields', () => {
