@@ -43,11 +43,12 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
   actions[0].props.onClick();
   assert.deepEqual(navigation, ['dsh-super-bot', 'ds-super-agent']);
   actions[1].props.onClick();
-  const findForm = () => render().children.find(child => child?.tag === 'form');
-  findForm().children[0].children[1].props.onChange({ target: { value: '项目跟进' } });
+  const findForm = () => render().children.find(child => child?.tag === 'dialog').children[0];
+  const field = (form, label) => form.children.find(child => child?.children?.[0] === label).children[1];
+  field(findForm(), '模板').props.onChange({ target: { value: '项目跟进' } });
   const form = findForm();
-  assert.equal(form.children[1].children[1].props.value, '项目跟进');
-  assert.match(form.children.find(item => item.children?.[0] === '职责').children[1].props.value, /阻塞/);
+  assert.equal(field(form, '名称').props.value, '项目跟进');
+  assert.match(field(form, '职责').props.value, /阻塞/);
   let submitted = false;
   form.props.onKeyDown({ metaKey: true, key: 'Enter', preventDefault() {}, currentTarget: {
     requestSubmit: () => { submitted = true; },
@@ -59,5 +60,5 @@ test('sidebar panel creates a profile and restores it on remount', async () => {
   render();
   effects.shift()();
   await new Promise(setImmediate);
-  assert.match(JSON.stringify(render()), /花生.*整理任务进度.*配置已保存/);
+  assert.match(JSON.stringify(render()), /花生.*ds-agent.*整理任务进度/);
 });

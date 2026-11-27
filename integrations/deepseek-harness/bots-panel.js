@@ -307,6 +307,7 @@ function mountBotsPanel(ctx, React, request) {
     const [name, setName] = React.useState('');
     const [purpose, setPurpose] = React.useState('');
     const [selected, setSelected] = React.useState(null);
+    const [section, setSection] = React.useState('bots');
     const [probing, setProbing] = React.useState(null);
     const [probeNotice, setProbeNotice] = React.useState('');
     const [addingHost, setAddingHost] = React.useState(false);
@@ -450,14 +451,31 @@ function mountBotsPanel(ctx, React, request) {
 
     return h('main', { className: 'dsh-bots' },
       h('style', null, `
-        .dsh-bots{--bot-accent:#6755c8;--bot-line:color-mix(in srgb,currentColor 15%,transparent);--bot-tint:color-mix(in srgb,var(--bot-accent) 10%,transparent);max-width:1040px;margin:auto;padding:clamp(20px,5vw,52px);font-family:inherit;min-height:100%}
+        .dsh-bots{--bot-accent:#6755c8;--bot-line:color-mix(in srgb,currentColor 15%,transparent);--bot-tint:color-mix(in srgb,var(--bot-accent) 10%,transparent);box-sizing:border-box;width:100%;max-width:1120px;min-width:0;margin:0 auto;padding:clamp(16px,4vw,44px);font-family:inherit}
         .dsh-bots header{display:flex;align-items:center;justify-content:space-between;gap:16px}
-        .dsh-bots .bots-hero{border:1px solid var(--bot-line);border-radius:22px;padding:clamp(20px,4vw,36px);background:linear-gradient(135deg,var(--bot-tint),transparent)}
+        .dsh-bots .bots-hero{padding:0 0 20px;border-bottom:1px solid var(--bot-line)}
+        .dsh-bots .bots-title{display:flex;align-items:center;gap:12px}
+        .dsh-bots .bots-title .bots-icon{margin:0}
+        .dsh-bots .bots-nav{display:flex;gap:6px;flex-wrap:wrap;margin:20px 0}
+        .dsh-bots .bots-nav button{border-color:transparent;margin:0}
+        .dsh-bots .bots-nav button[aria-pressed=true]{border-color:var(--bot-line)}
+        .dsh-bots .bots-card-header{display:flex;align-items:center;gap:14px}
+        .dsh-bots .bots-card-header .bots-icon{flex:none;margin:0}
+        .dsh-bots .bots-card-header h2{overflow-wrap:anywhere}
+        .dsh-bots .bots-card-header>div{flex:1;min-width:0}
+        .dsh-bots .bots-card-header>button{flex:none}
+        .dsh-bots .bots-description{margin:12px 0 0;white-space:pre-wrap}
         .dsh-bots .bots-hero-actions{display:flex;flex-wrap:wrap;gap:8px}.dsh-bots .bots-hero-actions button+button{margin-left:0}
         .dsh-bots h1{font-size:clamp(28px,5vw,42px);line-height:1.1;letter-spacing:-.04em;margin:0}
         .dsh-bots h2{font-size:18px;margin:0}.dsh-bots header p,.dsh-bots small{opacity:.74}
         .dsh-bots form,.dsh-bots article,.dsh-bots .bots-empty{border:1px solid var(--bot-line);border-radius:16px;padding:20px;margin:16px 0;overflow-wrap:anywhere}
-        .dsh-bots .bots-create{box-shadow:0 12px 40px #20154a18;border-color:color-mix(in srgb,var(--bot-accent) 40%,transparent)}
+        .dsh-bots .bots-dialog{box-sizing:border-box;width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;color:inherit;background:var(--dsw-alias-bg-primary,Canvas);border:1px solid var(--bot-line);border-radius:18px;box-shadow:0 28px 100px #0007}
+        .dsh-bots .bots-dialog::backdrop{background:#0706109c;backdrop-filter:blur(4px)}
+        .dsh-bots .bots-create{margin:0;padding:24px;border:0}
+        .dsh-bots .bots-create footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+        .dsh-bots .bots-create footer button{margin:0}
+        .dsh-bots .bots-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+        @media(max-width:580px){.dsh-bots .bots-fields{grid-template-columns:1fr;gap:0}.dsh-bots .bots-hero{align-items:flex-start;flex-direction:column}}
         .dsh-bots .bots-empty{text-align:center;padding:36px 24px;background:var(--bot-tint)}
         .dsh-bots .bots-icon{display:inline-grid;place-items:center;width:42px;height:42px;border-radius:14px;background:var(--bot-tint);color:var(--bot-accent);margin-bottom:14px}
         .dsh-bots label{display:grid;gap:6px;margin:12px 0;font-weight:550}
@@ -474,21 +492,30 @@ function mountBotsPanel(ctx, React, request) {
         @media(prefers-reduced-motion:reduce){.dsh-bots button{transition:none}}
       `),
       h('header', { className: 'bots-hero' },
-        h('div', null, h('span', { className: 'bots-icon' }, h(BotIcon)),
-          h('h1', null, 'Bots'), h('p', null, '为不同的工作配置专属 Agent。')),
+        h('div', { className: 'bots-title' }, h('span', { className: 'bots-icon' }, h(BotIcon)), h('h1', null, 'Bots')),
         h('div', { className: 'bots-hero-actions' },
           h('button', { type: 'button', onClick: () => ctx.layout.selectPanel('ds-super-agent') }, '返回聊天'),
           h('button', { className: 'bots-primary',
             type: 'button', disabled: loading || saving || !devices.length, onClick: openCreate,
           }, '＋ 新建 Bot'))),
-      error && h('p', { role: 'alert' }, error),
-      deviceWarning && h('p', { role: 'status' }, deviceWarning),
-      editing && h('form', { className: 'bots-create', 'aria-label': '新建 Bot', onSubmit: create, onKeyDown: event => {
+      h('nav', { className: 'bots-nav', 'aria-label': 'Bots 工作区' },
+        ...[['bots', '我的 Bots'], ['teams', '团队'], ['hosts', '运行设备'], ['offers', '待审提议']].map(([id, title]) =>
+          h('button', { key: id, type: 'button', 'aria-pressed': section === id, onClick: () => { setError(''); setSection(id); } }, title))),
+      !editing && error && h('p', { role: 'alert' }, error),
+      section === 'hosts' && deviceWarning && h('p', { role: 'status' }, deviceWarning),
+      editing && h('dialog', {
+        className: 'bots-dialog',
+        ref: dialog => { if (dialog && !dialog.open) dialog.showModal(); },
+        'aria-label': '新建 Bot',
+        onCancel: event => { event.preventDefault(); if (!saving) setEditing(false); },
+      }, h('form', { className: 'bots-create', 'aria-label': '新建 Bot', onSubmit: create, onKeyDown: event => {
         if (event.metaKey && event.key === 'Enter' && !event.nativeEvent?.isComposing) {
           event.preventDefault();
           event.currentTarget.requestSubmit();
         }
       } },
+        h('h2', null, '新建 Bot'),
+        error && h('p', { role: 'alert' }, error),
         h('label', null, '模板', h('select', {
           value: template, onChange: event => {
             const choice = event.target.value;
@@ -503,39 +530,45 @@ function mountBotsPanel(ctx, React, request) {
         h('label', null, '头像', h('select', { name: 'avatar' },
           ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),
         h('label', null, '职责', h('textarea', { name: 'purpose', value: purpose, onChange: event => setPurpose(event.target.value), required: true, maxLength: 1000 })),
-        h('label', null, '运行设备', h('select', {
+        h('div', { className: 'bots-fields' }, h('label', null, '运行设备', h('select', {
           name: 'device', value: deviceId, onChange: event => setDeviceId(event.target.value),
         }, ...devices.map(device => h('option', {
           key: device.id, value: device.id, disabled: device.status !== 'ready',
         }, device.label + (device.status === 'ready' ? '' : ' · 未连接'))))),
-        h('label', null, 'Agent', h('select', { name: 'engine' }, ...engines.map(engine => h('option', { key: engine }, engine)))),
-        h('button', { className: 'bots-primary', type: 'submit', disabled: saving || !engines.length }, saving ? '正在创建…' : '创建 Bot'),
-        h('button', { type: 'button', onClick: () => setEditing(false) }, '取消')),
-      !loading && h('button', { type: 'button', onClick: () => setAddingHost(true) }, '添加主机'),
-      probeNotice && h('p', { role: 'status' }, probeNotice),
-      ...devices.filter(device => device.id.startsWith('device-')).map(device => h('p', { key: device.id },
-        device.label, ' ', h('button', { type: 'button', disabled: !!probing, onClick: () => void checkHost(device) }, '检查 SSH'))),
-      addingHost && h('form', { onSubmit: addHost, 'aria-label': '添加主机' },
+        h('label', null, 'Agent', h('select', { name: 'engine' }, ...engines.map(engine => h('option', { key: engine }, engine))))),
+        h('footer', null,
+          h('button', { type: 'button', disabled: saving, onClick: () => setEditing(false) }, '取消'),
+          h('button', { className: 'bots-primary', type: 'submit', disabled: saving || !engines.length }, saving ? '正在创建…' : '创建 Bot')))),
+      section === 'hosts' && !loading && h('button', { type: 'button', onClick: () => setAddingHost(true) }, '添加主机'),
+      section === 'hosts' && probeNotice && h('p', { role: 'status' }, probeNotice),
+      section === 'hosts' && devices.map(device => h('article', { key: device.id },
+        h('h2', null, device.label),
+        h('p', null, device.status === 'ready' ? device.engines.join(' · ') : '离线 · 无可用 Agent'),
+        device.id.startsWith('device-') && h('button', { type: 'button', disabled: !!probing, onClick: () => void checkHost(device) }, '检查 SSH'))),
+      section === 'hosts' && addingHost && h('form', { onSubmit: addHost, 'aria-label': '添加主机' },
         h('label', null, '显示名称', h('input', { name: 'label', required: true, maxLength: 80 })),
         h('label', null, 'SSH 别名', h('input', { name: 'alias', required: true, maxLength: 80 })),
         h('button', { type: 'submit', disabled: saving }, '登记主机'),
         h('button', { type: 'button', onClick: () => setAddingHost(false) }, '取消')),
       loading && h('p', { role: 'status' }, '正在读取 Bots…'),
-      !loading && !error && !profiles.length && !editing && h('section', { className: 'bots-empty' },
+      section === 'bots' && !loading && !error && !profiles.length && !editing && h('section', { className: 'bots-empty' },
         h('span', { className: 'bots-icon' }, h(BotIcon)),
         h('h2', null, '创建你的第一个 Bot'),
         h('p', null, '从模板开始，选择运行设备和 Agent。'),
         h('button', { className: 'bots-primary', type: 'button', onClick: openCreate, disabled: !devices.length }, '新建 Bot')),
-      !loading && h(Offers, { onAccepted: async () => {
+      section === 'offers' && !loading && h(Offers, { onAccepted: async () => {
         const response = await request('/api/bots');
         if (!response.ok) throw new Error();
         setProfiles((await response.json()).bots);
       } }),
-      !loading && h(Teams, { profiles }),
-      ...profiles.map(bot => h('article', { key: bot.id },
-        h('strong', null, (avatars[bot.avatar] && bot.avatar !== 'initial' ? avatars[bot.avatar] : Array.from(bot.name)[0]) + ' · ' + bot.name), h('p', null, bot.purpose),
-        h('small', null, `${devices.find(device => device.id === bot.device)?.label ?? bot.device} · ${bot.engine} · 配置已保存`),
-        h('button', { type: 'button', onClick: () => setSelected(bot.id), 'aria-pressed': selected === bot.id }, '打开会话'),
+      section === 'teams' && !loading && h(Teams, { profiles }),
+      section === 'bots' && profiles.map(bot => h('article', { key: bot.id },
+        h('header', { className: 'bots-card-header' },
+          h('span', { className: 'bots-icon', 'aria-hidden': true }, avatars[bot.avatar] && bot.avatar !== 'initial' ? avatars[bot.avatar] : Array.from(bot.name)[0]),
+          h('div', null, h('h2', null, bot.name),
+            h('small', null, `${devices.find(device => device.id === bot.device)?.label ?? bot.device} · ${bot.engine}`)),
+          h('button', { type: 'button', onClick: () => setSelected(selected === bot.id ? null : bot.id), 'aria-expanded': selected === bot.id }, selected === bot.id ? '收起会话' : '打开会话')),
+        h('p', { className: 'bots-description' }, bot.purpose),
         selected === bot.id && h('details', null,
           h('summary', null, '编辑 Bot'),
           h('form', { onSubmit: event => void updateProfile(event, bot.id) },
