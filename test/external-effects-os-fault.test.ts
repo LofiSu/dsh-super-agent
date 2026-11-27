@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -39,6 +39,26 @@ describe('marker publication across processes', () => {
 const osFaultDescribe = delegateOsSupervisorSupported() ? describe : describe.skip
 
 osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
+  it('ignores further termination signals while unwinding the first interrupt', () => {
+    const script = path.resolve('test/helpers/delegate-os-supervisor.py')
+    execFileSync('python3', ['-B', '-c', `
+import runpy
+import signal
+import sys
+
+supervisor = runpy.run_path(sys.argv[1])
+signal.signal(signal.SIGTERM, supervisor['interrupt'])
+signal.signal(signal.SIGINT, supervisor['interrupt'])
+try:
+    signal.raise_signal(signal.SIGTERM)
+except supervisor['SupervisorInterrupted']:
+    signal.raise_signal(signal.SIGTERM)
+    signal.raise_signal(signal.SIGINT)
+else:
+    raise AssertionError('the first signal did not interrupt the supervisor')
+`, script], { timeout: 5_000 })
+  })
+
   it('runs capability probes from an isolated random temp home and allowlisted environment', async () => {
     const previousNodeOptions = process.env.NODE_OPTIONS
     const previousApiKey = process.env.DS_AGENT_API_KEY
@@ -439,9 +459,9 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     expect(result.outer_guard_clean).toBe(true)
     expect(result.outer_guard_rescued_live_fixture).toBe(false)
     const report = result.report as Record<string, unknown>
-    expect(report.mode).toBe('prepublish-kill')
-    expect(report.owner_record_absent_at_gate).toBe(true)
-    expect(report.fixture_alive_at_gate).toBe(true)
+    expect(report.mode, JSON.stringify(report)).toBe('prepublish-kill')
+    expect(report.owner_record_absent_at_gate, JSON.stringify(report)).toBe(true)
+    expect(report.fixture_alive_at_gate, JSON.stringify(report)).toBe(true)
     expect(report.creation_identity_source).toBe('subreaper-adopted-child')
     expect(report.helper_exit_signal).toBe(9)
     expect(report.creation_identity_pinned).toBe(true)
@@ -535,9 +555,9 @@ osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
     expect(result.outer_guard_clean).toBe(true)
     expect(fs.existsSync(readyFile)).toBe(true)
     const report = JSON.parse(fs.readFileSync(supervisorReportFile, 'utf8')) as Record<string, unknown>
-    expect(report.failure_kind).toBe('SupervisorInterrupted')
-    expect(report.creation_identity_pinned).toBe(true)
-    expect(report.group_signal_sent).toBe(true)
+    expect(report.failure_kind, JSON.stringify(report)).toBe('SupervisorInterrupted')
+    expect(report.creation_identity_pinned, JSON.stringify(report)).toBe(true)
+    expect(report.group_signal_sent, JSON.stringify(report)).toBe(true)
     expect(report.group_absent).toBe(true)
     expect(report.reaped_delegate_pid).toBe(true)
     expect(report.cleanup_succeeded).toBe(true)

@@ -31,7 +31,8 @@ export interface GithubDispatchAuthConfig {
 export function redactGithubAuthSecret(text: string): string {
   let out = text
   out = out.replace(/ghs_[A-Za-z0-9_.-]+/gi, 'ghs_[REDACTED]')
-  out = out.replace(/Bearer\s+[^\s"]+/gi, 'Bearer [REDACTED]')
+  out = out.replace(/(Bearer|Basic)\s+[^\s"]+/gi, '$1 [REDACTED]')
+  out = out.replace(/-----BEGIN ((?:[A-Z]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g, '[PEM REDACTED]')
   out = out.replace(/-{0,5}BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}[\s\S]*?-{0,5}END (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}/g, '[PEM REDACTED]')
   out = out.replace(/x-access-token:[^@\s]+/gi, 'x-access-token:[REDACTED]')
   return out
@@ -49,37 +50,27 @@ function coerceGithubAuthId(raw: unknown): string {
 
 function assertPrivateKeyFile(file: string, cwd: string): string {
   if (!file.trim()) throw safeUserError('github.auth: privateKeyFile is required')
-  const resolved = path.resolve(file.trim())
-  if (!path.isAbsolute(resolved)) {
+  const configured = file.trim()
+  if (!path.isAbsolute(configured)) {
     throw safeUserError('github.auth: privateKeyFile must be an absolute path')
   }
-  let canonicalFile: string
+  if (!fs.existsSync(configured)) {
+    throw safeUserError('github.auth: privateKeyFile does not exist')
+  }
+  let resolved: string
   let repoRoot: string
-  let workspacesRoot: string | undefined
-  try {
-    canonicalFile = fs.realpathSync(resolved)
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    throw safeUserError(code === 'ENOENT' || code === 'ENOTDIR'
-      ? 'github.auth: privateKeyFile does not exist'
-      : 'github.auth: privateKeyFile is not readable')
-  }
-  try {
-    repoRoot = fs.realpathSync(cwd)
-  } catch {
-    throw safeUserError('github.auth: privateKeyFile is not readable')
-  }
-  try {
-    workspacesRoot = fs.realpathSync('/workspace')
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      throw safeUserError('github.auth: privateKeyFile is not readable')
-    }
-  }
+  let workspacesRoot: string
   let stat: fs.Stats
   try {
-    stat = fs.statSync(canonicalFile)
+    resolved = fs.realpathSync(configured)
+    repoRoot = fs.realpathSync(cwd)
+    try {
+      workspacesRoot = fs.realpathSync('/workspace')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      workspacesRoot = '/workspace'
+    }
+    stat = fs.statSync(resolved)
   } catch {
     throw safeUserError('github.auth: privateKeyFile is not readable')
   }
@@ -88,13 +79,13 @@ function assertPrivateKeyFile(file: string, cwd: string): string {
   if (mode !== 0o600 && mode !== 0o400) {
     throw safeUserError('github.auth: privateKeyFile must be mode 0600 or 0400')
   }
-  if (canonicalFile === repoRoot || canonicalFile.startsWith(`${repoRoot}${path.sep}`)) {
+  if (resolved === repoRoot || resolved.startsWith(repoRoot.endsWith(path.sep) ? repoRoot : `${repoRoot}${path.sep}`)) {
     throw safeUserError('github.auth: privateKeyFile must be outside the repository')
   }
-  if (workspacesRoot && (canonicalFile === workspacesRoot || canonicalFile.startsWith(`${workspacesRoot}${path.sep}`))) {
+  if (resolved.startsWith(`${workspacesRoot}${path.sep}`) || resolved === workspacesRoot) {
     throw safeUserError('github.auth: privateKeyFile must be outside workspace roots')
   }
-  return canonicalFile
+  return resolved
 }
 
 function readPrivateKeyPem(file: string): string {
@@ -288,12 +279,13 @@ export class GithubAppAuthService {
     })
   }
 
-  /** Token fetched per git invocation; Bearer in child env only. */
+  /** Token fetched per git invocation; Basic credentials in child env only. */
   createAuthenticatedGitRun(): GitRun {
     const service = this
     return (args, opts) => new Promise((resolve, reject) => {
       void (async () => {
         const isolatedEnv: NodeJS.ProcessEnv = { ...process.env }
+        delete isolatedEnv.GIT_CONFIG_PARAMETERS
         delete isolatedEnv.GITHUB_TOKEN
         delete isolatedEnv.GH_TOKEN
         delete isolatedEnv.GH_ENTERPRISE_TOKEN
@@ -356,11 +348,13 @@ export class GithubAppAuthService {
         }
 
         const token = await service.getInstallationToken()
+        const encoded = Buffer.from(`x-access-token:${token}`).toString('base64')
+        const redact = (text: string) => redactGithubAuthSecret(text.replaceAll(encoded, '[REDACTED]'))
         const childEnv: NodeJS.ProcessEnv = {
           ...isolatedEnv,
           GIT_CONFIG_COUNT: '1',
           GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-          GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
+          GIT_CONFIG_VALUE_0: `Authorization: Basic ${encoded}`,
         }
         const child = spawn('git', [...gitIsolations, ...args], {
           cwd: opts.cwd,
@@ -371,11 +365,11 @@ export class GithubAppAuthService {
         let stderr = ''
         child.stdout.on('data', (chunk: Buffer | string) => { stdout += String(chunk) })
         child.stderr.on('data', (chunk: Buffer | string) => { stderr += String(chunk) })
-        child.on('error', error => reject(new Error(redactGithubAuthSecret(`cannot run git: ${error.message}`))))
+        child.on('error', error => reject(new Error(redact(`cannot run git: ${error.message}`))))
         child.on('close', code => resolve({
           code: code ?? 1,
-          stdout,
-          stderr: redactGithubAuthSecret(stderr),
+          stdout: redact(stdout),
+          stderr: redact(stderr),
         }))
       })().catch(reject)
     })

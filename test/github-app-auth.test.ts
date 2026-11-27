@@ -330,7 +330,7 @@ describe('GithubAppAuthService git child environment', () => {
       expect(result.code).toBe(0)
       expect(childPath).toContain(binDir)
       expect(gitConfigKey).toBe('http.https://github.com/.extraheader')
-      expect(gitConfigValue).toBe('Authorization: Bearer ghs_installation_token_fixture')
+      expect(gitConfigValue).toBe('Authorization: Basic [REDACTED]')
       expect(githubToken).toBe('unset')
       expect(ghToken).toBe('unset')
       expect(ghEnterpriseToken).toBe('unset')
@@ -383,7 +383,7 @@ describe('GithubAppAuthService git child environment', () => {
       )).stdout
 
       const homeConfigOutput = await runConfigList()
-      expect(homeConfigOutput).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(homeConfigOutput).toContain('Authorization: Basic [REDACTED]')
       expect(homeConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
       expect(homeConfigOutput).not.toContain('evil-home-helper-fixture')
       expect(homeConfigOutput).not.toContain('user_global_gitconfig_token_fixture')
@@ -391,7 +391,7 @@ describe('GithubAppAuthService git child environment', () => {
 
       process.env.GIT_CONFIG_GLOBAL = inheritedConfig
       const inheritedConfigOutput = await runConfigList()
-      expect(inheritedConfigOutput).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(inheritedConfigOutput).toContain('Authorization: Basic [REDACTED]')
       expect(inheritedConfigOutput).not.toContain('rsi_inherited_gitconfig_probe_20261127')
       expect(inheritedConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
     } finally {
@@ -523,7 +523,7 @@ describe('GithubAppAuthService git child environment', () => {
       expect(configOutput.stdout).toContain('command\tcommand line:\tcore.fsmonitor=false')
       expect(configOutput.stdout).toContain('command\tcommand line:\tuploadpack.packobjectshook=')
       expect(configOutput.stdout).toContain('command\tcommand line:\tcredential.helper=')
-      expect(configOutput.stdout).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(configOutput.stdout).toContain('Authorization: Basic [REDACTED]')
       expect(configOutput.stdout).not.toContain('user_local_gitconfig_token_fixture')
       expect(configOutput.stdout).not.toContain('evil.example.invalid')
 

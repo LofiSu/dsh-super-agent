@@ -1,6 +1,6 @@
 # Instinct 公开能力验收清单
 
-> 基线：`origin/main` `1c73d86`（2026-11-13）。本文件比较的是 **Instinct 的公开可观察能力** 与本仓库 `ds-agent` 的实现状态，不是对 Instinct 内部实现的还原。
+> 基线：`origin/main` `840386e`（2026-11-27，Asia/Shanghai）。本文件比较的是 **Instinct 的公开可观察能力** 与本仓库 `ds-agent` 的实现状态，不是对 Instinct 内部实现的还原。
 >
 > 关于 t286：父会话要求的 t286 完整公开清单，其逐字 assistant message **没有**在可索引的常用 agent 会话记录中找到（ds-agent 最新索引消息停在 2026-11-12；检索过的 Grok Bot 会话也不包含它）。本文件从父会话指向的同一批公开研究缓存重建，**没有**把 t286 当作已逐字读过。任何与 t286 原文的差异，以公开来源为准。
 
@@ -28,7 +28,7 @@
 | S12 | Meta Muse, *How We Designed Muse*，[链接](https://muse.ai/blog/how-we-designed-muse) | 2026-09-08 | 主动消息必须“真正有用且值得这次打扰” | official（对照产品，非 Instinct） |
 | S13 | JK, *Pitting Meta's Muse Against Instinct AI*，[链接](https://www.jkspeaks.com/wordpress/digital-signals/pitting-metas-muse-against-instinct-ai/) | 2026-10-31 | 价格追踪、有变化才来、用户反馈 | media |
 | S14 | CNBC（2026-10-13，JPMorgan/Citi/Schwab 对 agent 登录银行的态度） | 2026-10-13 | 银行不欢迎第三方代登录；open banking 只读 | media |
-| S15 | 本仓库 `docs/COMPETITIVE_GAP.md`（last audited 2026-11-05） | 2026-11-05 | **仅作较旧的内部对照**；其中把 official Instinct 与 Open Instinct 混在一起，不能当作本清单的 inventory | 内部旧文档 |
+| S15 | 本仓库 `docs/COMPETITIVE_GAP.md`（last audited 2026-11-27） | 2026-11-27 | **仅作内部对照**；须区分 official Instinct 与 Open Instinct，不能当作本清单的 inventory | 内部文档 |
 
 > 连接器命名规则：只有来源明确写出名字才列入验收。S1–S15 中只有 **Google Workspace** 被官方隐私页逐项点名。Slack、Notion、1Password 类在本机缓存里没有具名证据，因此不在下文中冒充“已证实连接器”；见 §5。
 
@@ -36,7 +36,7 @@
 
 | 状态 | 含义 |
 |---|---|
-| `main` | 当前 `origin/main` / 本 worktree HEAD 已具备，附路径与验收测试/依据。 |
+| `main` | 当前 `origin/main` 已具备，附路径与验收测试/依据。 |
 | `PR-only` | 只存在于未合并的 open PR；**不算已完成**。 |
 | `missing` | 本仓库没有实现。 |
 | `environment-blocked` | 不是写代码就能等价：需要托管号码、电话网络、商户合作、真实邮件域名，或用户自己的 Mac/iMessage 账号。给出可接受的等价方向，但不声称已实现。 |
@@ -45,7 +45,7 @@
 
 | # | 能力项 | Instinct 公开证据 | 等级 | ds-agent 状态 | 本仓库路径 / 验收依据 |
 |---|---|---|---|---|---|
-| A1 | iMessage 收发 | S4/S5：默认入口之一是 iMessage | teardown | `main` | `src/channels/imessage.ts`、`src/cli/imessage.ts`；`test/channels-imessage.test.ts` 覆盖 1:1/group 识别、默认拒绝、轮询与 outbox；真实发送仍需用户 Mac + Automation 权限，未在本 PR 验收 |
+| A1 | iMessage 收发 | S4/S5：默认入口之一是 iMessage | teardown | `main` | `src/channels/imessage.ts`、`src/cli/imessage.ts`；`test/channels-imessage.test.ts` 覆盖 1:1/group 识别、默认拒绝、轮询与 outbox；真实发送仍需用户 Mac + Automation 权限，**未做真实发送验收** |
 | A2 | WhatsApp 入口 | S4/S5：WhatsApp 是默认入口 | teardown | `missing` | `src/channels/` 无 WhatsApp adapter。等价方向是新增受 admission 约束的 WhatsApp Business/Cloud API adapter；托管号码属于 `environment-blocked` |
 | A3 | SMS 入口 | S4/S5；S3 有 SMS/电话条款 | official/teardown | `missing` | 无 SMS adapter。等价实现需要运营商/聚合商号码，`environment-blocked` |
 | A4 | 产品自带的 email identity | S4/S5：`a mail domain the product gives you` | teardown | `missing` | 无 email inbound/outbound adapter；需要自有域名、MX、SPF/DKIM，属 `environment-blocked` |
@@ -53,9 +53,9 @@
 | A6 | outbound concierge calling（代打商户电话） | S4/S6：TechCrunch 报道 concierge 功能 | media | `missing` / `environment-blocked` | 需要电话网络与商户侧流程；无实现 |
 | A7 | 群聊 / shared agent，含无账号参与者 | S4/S6：共享 Instinct 加入朋友群聊，朋友可以没有账号 | media | `missing`（群聊准入是 `main` 的另一件事） | `src/ingress/filter.ts` 有 `DS_AGENT_GROUP_ALLOWLIST`，Feishu 把 `chat_id` 映射到 `address.group`；但“共享 agent + 无账号 participant + principal 分层”没有实现。不要把 group admission 当成 shared agent |
 | A8 | clock / timer wake | S4/S5：clock 可以启动它；S9：6:00 扫描后可决定沉默 | teardown/media | `main` | `src/harness/routines.ts`：interval / UTC daily schedule，daemon tick，first-tick arm，长间隔只补一次；`test/routines.test.ts`。注意这是 owner-authored routine，不是 Instinct 的内部“可自行醒来”策略 |
-| A9 | connector / event wake（mail、calendar、documents、location） | S4/S5：事件可唤醒，平台侧先做 safety check | teardown | `PR-only`（本 PR） | `src/connectors/wake.ts`：复用 Daemon pulse，把一条具体事件交给 `Runtime.ingest`；默认关闭，首轮只回填索引不唤醒，共享 `proactive.json` quiet hours，并受 DROP_SELF/allowlist、私有线程、每日上限约束。离线 fake 测试通过；真实 Google 账号未验收 |
+| A9 | connector / event wake（mail、calendar、documents、location） | S4/S5：事件可唤醒，平台侧先做 safety check | teardown | `main`（#174） | `src/connectors/wake.ts`：复用 Daemon pulse，把一条具体事件交给 `Runtime.ingest`；**默认关闭**，首轮只回填索引不唤醒，共享 `proactive.json` quiet hours，并受 DROP_SELF/allowlist、私有线程、每日上限约束。离线 fake 测试通过；**真实 Google 账号未验收** |
 | A10 | unfinished-task follow-up | S4/S5/S10：跟进用户搁下的事；S10 的原话 *Did you book Vancouver, or do you still want a hand?* | teardown | `main` | `src/harness/proactive.ts` 在检测到 report question / pending approval / blocked state 时，才通过 `Runtime.ingest` 发一条短跟进；默认关闭，真实 Feishu 未验收 |
-| A11 | personalized recommendations only when truly useful | S12（Muse 官方门槛，S9/S10 对 Instinct 的行为观察）：有实质新信息才打扰；无新信息保持沉默 | official/media | `missing` | 无推荐/价格追踪/日历变化引擎。本 PR 只做了“沉默默认”的主动联系门禁，不等于推荐系统 |
+| A11 | personalized recommendations only when truly useful | S12（Muse 官方门槛，S9/S10 对 Instinct 的行为观察）：有实质新信息才打扰；无新信息保持沉默 | official/media | `missing` | 无推荐/价格追踪/日历变化引擎。主动联系门禁不等于推荐系统 |
 | A12 | 白天发送、夜间安静 | S10：17 次主动全部在 08:57–19:20；S9：6:00 可扫描但不说话 | teardown/media | `main` | `proactive.json` 默认 quiet hours 23:00–08:00（Asia/Shanghai）；真实 Feishu/iMessage 发送未验收 |
 
 ## 4. Long-term memory 与 connector indexing
@@ -66,15 +66,17 @@
 |---|---|---|---|---|---|
 | B1 | 持久人物记忆（可被后续 turn 召回） | S4/S5/S11 | teardown | `main`（等价，不是同一实现） | `src/memory/long-term.ts`：SQLite LTM、spill、Chain of Recall、ACL、hot/cold retention；`test/long-term-memory.test.ts`、`test/memory-graph.test.ts`、`test/memory-recall-eval.test.ts` |
 | B2 | git-tracked markdown memory + 可追溯历史 | S4/S5/S11：git-tracked markdown files；S11 独立探测得到同一形状 | teardown | `missing` | 本仓库是 SQLite + JSONL，不是 git-tracked markdown；没有“修正后旧事实留在 git history”的产品面。等价物是 LTM 历史与 session journal，但不是同一能力 |
-| B3 | 可查询的 connector data index | S4/S5：Gmail 等连接器数据进入 indexed layer，背后是 query interface；断开连接后是否清空未测 | teardown | `PR-only`（本 PR） | `src/connectors/index-store.ts`：独立 `connector` document kind 与查询接口，不写 `ltm`、不要求 reader ticket；`pnpm ds-agent connectors query`。默认关闭；真实 Google 数据未验收 |
-| B4 | fill-only credential vault | S4/S5：可把密码/卡号填进表单，但不能读回；密码不经过消息通道 | teardown | `missing` | 无 credential vault。现有 `src/env/sanitize.ts` 只是 secret redaction sentinel，不是“能填不能读”的独立 store |
+| B3 | 可查询的 connector data index | S4/S5：Gmail 等连接器数据进入 indexed layer，背后是 query interface；断开连接后是否清空未测 | teardown | `main`（#174） | `src/connectors/index-store.ts`：独立 `connector` document kind 与查询接口，不写 `ltm`、不要求 reader ticket；`pnpm ds-agent connectors query`。**默认关闭**；真实 Google 数据未验收 |
+| B4 | fill-only credential vault | S4/S5：可把密码/卡号填进表单，但不能读回；密码不经过消息通道 | teardown | `main`（#173） | `src/env/fill-vault.ts`：fill-only store；`prepare_fill` / `fill_credential` 须与已批准卡及精确 action 文本一致；无读回接口；**真实表单填充未验收** |
 | B5 | 每日 reconciliation / 记忆整理 | S5/S11：约每日一次 | teardown | `missing` | 无定时 reconciliation；LTM 只有写入、召回、retention pruning |
+
+**B4 配置（可选，非必需）**：仅在 owner 配置时启用 fill-only vault；默认文件位置为 `DS_AGENT_HOME/vault.json`，权限为 `0600`，也可用 `DS_AGENT_VAULT_FILE` 指定路径。填充值交给注入的表单 adapter，或 owner 本地配置的 `DS_AGENT_FILL_COMMAND` helper；不提供读回，支付只填表、不扣款。
 
 ## 5. Connectors（只列有来源支持的名字）
 
 | # | Connector | Instinct 公开证据 | 等级 | ds-agent 状态 | 备注 |
 |---|---|---|---|---|---|
-| C1 | Google Workspace：Calendar、Gmail、Drive、Docs、Sheets、Slides、Tasks | S2 官方隐私页逐项点名；S4/S5 说连接器数据进入 indexed layer | official | `PR-only`（本 PR） | `src/connectors/`：七个公开产品名的只读映射、OAuth refresh-token 配置、默认关闭的 Daemon 轮询；离线 fake `fetch` 测试通过，真实 Google OAuth/账号未验收。没有 Slack/Notion 或其他未列名 connector |
+| C1 | Google Workspace：Calendar、Gmail、Drive、Docs、Sheets、Slides、Tasks | S2 官方隐私页逐项点名；S4/S5 说连接器数据进入 indexed layer | official | `main`（#174） | `src/connectors/`：七个公开产品名的只读映射、OAuth refresh-token 配置、默认关闭的 Daemon 轮询；离线 fake `fetch` 测试通过，**真实 Google OAuth/账号未验收**。没有 Slack/Notion 或其他未列名 connector |
 | C2 | 工具/动作总量口径 | S4/S5：官方 help index **43 families / 571 actions**；teardown 自己的枚举 **39 / 569**；live page 上另有名字合计 **577**，其中 **335** 有完整 manual page；其余 242 各有 stated reason | teardown | `missing`（无可比 surface） | 名称数量不是验收标准。本仓库 tool surface 是 `src/harness/tools.ts` 的显式 tool list，远小于 Instinct 的 CLI grammar；不要用“577”当能力声明 |
 | C3 | Slack | 本机缓存 S1–S15 未给出具名证据 | — | 不列入验收 | 如果后续拿到官方 help index 的具名页，再补 evidence grade；当前不能声称 Instinct 的 Slack 连接器已被验证，也不能声称本仓库支持 |
 | C4 | Notion | 同上，未具名 | — | 不列入验收 | 同上 |
@@ -85,45 +87,41 @@
 
 | # | 能力项 | Instinct 公开证据 | 等级 | ds-agent 状态 | 本仓库路径 / 验收依据 |
 |---|---|---|---|---|---|
-| D1 | cloud browser errands（leased cloud browser，可用已保存登录） | S4/S5：browser work 走 leased cloud browser，不是本机 Chrome | teardown | `missing` / `environment-blocked` | 无 hosted browser。可接受的等价方向是本地/远程 browser adapter + 明确 approval；需要托管浏览器或用户本机权限 |
-| D2 | approval card：approve / deny / dismiss，绑定“屏幕上显示的原文” | S4/S5：三答案；绑定 exact text；改写后要重新批准；没有 editable plan view | teardown | `PR-only`（本 PR，未合并；`main` 仍只有 approve/deny） | `src/core/collab.ts` 的 `approvalActionId` 对清洗后的精确 action 文本做 SHA-256，存成 `act_*`；`decideApproval` 每次重算并拒绝被改写的文本，CLI `--action-id` 可再校验；`src/core/approval-card.ts` 渲染 approve/deny/dismiss 三答案；`ds-agent approve\|deny\|dismiss`；`test/approvals.test.ts` 覆盖三答案、改写拒绝、聊天文本不能伪造。仍是 CLI-only，无 editable plan view |
-| D3 | irreversible actions 必须走 approval，模型不能自行批准 | S4/S5；S3 的 external send / payment 条款 | official/teardown | `main` | `src/harness/tools.ts` 的 `request_approval` + `src/core/collab.ts` 的 pending hold；`test/approvals.test.ts` 覆盖 approve/deny、审批等待不被 watchdog 误杀、决策不可由聊天文本伪造 |
-| D4 | payment / credential vault 可填不可读 | S4/S5 | teardown | `PR-only`（本 PR，未合并） | `src/env/fill-vault.ts`：独立 fill-only store，只暴露 entry 名、kind、字段名和 receipt；`fill()` 把值交给 owner 配置的 form adapter，永不返回；`prepare_fill` / `fill_credential` 必须匹配一张 owner 已批准且 action 文本完全一致的卡；缺文件、文件权限含 group/world 位、JSON 损坏都表示“不能填”；浏览器 adapter 不在本仓库范围。`test/fill-vault.test.ts`、`test/fill-tools.test.ts` |
-| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `main`（#182 已合并） | `pnpm ds-agent receipt <ticketId> [--json]` 从本地持久 Ticket/Assignment、reply/outbox 与受跟踪 external-op 生成只读凭据；输出省略正文、目标地址、原始错误和凭据值。只证明已记录输入，不声称模型确实注意到它们；未跟踪的工具读取/副作用不作“未触碰”断言。离线 CLI 重启测试覆盖成功/失败/未知与隔离；没有真实外部服务验收，详见 `docs/EXECUTION_RECEIPTS.md`。fill receipt 只是单次 fill 的凭据，不是 D5 的全局 receipt |
+| D1 | cloud browser errands（leased cloud browser，可用已保存登录） | S4/S5：browser work 走 leased cloud browser，不是本机 Chrome | teardown | `missing` / `environment-blocked` | **无** Instinct 式 leased cloud browser。本仓库有 owner-gated browser errand adapter（#172：本机命令或远程 HTTP，默认关闭，见 `docs/BROWSER_ERRANDS.md`），**不是** D1 的完成态；真实浏览器未验收 |
+| D2 | approval card：approve / deny / dismiss，绑定“屏幕上显示的原文” | S4/S5：三答案；绑定 exact text；改写后要重新批准；没有 editable plan view | teardown | `main`（#173） | `approvalActionId` + `decideApproval`；`ds-agent approve\|deny\|dismiss`；`test/approvals.test.ts`。**CLI-only**；dismiss 关闭卡片不授权；无 editable plan view |
+| D3 | irreversible actions 必须走 approval，模型不能自行批准 | S4/S5；S3 的 external send / payment 条款 | official/teardown | `main` | `request_approval` + pending hold；`test/approvals.test.ts` |
+| D4 | payment / credential vault 可填不可读 | S4/S5 | teardown | `main`（#173） | `fill-vault.ts` + approval 门控 fill 工具；支付只 fill + approval，**不扣款**；真实表单/商户未验收 |
+| D5 | receipt on request：读过什么、发过什么、没碰什么 | S4/S5：规则要求可出 receipt | teardown | `main`（#182） | `pnpm ds-agent receipt <ticketId> [--json]`；详见 `docs/EXECUTION_RECEIPTS.md`。无真实外部服务验收 |
 | D6 | deletion surface：storage / training / location / desktop indexing | S4/S5 | teardown | `missing` | 本仓库有 backup/restore 与本地 SQLite 文件，但不是 Instinct 那种跨 store 删除面 |
 
 ## 7. 等价边界（不做相同克隆）
 
-| # | Instinct 能力 | 状态 | 为什么不能在本 PR 等价 | 可接受的等价方向 |
+| # | Instinct 能力 | 状态 | 为什么不能在本仓库等价 | 可接受的等价方向 |
 |---|---|---|---|---|
 | E1 | hosted public identity（自有邮件域名、可被陌生人发信的地址） | `environment-blocked` | 需要域名、MX、SPF/DKIM、滥用处理与托管账号 | 由 owner 托管邮件/号码，adapter 只做受 admission 约束的 ingress |
 | E2 | phone network / inbound + concierge calling | `environment-blocked` | 需要 PSTN/SIP、号码、通话合规与商户流程 | 明确的人工转交或第三方 voice provider；仍走 approval |
 | E3 | merchant / Selections 式合作 | `environment-blocked` | 需要商业合作与结算关系 | 可插拔的 merchant adapter + 逐动作 approval；不伪造合作 |
-| E4 | Apple/iMessage 账号与 Mac 上的 Messages.app | `environment-blocked`（后续 todo） | 本 PR 不创建账号、不访问用户 Mac、不改变常驻 Feishu serve | 由 owner 在自己的 Mac 上配置 Automation / Full Disk Access；代码只读 `chat.db`、经 `osascript` 发送 |
-| E5 | 27-section main instruction set、main agent host、production model id、control-plane schema、desktop app、四个 policy section | `missing`（by design） | 这些是 Instinct 未公开/未建立的内部；公开拆解只看到 headings，不是正文 | 不猜、不复制。本仓库用自己的 prompt layers 与 policy，不声称对齐未公开文本 |
+| E4 | Apple/iMessage 账号与 Mac 上的 Messages.app | `environment-blocked` | 不创建账号、不访问用户 Mac | 由 owner 配置 Automation / Full Disk Access；代码只读 `chat.db`、经 `osascript` 发送 |
+| E5 | 27-section main instruction set、main agent host、production model id、control-plane schema、desktop app、四个 policy section | `missing`（by design） | Instinct 未公开正文 | 本仓库用自己的 prompt layers（#171）与 policy，不假装对齐 |
 
-## 8. 本 PR 的 PR-only 项
+## 8. 仍未进入 `main` 的 open 项
 
-以下能力只存在于**未合并**的 PR；本清单不把它们算作 `main` 已完成。
+以下是基线 `840386e` 合入时仍待完成的项目。
 
 | # | 项 | PR | 状态 | 验收边界 |
 |---|---|---|---|---|
-| P2 | remote mesh runtime placement / assignment results | #165 | `PR-only` | 多节点 Worker 放置；不是 Instinct 的 cloud browser 或 hosted identity |
-| P3 | deployment docs / loopback sandbox probes | #167 | `PR-only` | 部署与安全探测；不是 Instinct connector 能力 |
-| P4 | native controlled evolution | #168 | `PR-only` | 自改进/策略演化；不是本清单的 Instinct inventory 项 |
-| P5 | 三答案 approval card + exact-text 绑定（D2） | 本 PR（`feat/instinct-approval-vault`，stacked on `feat/instinct-idle-proactive`） | `PR-only` | CLI-only；`actionId` 是完整性句柄，不是 approval token；真实通道回复仍不能直接批准 |
-| P6 | fill-only credential/payment vault（D4） | 同上 | `PR-only` | 默认无 vault 文件即不能填；没有内置浏览器 adapter；真实表单/商户验收未做；支付只做 fill + approval，不扣款 |
-| P7 | 本地可查询执行凭据（D5） | #182（已合并入 `main`） | `main` | `ds-agent receipt <ticketId>` 只读本地已持久化证据；不新增发送权限，不能证明未跟踪的模型/工具读取或副作用；没有真实外部服务验收 |
-| P8 | Google Workspace connectors + connector index + event wake | #174（已合并入 `main`） | `main` | 七个 Google Workspace 只读映射；`connectors.json` 由 owner 启用，缺失即关闭；独立 connector 索引不写 LTM；wake 复用 Daemon pulse 与 `Runtime.ingest`。只做离线 fake API/OAuth 测试；**真实 Google 账号、OAuth 同意、Workspace API 未验收** |
+| N1 | GitHub issue poll、可选 @ 派发、holdout implementer | [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) | 待合入 | @ 派发默认关闭，真实 GitHub 轮询待验收 |
+| N2 | Instinct / competitive-gap RSI **提案摄入** + 有界 scheduler tick | [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | 待合入 | 调度器仍需接入 CLI 的运行路径 |
+| N3 | GitHub issue poll queue + 更完整 bounded RSI | [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) | `PR-only`（OPEN，**CONFLICTING**） | 底分支过旧，**不宜**当可合并目标 |
 
-> #166、#164、#163 也是 open PR（longitudinal harness、recovery boundary、sandbox health），但没有改变本清单的 `main` 状态；不把它们当作已合并能力。
+**未闭环：** 完整 RSI 自迭代（维护缺口 → 评对话 → 落地改进）；可对话的独立桌面 UI（现有 UI 只读）；默认 GitHub @ issue 派发（`github-source` 识别 `@ds-agent` ≠ 默认派发已上线）；真实通道验收（飞书/Google/iMessage/表单 fill）。
+
+**已在 `main`、本节不再标 PR-only：** #165 remote mesh placement、#167 部署与 loopback 探测、#168 controlled evolution v1（非完整 RSI）、#173 三答案卡 + fill-only vault、#174 Google 连接器/索引/事件唤醒、#172 owner-gated browser errands、#182 执行凭据、#170 idle self-wake（默认关闭）、#180 飞书短私聊支持、#184 飞书过期消息过滤和引用定位、#188 飞书 1:1 conversation-first。真实飞书发送仍待验收。
 
 ## 9. 结论
 
-- **已具备（`main`）**：iMessage 通道、clock/timer routines、长期记忆与 ACL、irreversible action 的 approval hold、CLI/Feishu/GitHub 等多通道运行时，以及默认关闭的 sandbox/redaction 边界。每项都有 cited test 或文档依据。
-- **本 PR（`feat/instinct-approval-vault`）新增但未合并**：三答案 approval card（D2）和 fill-only credential/payment vault（D4）。卡片有结构化 `actionId`，绑定精确 action 文本，改写后必须重新批准；dismiss 不授权。vault 只在 owner 配置后才可用：默认读取 0600 的 `vault.json`，也可用 `DS_AGENT_VAULT_FILE` 指向 owner 指定的路径；值交给注入的 form adapter 或由 `DS_AGENT_FILL_COMMAND` 配置的 owner 本地 helper，没有读回接口，支付不扣款。真实浏览器/表单验收不在本 PR。
-- **已具备（`main`，#182/#170）**：本地执行凭据（D5），可按 Ticket 查询已持久化的输入、Assignment、reply/outbox 与受跟踪外部操作状态；输出省略正文、目标地址和凭据值，不推断未跟踪访问。owner-gated idle self-wake（A10/A12）也已进入 `main`，默认关闭；真实通道发送等待 owner。
-- **已具备（`main`，#174）**：Google Workspace connector 索引与事件唤醒（A9/B3/C1）。功能默认关闭；只在已有私聊线程、具体事件达到 usefulness 门槛且通过 admission/quiet-hours/cap 时才可能进入 `Runtime.ingest`。真实 Google OAuth 与 Workspace API 均等待 owner 实测。
-- **明确缺失**：WhatsApp/SMS/email/电话、群聊 shared agent、fill-only vault、cloud browser、三答案 approval card、payment、deletion surface、推荐系统。Slack/Notion 仍不列入验收（无具名来源），本 PR 也没有实现它们。
-- **不能靠代码等价**：hosted identity、电话网络、merchant partnerships、用户 Mac/iMessage 账号。它们被标为 `environment-blocked`，不冒充完成。
-- **不猜测**：Instinct 的 27-section instruction body、main agent host、model id、control-plane schema、desktop app 与四个 policy section 没有公开正文；本仓库不复制、不假装对齐。
+- **已具备（`main`，离线/CI；真实账号多数未验收）**：iMessage/Feishu/GitHub/CLI/A2A 运行时；routines；LTM + ACL；三答案审批（D2）与 fill-only vault（D4，#173）；Google Workspace 索引与 event wake（A9/B3/C1，#174，默认关闭）；browser errand adapter（#172，非 cloud browser）；执行凭据 D5（#182）；approval hold（D3）；sandbox/redaction 默认边界。
+- **明确缺失或 blocked**：WhatsApp/SMS/email/电话；群聊 shared agent；Instinct 式 **leased cloud browser**（D1）；支付**扣款**；deletion surface（D6）；推荐系统（A11）。Slack/Notion 仍不列入验收（无具名来源）。
+- **open PR，未进 main**：#183、#187；#177 在替代方案的调度入口验收后再关闭。
+- **不能靠代码等价**：hosted identity、电话网络、merchant partnerships、用户 Mac/iMessage 账号（`environment-blocked`）。
+- **不猜测**：Instinct 未公开的 instruction body、host、model id、control-plane、desktop app 与 policy section；本仓库不复制、不假装对齐。

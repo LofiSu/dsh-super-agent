@@ -35,35 +35,11 @@ for the dispatch loop like other serve subsystems.
 
 `webhook-verify.ts` implements signature verification for future use. **Webhooks are not deployed** in this slice; production path is `gh api` polling only.
 
-## Implementer
+## Execution policy
 
-`github.implementer` in owner config:
-
-| Value | Behavior |
-|-------|----------|
-| `"claude"` | Isolated clone → pre/post holdout → Claude Code → diff-path policy → peanut branch PR via `FeaturePrPublisher`. |
-| `"none"` / omitted | Fail-closed: fix/RSI implement jobs error without publish. |
-
-High-risk `rsi_proposal` jobs complete without calling implementer hooks.
-
-### Publish acknowledgment
-
-The implementer calls `prepare()` then `publish(input, binding)` on the host.
-That is host-side acknowledgment of the exact commit/branch/metadata before push
-and `gh pr create`. A human reviews and merges the PR; this PR never merges to
-`main`.
-
-Isolated dispatch workspaces are not LocalEnv worker sandboxes. The implementer
-omits `FeaturePrPublisher.assertCredentialsHidden` and relies on holdout,
-implementer diff-path policy, and the publisher’s credential path scan (same as
-Runtime workers for risky paths in the commit tree).
-
-## RSI scheduler hook (#183)
-
-This slice lands GitHub poll, admission, queue, implementer, holdout, and serve
-wiring. It does **not** ship `rsi.ts` ingest/scheduler. `serve-loop` exposes an
-optional `runRsiTick` callback; after #183 merges, a follow-up can pass
-`runRsiSchedulerTick` from `dispatch-integration` without changing Runtime.
+The production loop polls and queues authorized GitHub commands and runs the
+RSI scheduler. Coding and candidate tests require a separately isolated runner.
+The built-in runner fails closed without executing code or publishing a PR.
 
 ## What this slice does not claim
 

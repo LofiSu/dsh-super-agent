@@ -28,11 +28,12 @@ function isolatedEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env
 }
 
-function start(opts: { model?: ScriptedModel; env?: NodeJS.ProcessEnv; singleSession?: boolean } = {}): Runtime {
+function start(opts: { model?: ScriptedModel; env?: NodeJS.ProcessEnv; singleSession?: boolean; now?: () => string } = {}): Runtime {
   const runtime = freshRuntime({
     model: opts.model ?? silentModel(),
     env: opts.env ?? isolatedEnv(),
     singleSession: opts.singleSession,
+    now: opts.now,
     jobDelayMs: 5,
     watchdogIntervalMs: 60_000,
   })
@@ -114,9 +115,9 @@ describe('Runtime service integration', () => {
   })
 
   it('isolates Runtime-diagnosed incomplete intake while later connector ingress uses Runtime', async () => {
-    const runtime = start()
-    // Keep the scheduler outside the configured UTC quiet hours.
+    // 12:00 UTC is outside this test's 23:00-08:00 UTC quiet window.
     const at = Date.parse('2026-11-27T12:00:00.000Z')
+    const runtime = start({ now: () => new Date(at).toISOString() })
     const owner = imTrigger({
       id: 'connector-runtime-owner',
       thread: 'connector-runtime-owner',

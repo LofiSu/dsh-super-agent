@@ -5,8 +5,7 @@ import { loadDispatchOwnerConfig } from '../dispatch/config.ts'
 import { ghRunForDispatchHost } from '../dispatch/github-app-auth.ts'
 import { createDefaultPollAdapter } from '../dispatch/github-poll.ts'
 import { hasOpenPeanutPrForRepo } from '../dispatch/github-peanut.ts'
-import { createClaudeDispatchJobRunner } from '../dispatch/implementer.ts'
-import { createJobRunner } from '../dispatch/job-runner.ts'
+import { runRsiSchedulerTick } from '../dispatch/rsi.ts'
 import { runDispatchServeLoop } from '../dispatch/serve-loop.ts'
 
 export interface StartedDispatchLoop {
@@ -37,9 +36,6 @@ export async function startDispatchLoopIfConfigured(
   const gh = await ghRunForDispatchHost(
     config.githubAuthHost ?? { auth: config.github.auth ?? { mode: 'owner-gh' } },
   )
-  const app = config.githubAuthHost?.app
-  const appGit = app ? app.createAuthenticatedGitRun() : undefined
-
   const abort = new AbortController()
   const poll = config.github.enabled
     ? createDefaultPollAdapter(config.github.repo, gh)
@@ -56,15 +52,9 @@ export async function startDispatchLoopIfConfigured(
     }
   }
 
-  const implementer = config.github.implementer
-  const jobRunner = implementer === 'claude'
-    ? createClaudeDispatchJobRunner({
-        github: config.github,
-        defaultSourceRepo: process.cwd(),
-        gh,
-        git: appGit,
-      })
-    : createJobRunner()
+  if (config.github.implementer === 'claude') {
+    runtime.log.info('[dispatch] host implementer disabled; dispatch will not execute code')
+  }
 
   const task = runDispatchServeLoop({
     home,
@@ -73,7 +63,7 @@ export async function startDispatchLoopIfConfigured(
     log: line => runtime.log.info(line),
     pollAdapter: poll,
     signal: abort.signal,
-    jobRunner,
+    runRsiTick: runRsiSchedulerTick,
     hasOpenPeanutPr,
   })
 

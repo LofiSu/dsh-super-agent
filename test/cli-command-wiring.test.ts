@@ -30,10 +30,12 @@ describe('approval documentation tables', () => {
 describe('fill vault documentation accuracy', () => {
   it('documents vault path and helper alternatives without implying they are mandatory', () => {
     const capabilities = fs.readFileSync(path.join(process.cwd(), 'docs/INSTINCT_CAPABILITIES.md'), 'utf8')
-    const line = capabilities.split('\n').find(l => l.startsWith('- **本 PR（`feat/instinct-approval-vault`）新增但未合并**'))!
-    expect(line).toContain('DS_AGENT_VAULT_FILE')
-    expect(line).toContain('DS_AGENT_FILL_COMMAND')
+    const line = capabilities.split('\n').find(l =>
+      l.includes('DS_AGENT_VAULT_FILE') && l.includes('DS_AGENT_FILL_COMMAND'),
+    )
+    expect(line).toBeDefined()
     expect(line).toContain('owner')
+    expect(line).toContain('可选，非必需')
   })
 
   it('documents that only fill_credential needs an approved exact-action card', () => {
