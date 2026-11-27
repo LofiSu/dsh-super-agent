@@ -31,6 +31,11 @@ See [runtime configuration and acceptance status](PARITY.md).
 The sidecar stores profiles, turns, teams and proposals in its local
 `bots.db`. Keep this database when updating or rolling back the plugin.
 
+To use Claude Code with the local Magpie Messages endpoint, set
+`claudeMagpieModel` in `bot-runtimes.json` to a Magpie model ID. The option
+changes the provider for the Claude Code adapter. Other desktop runtimes
+keep their own settings.
+
 ## Run a Bot on an SSH host
 
 On the remote host, make `bot-ssh-worker.mjs` and `bot-context.mjs` available

@@ -7,7 +7,7 @@ import { buildBotPrompt } from './bot-context.mjs';
 
 const execute = promisify(execFile);
 
-export function createClaudeAdapter({ executable, workspaceRoot }) {
+export function createClaudeAdapter({ executable, workspaceRoot, magpieModel }) {
   if (!isAbsolute(executable) || !isAbsolute(workspaceRoot)) {
     throw new TypeError('Claude executable and workspace root must be absolute paths.');
   }
@@ -15,11 +15,18 @@ export function createClaudeAdapter({ executable, workspaceRoot }) {
     if (!/^[a-f0-9-]{36}$/.test(bot.id)) throw new Error('Invalid Bot ID.');
     const cwd = join(workspaceRoot, bot.id);
     await mkdir(cwd, { recursive: true, mode: 0o700 });
+    const env = botEnvironment();
+    if (magpieModel) {
+      delete env.ANTHROPIC_API_KEY;
+      env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:3425';
+      env.ANTHROPIC_AUTH_TOKEN = env.DSH_BOT_MAGPIE_KEY || 'magpie';
+      env.ANTHROPIC_MODEL = magpieModel;
+    }
     const child = execute(executable, [
       '--print', '--no-session-persistence', '--tools', '',
       '--strict-mcp-config', '--setting-sources', '',
       '--output-format', 'json', '--', buildBotPrompt(bot, prompt, history),
-    ], { cwd, env: botEnvironment(), signal, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+    ], { cwd, env, signal, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
     const closed = new Promise(resolve => child.child.once('close', resolve));
     child.child.stdin.end();
     const { stdout } = await child.finally(() => closed);
