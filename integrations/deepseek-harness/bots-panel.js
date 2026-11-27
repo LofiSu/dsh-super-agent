@@ -1,4 +1,4 @@
-// New Bot dialog and Bot row layout adapted from stablyai/orca at 16852f2d.
+// New Bot dialog, Bot row, and group row layouts adapted from stablyai/orca at 16852f2d.
 /*
 MIT License
 
@@ -203,7 +203,7 @@ function mountBotsPanel(ctx, React, request) {
     }
 
     return h('div', null,
-      h('form', { onSubmit: submit },
+      h('form', { className: 'bots-composer', onSubmit: submit },
         h('label', null, '团队任务', h('textarea', { name: 'task', required: true, maxLength: 2400, disabled: running })),
         h('button', { type: 'submit', disabled: running || cancelling }, running ? '正在派工…' : '发给团队')),
       activeId && h('button', { type: 'button', disabled: cancelling, onClick: () => void cancelDispatch(activeId) }, '请求中止派工'),
@@ -224,6 +224,8 @@ function mountBotsPanel(ctx, React, request) {
 
   function Teams({ profiles }) {
     const [teams, setTeams] = React.useState([]);
+    const [selected, setSelected] = React.useState(null);
+    const activeTeam = teams.find(team => team.id === selected) ?? teams[0];
     const [editing, setEditing] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
     const [ready, setReady] = React.useState(false);
@@ -270,6 +272,7 @@ function mountBotsPanel(ctx, React, request) {
         if (!response.ok) throw new Error();
         const team = await response.json();
         setTeams(current => [...current, team]);
+        setSelected(team.id);
         setEditing(false);
       } catch {
         setError('无法保存团队。');
@@ -279,8 +282,8 @@ function mountBotsPanel(ctx, React, request) {
     }
 
     return h('section', { 'aria-label': 'Bot 团队' },
-      h('h2', null, '团队'),
-      h('button', { type: 'button', disabled: !ready || profiles.length < 2, onClick: () => { setError(''); setEditing(true); } }, '新建团队'),
+      h('header', { className: 'bots-team-header' }, h('h2', null, '团队'),
+        h('button', { type: 'button', disabled: !ready || profiles.length < 2, onClick: () => { setError(''); setEditing(true); } }, '新建团队')),
       error && h('p', { role: 'alert' }, error),
       editing && h('form', { onSubmit: create, 'aria-label': '新建团队' },
         h('label', null, '团队名称', h('input', { name: 'teamName', required: true, maxLength: 80 })),
@@ -289,10 +292,22 @@ function mountBotsPanel(ctx, React, request) {
             h('input', { type: 'checkbox', name: 'member', value: bot.id }), bot.name))),
         h('button', { type: 'submit', disabled: saving }, '保存团队'),
         h('button', { type: 'button', disabled: saving, onClick: () => setEditing(false) }, '取消')),
-      ...teams.map(team => h('article', { key: team.id },
-        h('strong', null, team.name),
-        h('ul', null, ...team.botIds.map(id => h('li', { key: id }, profiles.find(bot => bot.id === id)?.name ?? id))),
-        h(TeamDispatch, { team, members: profiles }))));
+      activeTeam && h('div', { className: 'bots-workspace' },
+        h('nav', { className: 'bots-list', 'aria-label': '团队列表' },
+          ...teams.map(team => {
+            const members = team.botIds.map(id => profiles.find(bot => bot.id === id)).filter(Boolean);
+            return h('button', { key: team.id, type: 'button', onClick: () => setSelected(team.id),
+              'aria-current': activeTeam.id === team.id ? 'true' : undefined },
+            h('span', { className: 'bots-team-faces', 'aria-hidden': true },
+              ...members.slice(0, 3).map(bot => h('span', { key: bot.id }, Array.from(bot.name)[0]))),
+            h('span', { className: 'bots-row-text' }, h('strong', null, team.name),
+              h('small', null, members.map(bot => bot.name).join('、'))));
+          })),
+        h('section', { className: 'bots-detail', 'aria-label': activeTeam.name, key: activeTeam.id },
+          h('header', null, h('div', null, h('h2', null, activeTeam.name), h('small', null,
+            activeTeam.botIds.map(id => profiles.find(bot => bot.id === id)?.name ?? id).join(' · ')))),
+          h(TeamDispatch, { team: activeTeam, members: profiles }))),
+      ready && teams.length === 0 && !editing && h('p', null, '还没有团队。选择至少两个 Bot 创建团队。'));
   }
 
   function Offers({ onAccepted }) {
@@ -571,6 +586,11 @@ function mountBotsPanel(ctx, React, request) {
         .dsh-bots .bots-list button{display:flex;align-items:center;gap:9px;width:100%;margin:2px 0;padding:7px;border-color:transparent;text-align:left}
         .dsh-bots .bots-list button[aria-current=true]{border-color:var(--bot-line);background:var(--bot-tint)}
         .dsh-bots .bots-list .bots-icon{width:33px;height:33px;flex:none;margin:0;border-radius:10px}
+        .dsh-bots .bots-team-header{margin:0 0 12px}
+        .dsh-bots .bots-team-faces{position:relative;width:33px;height:33px;flex:none}
+        .dsh-bots .bots-team-faces span{position:absolute;display:grid;place-items:center;width:21px;height:21px;border:1px solid var(--bot-line);border-radius:50%;background:Canvas;color:CanvasText;font-size:10px}
+        .dsh-bots .bots-team-faces span:nth-child(2){right:0;bottom:0}
+        .dsh-bots .bots-team-faces span:nth-child(3){left:0;bottom:0}
         .dsh-bots .bots-row-text{display:grid;gap:2px;min-width:0}
         .dsh-bots .bots-row-text>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .dsh-bots .bots-detail{min-width:0;min-height:0;padding:18px;display:flex;flex-direction:column;overflow:auto}
