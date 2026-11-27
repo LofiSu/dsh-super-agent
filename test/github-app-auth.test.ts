@@ -239,7 +239,7 @@ describe('GithubAppAuthService verification', () => {
 describe('GithubAppAuthService gh child environment', () => {
   it('pins github.com and removes inherited enterprise credentials', async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-gh-env-'))
-    const envKeys = ['PATH', 'GH_HOST', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] as const
+    const envKeys = ['PATH', 'GH_HOST', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] as const
     const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
     try {
       const binDir = path.join(tempDir, 'bin')
@@ -250,12 +250,13 @@ describe('GithubAppAuthService gh child environment', () => {
       const ghStub = path.join(binDir, 'gh')
       writeFileSync(
         ghStub,
-        '#!/bin/sh\ncat >/dev/null\nprintf "%s\\n" "${GH_HOST-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}"\n',
+        '#!/bin/sh\ncat >/dev/null\nprintf "%s\\n" "${GH_HOST-unset}" "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}"\n',
         { mode: 0o700 },
       )
 
       process.env.PATH = `${binDir}${path.delimiter}${oldEnv.PATH ?? ''}`
       process.env.GH_HOST = 'ghe.example.invalid'
+      process.env.GITHUB_TOKEN = 'github_user_token_fixture'
       process.env.GH_ENTERPRISE_TOKEN = 'ghe_enterprise_secret_fixture'
       process.env.GITHUB_ENTERPRISE_TOKEN = 'ghe_enterprise_secret_fixture2'
 
@@ -266,10 +267,11 @@ describe('GithubAppAuthService gh child environment', () => {
       const output = await service.createGhRun()([
         'api', '--method', 'GET', `repos/${REPO}/issues`,
       ])
-      const [ghHost, ghToken, ghEnterpriseToken, githubEnterpriseToken] = output.trim().split('\n')
+      const [ghHost, ghToken, githubToken, ghEnterpriseToken, githubEnterpriseToken] = output.trim().split('\n')
 
       expect(ghHost).toBe('github.com')
       expect(ghToken).toBe('ghs_installation_token_fixture')
+      expect(githubToken).toBe('unset')
       expect(ghEnterpriseToken).toBe('unset')
       expect(githubEnterpriseToken).toBe('unset')
     } finally {

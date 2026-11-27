@@ -260,6 +260,7 @@ export class GithubAppAuthService {
           GH_CONFIG_DIR: ghConfigDir,
           GH_HOST: 'github.com',
         }
+        delete childEnv.GITHUB_TOKEN
         delete childEnv.GH_ENTERPRISE_TOKEN
         delete childEnv.GITHUB_ENTERPRISE_TOKEN
         const child = spawn('gh', args, {
