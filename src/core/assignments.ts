@@ -208,6 +208,29 @@ export class Assignments {
     return { surfaced, verdict }
   }
 
+  /**
+   * End a remote turn that reported ready under a superseded mandate and queue
+   * a fresh Assignment for the current scope. The held `ready` remains on the
+   * predecessor as an audit record and cannot be overwritten by its old timer.
+   */
+  replaceSupersededReady(ticketId: string, assignmentId: string): Assignment | undefined {
+    const ticket = this.must(ticketId)
+    const assignment = ticket.assignments.at(-1)
+    if (ticket.ended
+      || assignment?.id !== assignmentId
+      || assignment.state !== 'running'
+      || assignment.report?.kind !== 'ready'
+      || assignment.mandateScopeAtStart === undefined
+      || assignment.mandateScopeAtStart === ticket.mandate.scope) {
+      return undefined
+    }
+    this.endAssignment(ticket, assignment, 'superseded-ready')
+    this.host.repo.putDoc('ticket', ticket.id, ticket)
+    const replacement = this.retry(ticketId, 'revised-mandate')
+    this.notifyEnded(ticket, true, false)
+    return replacement
+  }
+
   /** Start a new Assignment for an open Ticket after failure or a blocked turn. */
   retry(ticketId: string, reason = 'retry'): Assignment {
     const ticket = this.must(ticketId)

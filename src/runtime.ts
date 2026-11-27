@@ -2449,6 +2449,25 @@ export class Runtime {
     // terminal transition.
     const settled = this.store.getDoc<Ticket>('ticket', event.ticketId)
     const settledAssignment = settled?.assignments.at(-1)
+    const supersededReady = report.kind === 'ready'
+      && settled !== undefined
+      && settledAssignment?.id === event.assignmentId
+      && settledAssignment.state === 'running'
+      && settledAssignment.report?.kind === 'ready'
+      && settledAssignment.mandateScopeAtStart !== undefined
+      && settledAssignment.mandateScopeAtStart !== settled.mandate.scope
+    if (supersededReady && this.engine.replaceSupersededReady(event.ticketId, event.assignmentId)) {
+      // This remote worker has completed the old mandate. End its Assignment
+      // without changing its held ready report, then launch the revised scope
+      // through the existing sticky placement and remote wait path.
+      this.remoteResultWait?.clear(event.ticketId)
+      const replacement = this.store.getDoc<Ticket>('ticket', event.ticketId)
+      if (replacement && !replacement.ended) void this.harness.launch(replacement)
+      this.log.info(
+        `[mesh] superseded ready replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
+      )
+      return
+    }
     const recordedKind = settledAssignment?.report?.kind ?? report.kind
     // A terminal report held by a pause does not end the Assignment while it is
     // held, but the remote work is done: resume applies the held verdict later,

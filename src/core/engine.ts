@@ -90,6 +90,13 @@ export class Engine {
     return this.host.repo.atomic(() => this.assignments.report(ticketId, report))
   }
 
+  /** Replace a remote ready held open by a revised mandate. */
+  replaceSupersededReady(ticketId: string, assignmentId: string): boolean {
+    return this.host.repo.atomic(() =>
+      this.assignments.replaceSupersededReady(ticketId, assignmentId) !== undefined,
+    )
+  }
+
   /** Start a new Assignment on the same Ticket after a failed or blocked turn. */
   retryTicket(ticketId: string, reason = 'retry'): void {
     this.host.repo.atomic(() => { this.assignments.retry(ticketId, reason) })
