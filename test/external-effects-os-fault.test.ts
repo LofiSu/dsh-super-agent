@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -39,6 +39,26 @@ describe('marker publication across processes', () => {
 const osFaultDescribe = delegateOsSupervisorSupported() ? describe : describe.skip
 
 osFaultDescribe('external effects unknown-outcome gate (OS fault)', () => {
+  it('ignores further termination signals while unwinding the first interrupt', () => {
+    const script = path.resolve('test/helpers/delegate-os-supervisor.py')
+    execFileSync('python3', ['-B', '-c', `
+import runpy
+import signal
+import sys
+
+supervisor = runpy.run_path(sys.argv[1])
+signal.signal(signal.SIGTERM, supervisor['interrupt'])
+signal.signal(signal.SIGINT, supervisor['interrupt'])
+try:
+    signal.raise_signal(signal.SIGTERM)
+except supervisor['SupervisorInterrupted']:
+    signal.raise_signal(signal.SIGTERM)
+    signal.raise_signal(signal.SIGINT)
+else:
+    raise AssertionError('the first signal did not interrupt the supervisor')
+`, script], { timeout: 5_000 })
+  })
+
   it('runs capability probes from an isolated random temp home and allowlisted environment', async () => {
     const previousNodeOptions = process.env.NODE_OPTIONS
     const previousApiKey = process.env.DS_AGENT_API_KEY
