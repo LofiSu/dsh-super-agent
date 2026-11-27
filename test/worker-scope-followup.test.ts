@@ -201,6 +201,52 @@ describe('worker mandate scope', () => {
     expect(resume).toContain(`scope=${scopeA}`)
   })
 
+  it('activates a revised mandate before a paused running assignment resumes', async () => {
+    const prompts: string[] = []
+    const reported = new Set<string>()
+    const runtime = start(new ScriptedModel(request => {
+      const prompt = lastPrompt(request)
+      if (request.role !== 'worker') return { text: 'ok' }
+      prompts.push(prompt)
+      if (reported.has(prompt)) return { text: 'finished' }
+      reported.add(prompt)
+      return {
+        toolCalls: [{
+          id: 'resume-ready',
+          name: 'report_to_router',
+          args: {
+            ticketId: field(prompt, 'ticketId'),
+            text: 'done under the resumed mandate',
+            deliver: true,
+            kind: 'ready',
+          },
+        }],
+      }
+    }))
+    const triggerId = 'trg_resume_revised_scope'
+    const decision = issue192Fixture(runtime, triggerId)
+    const ticketId = decision.ticketId!
+    const ticket = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    runtime.engine.assignmentStarted(ticketId, ticket.assignments[0]!.id, `worker_${ticketId}`)
+    runtime.engine.pause(ticketId, { reason: 'test pause' })
+    runtime.engine.decide(triggerId, {
+      kind: 'accept',
+      title: '重测只读读取 GitHub 工单 #192',
+      scope: scopeB,
+      strength: 'explicit',
+      reason: 'router-dispatch',
+    })
+
+    await runtime.resume(ticketId, { reason: 'human verified' })
+    await runtime.jobsSettled()
+
+    const resume = prompts.find(prompt => prompt.startsWith('RESUME'))
+    expect(resume).toBeDefined()
+    expect(resume).toContain(`scope=${scopeB}`)
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended?.outcome).toBe('ready')
+    expect(runtime.log.text()).not.toContain('kept ticket open for revised mandate')
+  })
+
   it('re-dispatch with a new scope reaches the active worker through dispatch_work', async () => {
     const prompts: string[] = []
     let releaseWorker!: () => void

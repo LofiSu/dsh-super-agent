@@ -23,7 +23,7 @@ export interface HarnessOptions {
   store: Store
   /** Host bookkeeping when a worker session starts. The harness does not hold the Engine. */
   assignmentStarted(ticketId: string, assignmentId: string, sessionId: string): void
-  /** Mark the current mandate as active when a queued FOLLOWUP begins. */
+  /** Mark the current mandate as active when a local Worker turn begins. */
   assignmentMandateActivated?(ticketId: string): void
   /** Host bookkeeping for logical mesh placement. The Engine owns the ticket write. */
   assignmentPlaced(ticketId: string, assignmentId: string, node: string): void
@@ -818,7 +818,26 @@ export class Harness {
           )
           return
         }
-        return this.enqueue(sessionId, () => guarded(sessionId, 'worker', workerPrompt))
+        return this.enqueue(sessionId, async () => {
+          const current = this.opts.store.isOpen
+            ? this.opts.store.getDoc<Ticket>('ticket', ticket.id)
+            : undefined
+          if (!current || current.ended || current.collab?.paused) return
+          const currentAssignment = current.assignments.at(-1)
+          if (!currentAssignment || remoteInProgress(currentAssignment)) return
+          if (
+            Boolean(this.opts.pickNode)
+            && currentAssignment.state === 'pending'
+            && currentAssignment.node === undefined
+          ) return
+          const held = this.pauseReason(ticket.id)
+          if (held) {
+            this.opts.log(`[collab] resume held session=${sessionId} ticketId=${ticket.id} reason=${held}`)
+            return
+          }
+          this.opts.assignmentMandateActivated?.(ticket.id)
+          return guarded(sessionId, 'worker', workerPrompt)
+        })
       })
       .then(() => undefined)
       .finally(() => {
