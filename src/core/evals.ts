@@ -205,10 +205,21 @@ export class Evals {
     }
     if (outcome.kind === 'accept') {
       const accepted = prior.find(decision => decision.kind === 'accept')
-      if (accepted) {
+      if (accepted?.ticketId) {
+        const { changed } = this.tickets.reviseMandate(accepted.ticketId, {
+          title: outcome.title,
+          scope: outcome.scope,
+        })
+        if (!changed) {
+          this.host.log(
+            `[engine] Evals.decide skipped triggerId=${triggerId} kind=accept `
+            + `existing=accept decisionId=${accepted.id}`,
+          )
+          return accepted
+        }
         this.host.log(
-          `[engine] Evals.decide skipped triggerId=${triggerId} kind=accept `
-          + `existing=accept decisionId=${accepted.id}`,
+          `[engine] Evals.decide remandate triggerId=${triggerId} ticketId=${accepted.ticketId} `
+          + `decisionId=${accepted.id}`,
         )
         return accepted
       }

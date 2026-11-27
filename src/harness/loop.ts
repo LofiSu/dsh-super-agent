@@ -585,29 +585,46 @@ export class Harness {
     })
   }
 
+  /** Worker turn already booked for this ticket (launch or active turn). */
+  launchInFlight(ticketId: string): boolean {
+    return this.running.has(ticketId)
+  }
+
+  /** In-process Worker session has not settled yet. */
+  workerActive(ticketId: string): boolean {
+    return this.activeWorkers.has(ticketId)
+  }
+
+  private latestTicket(ticket: Ticket): Ticket {
+    if (!this.opts.store.isOpen) return ticket
+    return this.opts.store.getDoc<Ticket>('ticket', ticket.id) ?? ticket
+  }
+
   private workerTask(ticket: Ticket, node?: string): string {
-    const mode = ticket.speculative ? 'speculative' : 'normal'
+    const live = this.latestTicket(ticket)
+    const mode = live.speculative ? 'speculative' : 'normal'
     const task = [
       'TASK',
-      `ticketId=${ticket.id}`,
-      `title=${ticket.title}`,
+      `ticketId=${live.id}`,
+      `title=${live.title}`,
       `mode=${mode}`,
-      `thread=${ticket.threadKeys[0] ?? ''}`,
-      `brief=${ticket.brief}`,
+      `thread=${live.threadKeys[0] ?? ''}`,
+      `brief=${live.brief}`,
+      `scope=${live.mandate.scope}`,
     ]
-    if (ticket.spillId) task.push(`spillId=${ticket.spillId}`)
+    if (live.spillId) task.push(`spillId=${live.spillId}`)
     if (node) task.push(`node=${node}`)
-    const refs = formatRefs(ticket.refs)
+    const refs = formatRefs(live.refs)
     if (refs) task.push(refs)
     // Restart recovery (P1-6): the relaunch turn must tell the Worker that a
     // previous process died. Only RECOVERED context inputs are injected here;
     // ordinary context inputs stay read-only background for resume/report paths.
-    for (const input of ticket.inputs) {
+    for (const input of live.inputs) {
       if (input.kind === 'context' && input.text?.startsWith('RECOVERED:')) {
         task.push(`recovered=${input.text}`)
       }
     }
-    for (const line of this.memoryLines(ticket, 'worker')) task.push(line)
+    for (const line of this.memoryLines(live, 'worker')) task.push(line)
     return task.join('\n')
   }
 
@@ -638,6 +655,7 @@ export class Harness {
     const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
     const mode = ticket?.speculative ? 'speculative' : 'normal'
     const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
+    if (ticket?.mandate.scope) lines.push(`scope=${ticket.mandate.scope}`)
     // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
     const owned = spillId ?? ticket?.spillId ?? ''
     if (owned) lines.push(`spillId=${owned}`)
@@ -707,13 +725,15 @@ export class Harness {
     }
 
     const workerPrompt = (guidance: string[]): string => {
+      const live = this.latestTicket(ticket)
       const lines = [
         'RESUME',
-        `ticketId=${ticket.id}`,
-        `title=${ticket.title}`,
+        `ticketId=${live.id}`,
+        `title=${live.title}`,
         `mode=${mode}`,
-        `thread=${ticket.threadKeys[0] ?? ''}`,
-        `brief=${ticket.brief}`,
+        `thread=${live.threadKeys[0] ?? ''}`,
+        `brief=${live.brief}`,
+        `scope=${live.mandate.scope}`,
       ]
       if (since) lines.push(`pausedAt=${since}`)
       for (const text of guidance) lines.push(`guidance=${text}`)

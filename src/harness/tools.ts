@@ -592,7 +592,7 @@ function executorTools(ports: RolePortFor<'worker'>, deps: WorkerToolDeps): Tool
     },
     {
       name: 'report_to_router',
-      description: 'Report progress. deliver=true lets the router speak.',
+      description: 'Report progress. deliver=true lets the router speak. For extract/list/evidence tasks, paste verbatim quotes in text, not only a paraphrase.',
       parameters: schema({
         ticketId: { type: 'string' },
         text: { type: 'string' },

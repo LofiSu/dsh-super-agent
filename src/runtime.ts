@@ -1884,7 +1884,17 @@ export class Runtime {
       launchWork: ticketId => {
         if (!late.harness) throw new Error('harness is not ready')
         const ticket = store.getDoc<Ticket>('ticket', ticketId)
-        if (ticket && !ticket.ended && !isConversationTicket(ticket)) late.harness.launch(ticket)
+        if (!ticket || ticket.ended || isConversationTicket(ticket)) return
+        const assignment = ticket.assignments.at(-1)
+        const workerEngaged = assignment?.state === 'running'
+          || late.harness.workerActive(ticketId)
+        if (workerEngaged) {
+          const trigger = store.getDoc<Trigger>('trigger', ticket.originTriggerId)
+          if (trigger) void late.harness.deliver(ticketId, trigger)
+          return
+        }
+        if (late.harness.launchInFlight(ticketId)) return
+        late.harness.launch(ticket)
       },
       ...(fillVault
         ? { fill: { vault: fillVault, ...(fillTarget ? { target: fillTarget } : {}) } }
