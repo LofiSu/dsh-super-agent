@@ -22,6 +22,10 @@ Reopen the app and verify that the reply is still present. To test team
 dispatch, create a second Bot, create a team with both Bots, and open the
 saved dispatch in team history.
 
+To test a newer ds-agent checkout with Bots, set
+`DSH_BOT_DS_AGENT_CHECKOUT` to its absolute path when starting the sidecar.
+The checkout needs its pnpm dependencies installed.
+
 See [runtime configuration and acceptance status](PARITY.md).
 The sidecar stores profiles, turns, teams and proposals in its local
 `bots.db`. Keep this database when updating or rolling back the plugin.

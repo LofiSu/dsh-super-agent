@@ -22,7 +22,7 @@ interface for the following workflows.
 | Host registration | Installed host registered grokbot and returned an offline status after SSH closed before authentication. | Pair a reachable device and run a real remote turn. |
 | Proposal and approval | Installed MCP submitted a pending offer. Approving it in the native desktop added the Bot to the list. An isolated host test covered approval replay. | Verify rejection in the desktop and an initial run if enabled. |
 | Teams | Native desktop dispatched a real Codex and Harness task, restored both results after a full app restart, and persisted cancellation of another running dispatch. | Verify offline-member retry against a real host. |
-| Tools and triggers | Codex adapter passed a real turn while ignoring user-level tool configuration. | The local ds-agent profile can persist a conversation-only scope when the runtime advertises support. A missing scope blocks execution. Verify desktop use with an upgraded ds-agent checkout and implement trigger delivery. |
+| Tools and triggers | Codex adapter passed a real turn while ignoring user-level tool configuration. | The native desktop saved a conversation-only scope on a ds-agent profile, received a real answer and restored it from history. A missing scope blocks execution. Implement trigger delivery. |
 
 ## Runtime configuration
 
