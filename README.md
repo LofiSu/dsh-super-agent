@@ -27,6 +27,8 @@ pnpm ds-agent tasks
 
 See [installation](docs/install.md) for other model providers. Run `pnpm test:coverage` for the offline fixture suite. The [real-channel demo](docs/REAL_CHANNELS.md) uses a live model and creates GitHub issues and comments in the configured repository.
 
+For iMessage and Feishu, run `pnpm ds-agent channels check` before starting both with `pnpm ds-agent serve --imessage --feishu`. See the [channel setup guide](docs/REAL_CHANNELS.md).
+
 ## Documentation
 
 [Architecture](docs/architecture.md) · [Modules](docs/MODULES.md) · [Channels](docs/REAL_CHANNELS.md) · [Safety](docs/safety.md) · [More docs](docs/index.md)
