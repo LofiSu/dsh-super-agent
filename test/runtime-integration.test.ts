@@ -115,7 +115,8 @@ describe('Runtime service integration', () => {
 
   it('isolates Runtime-diagnosed incomplete intake while later connector ingress uses Runtime', async () => {
     const runtime = start()
-    const at = Date.now()
+    // 12:00 UTC is outside this test's 23:00-08:00 UTC quiet window.
+    const at = Date.parse('2026-11-27T12:00:00.000Z')
     const owner = imTrigger({
       id: 'connector-runtime-owner',
       thread: 'connector-runtime-owner',
