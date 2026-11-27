@@ -531,18 +531,28 @@ def run(mode, home, repo_root, task, expected_parent_pid):
                 time.sleep(0.01)
             if not gate.is_file():
                 raise TimeoutError('timed out waiting for post-spawn pre-publication gate')
-            if owner_file.exists():
-                raise RuntimeError('owner record was published before the pre-publication gate')
             pid_text = gate.read_text().strip()
             if not pid_text.isdecimal():
                 raise RuntimeError('pre-publication gate did not contain a numeric fixture PID')
             candidate = int(pid_text)
-            stat = proc_stat(candidate)
-            argv = proc_cmdline(candidate)
-            if (not stat or stat['ppid'] != helper.pid or stat['pgrp'] != candidate
-                    or stat['session'] != candidate or fixture not in argv):
-                raise RuntimeError('gate fixture is not the expected live detached helper child')
-            candidate_start_time = stat['start_time']
+            candidate_start_time = None
+            identity_deadline = time.monotonic() + 10.0
+            while time.monotonic() < identity_deadline:
+                if owner_file.exists():
+                    raise RuntimeError('owner record was published before the pre-publication gate')
+                stat = proc_stat(candidate)
+                argv = proc_cmdline(candidate)
+                if stat and stat['ppid'] != helper.pid:
+                    raise RuntimeError('gate PID is not a child of the recovery helper')
+                if (stat and stat['pgrp'] == candidate and stat['session'] == candidate
+                        and fixture in argv):
+                    candidate_start_time = stat['start_time']
+                    break
+                if helper.poll() is not None:
+                    raise RuntimeError('recovery helper exited before the detached fixture became observable')
+                time.sleep(0.01)
+            if candidate_start_time is None:
+                raise TimeoutError('timed out waiting for the live detached fixture identity at the pre-publication gate')
             report['owner_record_absent_at_gate'] = True
             report['fixture_alive_at_gate'] = True
             os.kill(helper.pid, signal.SIGKILL)
@@ -701,6 +711,7 @@ def main():
     if len(sys.argv) != 6:
         print(json.dumps({'fatal': 'usage: supervisor.py MODE HOME REPO_ROOT TASK EXPECTED_PARENT_PID'}))
         return 2
+    report = None
     try:
         expected_parent_pid = int(sys.argv[5])
         report, status = run(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], expected_parent_pid)
@@ -712,25 +723,30 @@ def main():
     except BaseException as error:
         message = f'{type(error).__name__}: {str(error)[:240]}'
         unsupported = str(error) if 'unsupported capability:' in str(error) else None
-        report = {
-            'mode': sys.argv[1] if len(sys.argv) > 1 else None,
-            'failure_kind': 'UnsupportedCapability' if unsupported else type(error).__name__,
-            'failure_message': message,
-            'unsupported_capability': unsupported,
-            'helper_pid': None,
-            'helper_created': False,
-            'delegate_pid': None,
-            'creation_identity_pinned': False,
-            'owner_acknowledged': False,
-            'group_signal_sent': False,
-            'group_absent': False,
-            'reaped_pids': [],
-            'reaped_delegate_pid': False,
-            'cleanup_error': None,
-            'operational_failure': None,
-            'safe_direct_child_fallback_used': False,
-            'cleanup_succeeded': False,
-        }
+        if not isinstance(report, dict):
+            report = {
+                'mode': sys.argv[1] if len(sys.argv) > 1 else None,
+                'failure_kind': 'UnsupportedCapability' if unsupported else type(error).__name__,
+                'failure_message': message,
+                'unsupported_capability': unsupported,
+                'helper_pid': None,
+                'helper_created': False,
+                'delegate_pid': None,
+                'creation_identity_pinned': False,
+                'owner_acknowledged': False,
+                'group_signal_sent': False,
+                'group_absent': False,
+                'reaped_pids': [],
+                'reaped_delegate_pid': False,
+                'cleanup_error': None,
+                'operational_failure': None,
+                'safe_direct_child_fallback_used': False,
+                'cleanup_succeeded': False,
+            }
+        else:
+            report['failure_kind'] = 'UnsupportedCapability' if unsupported else type(error).__name__
+            report['failure_message'] = message
+            report['unsupported_capability'] = unsupported
         report_file = os.environ.get('DS_AGENT_TEST_SUPERVISOR_REPORT_FILE')
         if report_file:
             temp = Path(report_file).with_name(Path(report_file).name + f'.{os.getpid()}.tmp')
