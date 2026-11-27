@@ -307,7 +307,7 @@ describe('GithubAppAuthService git child environment', () => {
       const gitStub = path.join(binDir, 'git')
       writeFileSync(
         gitStub,
-        '#!/bin/sh\nprintf "%s\\n" "${PATH-unset}" "${GIT_CONFIG_KEY_0-unset}" "${GIT_CONFIG_VALUE_0-unset}" "${GITHUB_TOKEN-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}" "${GIT_CONFIG_GLOBAL-unset}"\n',
+        '#!/bin/sh\nif [ "$9" = "config" ]; then exit 0; fi\nprintf "%s\\n" "${PATH-unset}" "${GIT_CONFIG_KEY_0-unset}" "${GIT_CONFIG_VALUE_0-unset}" "${GITHUB_TOKEN-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}" "${GIT_CONFIG_GLOBAL-unset}"\n',
         { mode: 0o700 },
       )
 
@@ -404,6 +404,65 @@ describe('GithubAppAuthService git child environment', () => {
     }
   })
 
+  it('refuses local extraheader and URL rewrite settings before running git commands', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-git-unsafe-config-'))
+    const envKeys = ['PATH', 'HOME', 'GIT_CONFIG_GLOBAL'] as const
+    const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
+    try {
+      const repoDir = path.join(tempDir, 'repo')
+      const homeDir = path.join(tempDir, 'home')
+      fs.mkdirSync(repoDir)
+      fs.mkdirSync(homeDir)
+      process.env.HOME = homeDir
+      delete process.env.GIT_CONFIG_GLOBAL
+
+      const cleanGitEnv = {
+        ...process.env,
+        HOME: homeDir,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }
+      execFileSync('git', ['init', repoDir], { env: cleanGitEnv, stdio: 'ignore' })
+      const git = (args: string[]) => execFileSync('git', ['-C', repoDir, ...args], {
+        env: cleanGitEnv,
+        stdio: 'ignore',
+      })
+      git(['remote', 'add', 'origin', 'https://github.com/LofiSu/deepseek-super-agent.git'])
+      git(['config', '--add', 'http.https://github.com/.extraheader', 'Authorization: Bearer user_local_gitconfig_token_fixture'])
+      git(['config', '--add', 'url.https://evil.example.invalid/.insteadOf', 'https://github.com/'])
+
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      const pemFile = path.join(tempDir, 'app.pem')
+      writeFileSync(pemFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
+      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), repoDir).githubApp!
+      const service = new GithubAppAuthService(cfg, REPO, mockGithubFetch({
+        token: 'ghs_installation_token_fixture',
+      }))
+      const runGit = service.createAuthenticatedGitRun()
+
+      for (const args of [
+        ['config', '--list'],
+        ['remote', 'get-url', 'origin'],
+        ['status', '--porcelain'],
+        ['ls-remote', 'https://github.com/LofiSu/deepseek-super-agent.git'],
+      ]) {
+        const result = await runGit(args, { cwd: repoDir })
+        expect(result.code).not.toBe(0)
+        expect(result.stderr).toContain('local HTTP extraheader or URL rewrite settings are not allowed')
+        expect(result.stderr).not.toContain('user_local_gitconfig_token_fixture')
+        expect(result.stderr).not.toContain('ghs_installation_token_fixture')
+        expect(result.stderr).not.toContain('evil.example.invalid')
+      }
+    } finally {
+      for (const key of envKeys) {
+        const value = oldEnv[key]
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
   it('blocks repository-local hooks and fsmonitor while retaining installation authentication', async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-git-local-config-'))
     const envKeys = ['PATH', 'HOME', 'GIT_CONFIG_GLOBAL'] as const
@@ -430,8 +489,6 @@ describe('GithubAppAuthService git child environment', () => {
       git(['config', 'user.name', 'Local Hook Probe'])
       git(['config', 'user.email', 'local-hook-probe@example.invalid'])
       git(['config', 'user.rsiLocalProbe', 'rsi_local_gitconfig_probe_20261127_1719'])
-      git(['config', '--add', 'http.https://github.com/.extraheader', 'Authorization: Bearer user_local_gitconfig_token_fixture'])
-      git(['config', '--add', 'url.https://evil.example.invalid/.insteadOf', 'https://github.com/'])
 
       const fsmonitorMarker = path.join(tempDir, 'fsmonitor-fired')
       const hookMarker = path.join(tempDir, 'pre-commit-fired')
@@ -467,8 +524,8 @@ describe('GithubAppAuthService git child environment', () => {
       expect(configOutput.stdout).toContain('command\tcommand line:\tuploadpack.packobjectshook=')
       expect(configOutput.stdout).toContain('command\tcommand line:\tcredential.helper=')
       expect(configOutput.stdout).toContain('Authorization: Bearer ghs_installation_token_fixture')
-      expect(configOutput.stdout).toContain('user_local_gitconfig_token_fixture')
-      expect(configOutput.stdout).toContain('evil.example.invalid')
+      expect(configOutput.stdout).not.toContain('user_local_gitconfig_token_fixture')
+      expect(configOutput.stdout).not.toContain('evil.example.invalid')
 
       const commit = await run(['commit', '--allow-empty', '-m', 'local hook isolation probe'])
       expect(commit.code).toBe(0)
