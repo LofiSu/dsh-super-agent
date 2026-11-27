@@ -254,11 +254,14 @@ export class GithubAppAuthService {
           'github.com:\n    user: git\n    oauth_token: placeholder\n',
           { mode: 0o600 },
         )
-        const childEnv = {
+        const childEnv: NodeJS.ProcessEnv = {
           ...process.env,
           GH_TOKEN: token,
           GH_CONFIG_DIR: ghConfigDir,
+          GH_HOST: 'github.com',
         }
+        delete childEnv.GH_ENTERPRISE_TOKEN
+        delete childEnv.GITHUB_ENTERPRISE_TOKEN
         const child = spawn('gh', args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: childEnv,

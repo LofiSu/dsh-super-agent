@@ -236,6 +236,53 @@ describe('GithubAppAuthService verification', () => {
   })
 })
 
+describe('GithubAppAuthService gh child environment', () => {
+  it('pins github.com and removes inherited enterprise credentials', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-gh-env-'))
+    const envKeys = ['PATH', 'GH_HOST', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] as const
+    const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
+    try {
+      const binDir = path.join(tempDir, 'bin')
+      fs.mkdirSync(binDir)
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      const pemFile = path.join(tempDir, 'app.pem')
+      writeFileSync(pemFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
+      const ghStub = path.join(binDir, 'gh')
+      writeFileSync(
+        ghStub,
+        '#!/bin/sh\ncat >/dev/null\nprintf "%s\\n" "${GH_HOST-unset}" "${GH_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}"\n',
+        { mode: 0o700 },
+      )
+
+      process.env.PATH = `${binDir}${path.delimiter}${oldEnv.PATH ?? ''}`
+      process.env.GH_HOST = 'ghe.example.invalid'
+      process.env.GH_ENTERPRISE_TOKEN = 'ghe_enterprise_secret_fixture'
+      process.env.GITHUB_ENTERPRISE_TOKEN = 'ghe_enterprise_secret_fixture2'
+
+      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), process.cwd()).githubApp!
+      const service = new GithubAppAuthService(cfg, REPO, mockGithubFetch({
+        token: 'ghs_installation_token_fixture',
+      }))
+      const output = await service.createGhRun()([
+        'api', '--method', 'GET', `repos/${REPO}/issues`,
+      ])
+      const [ghHost, ghToken, ghEnterpriseToken, githubEnterpriseToken] = output.trim().split('\n')
+
+      expect(ghHost).toBe('github.com')
+      expect(ghToken).toBe('ghs_installation_token_fixture')
+      expect(ghEnterpriseToken).toBe('unset')
+      expect(githubEnterpriseToken).toBe('unset')
+    } finally {
+      for (const key of envKeys) {
+        const value = oldEnv[key]
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('ghRunForDispatchHost', () => {
   it('does not fall back to owner gh when github-app mode lacks app service', async () => {
     await expect(ghRunForDispatchHost({ auth: { mode: 'github-app' } })).rejects.toThrow(/verified App auth/)
