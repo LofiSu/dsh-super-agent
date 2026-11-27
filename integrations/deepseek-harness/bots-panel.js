@@ -81,6 +81,8 @@ function mountBotsPanel(ctx, React, request) {
 
   function TeamDispatch({ team, members }) {
     const [running, setRunning] = React.useState(false);
+    const [activeId, setActiveId] = React.useState(null);
+    const [cancelling, setCancelling] = React.useState(false);
     const [history, setHistory] = React.useState([]);
     const [notice, setNotice] = React.useState('');
     const pending = React.useRef(null);
@@ -117,6 +119,7 @@ function mountBotsPanel(ctx, React, request) {
 
     async function dispatch(task, form) {
       if (running) return;
+      setActiveId(task.id);
       setRunning(true);
       setNotice('');
       try {
@@ -134,24 +137,50 @@ function mountBotsPanel(ctx, React, request) {
       } catch {
         setNotice('无法确认派工结果。保留原任务文字重试可沿用本次请求。');
       } finally {
+        setActiveId(null);
         setRunning(false);
+      }
+    }
+
+    async function cancelDispatch(id) {
+      if (cancelling) return;
+      setCancelling(true);
+      setNotice('');
+      try {
+        const response = await request(endpoint + '/' + id + '/cancel', { method: 'POST', body: '{}' });
+        if (!response.ok) throw new Error();
+        if (running) {
+          setNotice('已请求中止，等待执行端确认。');
+          return;
+        }
+        const historyResponse = await request(endpoint);
+        if (!historyResponse.ok) throw new Error();
+        setHistory((await historyResponse.json()).dispatches);
+      } catch {
+        setNotice('无法确认取消结果，请重新打开团队查看。');
+      } finally {
+        setCancelling(false);
       }
     }
 
     return h('div', null,
       h('form', { onSubmit: submit },
         h('label', null, '团队任务', h('textarea', { name: 'task', required: true, maxLength: 2400, disabled: running })),
-        h('button', { type: 'submit', disabled: running }, running ? '正在派工…' : '发给团队')),
+        h('button', { type: 'submit', disabled: running || cancelling }, running ? '正在派工…' : '发给团队')),
+      activeId && h('button', { type: 'button', disabled: cancelling, onClick: () => void cancelDispatch(activeId) }, '请求中止派工'),
       notice && h('p', { role: 'alert' }, notice),
       ...history.map(entry => h('details', { key: entry.id },
         h('summary', null, entry.prompt),
         entry.results.some(item => item.body.status === 'not-started' || item.status === 503 || item.status === 409) &&
-          h('button', { type: 'button', disabled: running, onClick: () => void dispatch({ id: entry.id, prompt: entry.prompt }) },
+          h('button', { type: 'button', disabled: running || cancelling, onClick: () => void dispatch({ id: entry.id, prompt: entry.prompt }) },
             '重试未启动成员'),
+        entry.results.some(item => item.body.status === 'not-started' || item.status === 503 || item.status === 409) &&
+          h('button', { type: 'button', disabled: running || cancelling, onClick: () => void cancelDispatch(entry.id) },
+            '取消待执行成员'),
         ...entry.results.map(item => h('article', { key: item.botId },
           h('strong', null, members.find(bot => bot.id === item.botId)?.name ?? item.botId),
           h('p', { style: { whiteSpace: 'pre-wrap' } }, item.body.reply || item.body.error ||
-            ({ failed: '执行失败', interrupted: '已中断', running: '执行中', 'not-started': '尚未执行' })[item.body.status]))))));
+            ({ failed: '执行失败', interrupted: '已中断', running: '执行中', 'not-started': '尚未执行', cancelled: '已取消' })[item.body.status]))))));
   }
 
   function Teams({ profiles }) {

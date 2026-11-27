@@ -7,6 +7,7 @@ function memberTurnId(teamId, dispatchId, botId) {
 
 /** Mount behind host authentication. Reject cross-origin requests before reading state. */
 export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, remoteDevices = [], probeHost, proposalToken }) {
+  const activeDispatches = new Map();
   const runtimes = new Map(Object.entries(adapters));
   if (runTurn) runtimes.set('ds-agent', runTurn);
   const engines = [...new Set(['ds-agent', ...runtimes.keys()])];
@@ -45,12 +46,13 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     const conversation = /^\/api\/bots\/([a-f0-9-]{36})\/turns$/.exec(pathname);
     const avatar = /^\/api\/bots\/([a-f0-9-]{36})\/avatar$/.exec(pathname);
     const probe = /^\/api\/bots\/devices\/(device-[a-f0-9-]{36})\/probe$/.exec(pathname);
+    const cancel = /^\/api\/bots\/teams\/([a-f0-9-]{36})\/dispatch\/([a-z0-9-]{1,80})\/cancel$/i.exec(pathname);
     const dispatch = /^\/api\/bots\/teams\/([a-f0-9-]{36})\/dispatch$/.exec(pathname);
     const offers = pathname === '/api/bots/offers';
     const decision = /^\/api\/bots\/offers\/([a-f0-9-]{36})\/decision$/.exec(pathname);
     const teams = pathname === '/api/bots/teams';
     const addDevice = pathname === '/api/bots/devices';
-    if (!offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar) return undefined;
+    if (!cancel && !offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar) return undefined;
     const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
     const json = (data, status) => Response.json(data, { status, headers });
     const desktop = request.headers.get('Origin') === origin;
@@ -97,7 +99,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     const needsDevices = pathname === '/api/bots' || ((conversation || dispatch || offers || decision) && request.method === 'POST');
     const { devices, deviceRuntimes, warning } = needsDevices ? await readDevices() : {};
     const registry = openBotRegistry(home, devices);
-    async function executeTurn(bot, id, prompt) {
+    async function executeTurn(bot, id, prompt, signal) {
       if (typeof id === 'string') {
         const existing = registry.findTurn(bot.id, id);
         if (existing) {
@@ -111,15 +113,23 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
       const { started, turn } = registry.beginTurn(bot.id, id, prompt);
       if (!started) return { body: turn, status: 200 };
       try {
-        const reply = await execute(bot, turn.prompt, registry.history(bot.id).filter(item => item.id !== turn.id));
+        const reply = await execute(bot, turn.prompt, registry.recentCompletedTurns(bot.id), signal);
         if (typeof reply !== 'string' || !reply.trim()) throw new Error('No reply');
         registry.finishTurn(bot.id, turn.id, { status: 'completed', reply });
       } catch {
-        registry.finishTurn(bot.id, turn.id, { status: 'failed' });
+        registry.finishTurn(bot.id, turn.id, { status: signal?.aborted ? 'interrupted' : 'failed' });
       }
-      return { body: registry.history(bot.id).find(item => item.id === turn.id), status: 201 };
+      return { body: registry.findTurn(bot.id, turn.id), status: 201 };
     }
     try {
+      if (cancel) {
+        if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+        const [, teamId, id] = cancel;
+        if (!registry.cancelDispatch(teamId, id)) return json({ error: 'Dispatch not found' }, 404);
+        const active = activeDispatches.get(teamId + '/' + id);
+        active?.controller.abort();
+        return json({ cancelledPending: true, interruptRequested: Boolean(active) }, 200);
+      }
       if (offers) {
         return request.method === 'GET'
           ? json({ offers: registry.listOffers() }, 200)
@@ -137,7 +147,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
             ...entry,
             results: team.botIds.map(botId => ({
               botId,
-              body: registry.findTurn(botId, memberTurnId(team.id, entry.id, botId)) ?? { status: 'not-started' },
+              body: registry.findTurn(botId, memberTurnId(team.id, entry.id, botId)) ?? { status: registry.isDispatchCancelled(team.id, entry.id) ? 'cancelled' : 'not-started' },
             })),
           }));
           return json({ dispatches }, 200);
@@ -148,17 +158,28 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         }
         registry.recordDispatch(team.id, input.id, input.prompt.trim());
         const bots = new Map(registry.list().map(bot => [bot.id, bot]));
-        const results = await Promise.all(team.botIds.map(async botId => {
-          const id = memberTurnId(team.id, input.id, botId);
-          try {
-            const result = await executeTurn(bots.get(botId), id, input.prompt);
-            return { botId, ...result };
-          } catch (error) {
-            const status = error instanceof RangeError ? 400 : error.errcode === 2067 ? 409 : 500;
-            return { botId, body: { error: 'Unable to dispatch to this Bot' }, status };
-          }
-        }));
-        return json({ results }, 200);
+        const key = team.id + '/' + input.id;
+        const active = activeDispatches.get(key) ?? { controller: new AbortController(), users: 0 };
+        activeDispatches.set(key, active);
+        active.users++;
+        try {
+          const results = await Promise.all(team.botIds.map(async botId => {
+            const id = memberTurnId(team.id, input.id, botId);
+            if (registry.isDispatchCancelled(team.id, input.id)) {
+              return { botId, body: registry.findTurn(botId, id) ?? { status: 'cancelled' }, status: 200 };
+            }
+            try {
+              const result = await executeTurn(bots.get(botId), id, input.prompt, active.controller.signal);
+              return { botId, ...result };
+            } catch (error) {
+              const status = error instanceof RangeError ? 400 : error.errcode === 2067 ? 409 : 500;
+              return { botId, body: { error: 'Unable to dispatch to this Bot' }, status };
+            }
+          }));
+          return json({ results }, 200);
+        } finally {
+          if (--active.users === 0) activeDispatches.delete(key);
+        }
       }
       if (teams) {
         return request.method === 'GET'

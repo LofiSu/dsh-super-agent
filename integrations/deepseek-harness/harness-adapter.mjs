@@ -11,7 +11,7 @@ export function createHarnessAdapter({ executable, workspaceRoot, useLocalMagpie
   if (!isAbsolute(executable) || !isAbsolute(workspaceRoot)) {
     throw new TypeError('Harness executable and workspace root must be absolute paths.');
   }
-  return async (bot, prompt, history) => {
+  return async (bot, prompt, history, signal) => {
     if (!/^[a-f0-9-]{36}$/.test(bot.id)) throw new Error('Invalid Bot ID.');
     const cwd = join(workspaceRoot, bot.id);
     await mkdir(cwd, { recursive: true, mode: 0o700 });
@@ -23,9 +23,10 @@ export function createHarnessAdapter({ executable, workspaceRoot, useLocalMagpie
     const child = execute(executable, [
       'headless', ...modelFlags, '--permission-mode', 'read-only', '--approval-policy', 'never', '--',
       buildBotPrompt(bot, prompt, history),
-    ], { cwd, env, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+    ], { cwd, env, signal, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+    const closed = new Promise(resolve => child.child.once('close', resolve));
     child.child.stdin.end();
-    const { stdout } = await child;
+    const { stdout } = await child.finally(() => closed);
     return stdout.trim();
   };
 }

@@ -46,6 +46,12 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       prompt TEXT NOT NULL,
       PRIMARY KEY (teamId, id)
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS bot_dispatch_cancellations (
+      teamId TEXT NOT NULL,
+      id TEXT NOT NULL,
+      PRIMARY KEY (teamId, id),
+      FOREIGN KEY (teamId, id) REFERENCES bot_team_dispatches(teamId, id)
+    ) STRICT;
     CREATE TABLE IF NOT EXISTS bot_turns (
       id TEXT PRIMARY KEY,
       botId TEXT NOT NULL REFERENCES bot_profiles(id),
@@ -99,6 +105,15 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
         ...team, botIds: members.all(team.id).map(row => row.botId),
       }));
     },
+    cancelDispatch(teamId, id) {
+      const exists = db.prepare('SELECT 1 FROM bot_team_dispatches WHERE teamId = ? AND id = ?').get(teamId, id);
+      if (!exists) return false;
+      db.prepare('INSERT OR IGNORE INTO bot_dispatch_cancellations VALUES (?, ?)').run(teamId, id);
+      return true;
+    },
+    isDispatchCancelled(teamId, id) {
+      return Boolean(db.prepare('SELECT 1 FROM bot_dispatch_cancellations WHERE teamId = ? AND id = ?').get(teamId, id));
+    },
     listDispatches(teamId) {
       return db.prepare('SELECT id, prompt FROM bot_team_dispatches WHERE teamId = ? ORDER BY rowid DESC LIMIT 20').all(teamId);
     },
@@ -106,6 +121,10 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       db.prepare('INSERT INTO bot_team_dispatches VALUES (?, ?, ?) ON CONFLICT(teamId, id) DO NOTHING').run(teamId, id, prompt);
       const saved = db.prepare('SELECT prompt FROM bot_team_dispatches WHERE teamId = ? AND id = ?').get(teamId, id);
       if (saved.prompt !== prompt) throw new RangeError('Dispatch ID is already in use.');
+    },
+    recentCompletedTurns(botId) {
+      return db.prepare("SELECT prompt, reply, status FROM bot_turns WHERE botId = ? AND status = 'completed' ORDER BY rowid DESC LIMIT 10")
+        .all(botId).reverse();
     },
     findTurn(botId, id) {
       return db.prepare('SELECT * FROM bot_turns WHERE botId = ? AND id = ?').get(botId, id);
@@ -160,7 +179,7 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
       return { started: result.changes === 1, turn };
     },
     finishTurn(botId, id, { status, reply }) {
-      if (!['completed', 'failed'].includes(status)) throw new RangeError('Invalid terminal status.');
+      if (!['completed', 'failed', 'interrupted'].includes(status)) throw new RangeError('Invalid terminal status.');
       return db.prepare("UPDATE bot_turns SET status = ?, reply = ? WHERE id = ? AND botId = ? AND status = 'running'")
         .run(status, reply ?? null, id, botId).changes === 1;
     },

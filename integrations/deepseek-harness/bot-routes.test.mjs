@@ -67,7 +67,7 @@ test('conversation invokes its adapter once and persists the reply', async () =>
     assert.equal(data.turns[0].reply, 'Peanut: Hello');
     assert.equal(data.turns[0].status, 'completed');
     assert.equal((await post(turns, { id: 'request-2', prompt: 'Continue' })).status, 201);
-    assert.deepEqual(prior.map(turn => turn.id), ['request-1']);
+    assert.deepEqual(prior.map(turn => turn.prompt), ['Hello']);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -282,6 +282,57 @@ test('team dispatch retries an unavailable member without rerunning a completed 
     assert.deepEqual(resumed.results.map(member => member.status), [200, 201]);
     assert.deepEqual(resumed.results.map(member => member.body.reply), ['local reply', 'remote reply']);
     assert.deepEqual([localCalls, remoteCalls], [1, 1]);
+    device.connected = false;
+    const cancelledTask = { ...task, id: 'cancel' };
+    await post(path, cancelledTask, 200);
+    await post(path + '/cancel/cancel', {}, 200);
+    device.connected = true;
+    const afterCancel = await post(path, cancelledTask, 200);
+    assert.deepEqual(afterCancel.results.map(member => member.body.status), ['completed', 'cancelled']);
+    const reopened = createBotRoutes({ home, allowedOrigin: origin });
+    const historyAfterRestart = await reopened(new Request(url + path, { headers }));
+    assert.deepEqual((await historyAfterRestart.json()).dispatches[0].results.map(member => member.body.status),
+      ['completed', 'cancelled']);
+    assert.deepEqual([localCalls, remoteCalls], [2, 1]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('cancelling a running team dispatch interrupts its members and preserves their terminal status on replay', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-team-interrupt-'));
+  const origin = 'dsh-app://app';
+  const url = 'http://localhost/api/bots';
+  const headers = { Origin: origin, 'Content-Type': 'application/json' };
+  const armed = Promise.withResolvers();
+  let calls = 0;
+  const route = createBotRoutes({
+    home, allowedOrigin: origin,
+    runTurn: async (_bot, _prompt, _history, signal) => {
+      if (++calls === 2) armed.resolve();
+      return new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const post = (path, body) => route(new Request(url + path, {
+    method: 'POST', headers, body: JSON.stringify(body),
+  }));
+  try {
+    const profile = { purpose: 'Review', device: 'local', engine: 'ds-agent' };
+    const first = await (await post('', { ...profile, name: 'First' })).json();
+    const second = await (await post('', { ...profile, name: 'Second' })).json();
+    const team = await (await post('/teams', { name: 'Cancel QA', botIds: [first.id, second.id] })).json();
+    const endpoint = '/teams/' + team.id + '/dispatch';
+    const task = { id: 'interrupt', prompt: 'Review' };
+    const dispatch = post(endpoint, task);
+    await armed.promise;
+    const cancelled = await post(endpoint + '/interrupt/cancel', {});
+    assert.equal((await cancelled.json()).interruptRequested, true);
+    for (const response of [await dispatch, await post(endpoint, task)]) {
+      assert.deepEqual((await response.json()).results.map(row => row.body.status), ['interrupted', 'interrupted']);
+    }
+    assert.equal(calls, 2);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
