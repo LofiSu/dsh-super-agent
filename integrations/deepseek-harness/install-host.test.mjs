@@ -54,6 +54,10 @@ export function startDesktopServer({ port }) {
     const snapshot = await response.json();
     assert.deepEqual(snapshot.bots, []);
     assert.deepEqual(snapshot.devices[0].engines, ['ds-agent']);
+    const unknown = await fetch(host.url + '/api/bots/not-a-route', {
+      headers: { Origin: 'dsh-app://app', 'X-Ds-Desktop': 'fixture' },
+    });
+    assert.equal(unknown.status, 404);
   } finally {
     await host?.close();
     rmSync(root, { recursive: true, force: true });
