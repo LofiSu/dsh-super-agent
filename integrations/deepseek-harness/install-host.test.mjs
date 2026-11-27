@@ -9,8 +9,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 test('generated desktop host reports its bound port and serves Bot inventory', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-port-'));
   const file = join(root, 'host.mjs');
+  const launcher = join(root, 'launcher');
   let host;
   try {
+    writeFileSync(launcher, "#!/bin/sh\nprintf '%s\\n' ds-agent-tool-scope:conversation\n", { mode: 0o700 });
     writeFileSync(file, `
 import http from 'node:http';
 import fs from 'node:fs';
@@ -18,7 +20,9 @@ import path from 'node:path';
 const HOME = ${JSON.stringify(join(root, 'state'))};
 const DESKTOP_SECRET = 'fixture';
 const log = () => {};
-const runCli = async () => ({ code: 0, stdout: 'ds-agent-tool-scope:conversation' });
+const NODE = ${JSON.stringify(launcher)};
+const REPO = ${JSON.stringify(root)};
+const spawnEnv = () => process.env;
 const isAllowedHost = host => /^127\\.0\\.0\\.1:\\d+$/.test(host);
 const send = (res, status, body) => { res.writeHead(status); res.end(JSON.stringify(body)); };
 export function startDesktopServer({ port }) {
