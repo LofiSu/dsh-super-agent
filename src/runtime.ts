@@ -530,6 +530,7 @@ export class Runtime {
   private readonly admission: AdmissionRules
   /** Kept so finish() can close external MCP server processes. */
   private readonly tools: ToolRegistry
+  private readonly localEnv: LocalEnv
   private readonly remoteResultWait?: RemoteMeshResultWait
   /** Shared slot-release/cancel path, bound in the factory closure. */
   private readonly releaseSlot: (ticketId: string) => void
@@ -592,6 +593,7 @@ export class Runtime {
     batchWindowMs: number
     admission: AdmissionRules
     tools: ToolRegistry
+    localEnv: LocalEnv
     remoteResultWait?: RemoteMeshResultWait
     releaseSlot: (ticketId: string) => void
     remoteCancelSends: Map<string, Set<Promise<void>>>
@@ -628,6 +630,7 @@ export class Runtime {
     this.batchWindowMs = parts.batchWindowMs
     this.admission = parts.admission
     this.tools = parts.tools
+    this.localEnv = parts.localEnv
     this.remoteResultWait = parts.remoteResultWait
     this.releaseSlot = parts.releaseSlot
     this.remoteCancelSends = parts.remoteCancelSends
@@ -2293,6 +2296,7 @@ export class Runtime {
       batchWindowMs: opts.batchWindowMs ?? 0,
       admission,
       tools,
+      localEnv: env,
       remoteResultWait: late.remoteResultWait,
       releaseSlot: ticketId => releaseSlot(ticketId),
       remoteCancelSends,
@@ -3390,6 +3394,13 @@ export class Runtime {
   async jobsSettled(): Promise<void> {
     this.flushEvals()
     await this.harness.jobsSettled()
+  }
+
+  /** Stop detached tools before an isolated CLI turn exits on cancellation. */
+  interruptLocalTools(): void {
+    this.localEnv.killShells()
+    this.localAgents?.killAll()
+    this.browserErrands?.killAll()
   }
 
   /** Wait for assessments and jobs, stop the daemon, and close SQLite. */

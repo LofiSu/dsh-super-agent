@@ -343,11 +343,18 @@ async function withRuntime(
     jobDelayMs: 20,
     watchdogIntervalMs: 60_000,
   })
+  const interrupt = () => {
+    runtime.interruptLocalTools()
+    process.exit(143)
+  }
+  const botTurn = process.env.DS_AGENT_BOT_TURN === '1'
+  if (botTurn) process.once('SIGTERM', interrupt)
   runtime.start()
   try {
     await work(runtime)
     await runtime.finish()
   } finally {
+    if (botTurn) process.removeListener('SIGTERM', interrupt)
     if (runtime.store.isOpen) {
       runtime.daemon.stop()
       runtime.store.close()

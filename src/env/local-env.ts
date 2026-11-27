@@ -62,6 +62,7 @@ export interface LocalEnvOptions {
  * tool results or model prompts.
  */
 export class LocalEnv implements EnvPort {
+  private readonly activeShells = new Set<() => void>()
   private readonly timeoutMs: number
   private readonly maxOutputBytes: number
   private readonly childEnv: NodeJS.ProcessEnv
@@ -161,6 +162,10 @@ export class LocalEnv implements EnvPort {
     fs.rmSync(from, { recursive: true, force: true })
   }
 
+  killShells(): void {
+    for (const kill of this.activeShells) kill()
+  }
+
   async bash(
     workerId: string,
     command: string,
@@ -217,6 +222,7 @@ export class LocalEnv implements EnvPort {
           // Already gone.
         }
       }
+      this.activeShells.add(killGroup)
       const timer = setTimeout(() => {
         timedOut = true
         killGroup()
@@ -224,6 +230,7 @@ export class LocalEnv implements EnvPort {
       const finish = (fn: () => void): void => {
         if (settled) return
         settled = true
+        this.activeShells.delete(killGroup)
         clearTimeout(timer)
         fn()
       }
