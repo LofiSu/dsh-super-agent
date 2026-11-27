@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs, { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -393,6 +394,86 @@ describe('GithubAppAuthService git child environment', () => {
       expect(inheritedConfigOutput).toContain('Authorization: Bearer ghs_installation_token_fixture')
       expect(inheritedConfigOutput).not.toContain('rsi_inherited_gitconfig_probe_20261127')
       expect(inheritedConfigOutput).not.toContain('rsi_home_gitconfig_probe_20261127')
+    } finally {
+      for (const key of envKeys) {
+        const value = oldEnv[key]
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks repository-local hooks and fsmonitor while retaining installation authentication', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ds-agent-app-git-local-config-'))
+    const envKeys = ['PATH', 'HOME', 'GIT_CONFIG_GLOBAL'] as const
+    const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
+    try {
+      const repoDir = path.join(tempDir, 'repo')
+      const homeDir = path.join(tempDir, 'home')
+      fs.mkdirSync(repoDir)
+      fs.mkdirSync(homeDir)
+      process.env.HOME = homeDir
+      delete process.env.GIT_CONFIG_GLOBAL
+
+      const cleanGitEnv = {
+        ...process.env,
+        HOME: homeDir,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }
+      execFileSync('git', ['init', repoDir], { env: cleanGitEnv, stdio: 'ignore' })
+      const git = (args: string[]) => execFileSync('git', ['-C', repoDir, ...args], {
+        env: cleanGitEnv,
+        stdio: 'ignore',
+      })
+      git(['config', 'user.name', 'Local Hook Probe'])
+      git(['config', 'user.email', 'local-hook-probe@example.invalid'])
+      git(['config', 'user.rsiLocalProbe', 'rsi_local_gitconfig_probe_20261127_1719'])
+      git(['config', '--add', 'http.https://github.com/.extraheader', 'Authorization: Bearer user_local_gitconfig_token_fixture'])
+      git(['config', '--add', 'url.https://evil.example.invalid/.insteadOf', 'https://github.com/'])
+
+      const fsmonitorMarker = path.join(tempDir, 'fsmonitor-fired')
+      const hookMarker = path.join(tempDir, 'pre-commit-fired')
+      const fsmonitor = path.join(tempDir, 'fsmonitor.sh')
+      writeFileSync(fsmonitor, `#!/bin/sh\nprintf fired > '${fsmonitorMarker}'\nprintf 'token\\n'\n`, { mode: 0o700 })
+      git(['config', 'core.fsmonitor', fsmonitor])
+      const hooksDir = path.join(repoDir, '.git', 'hooks')
+      fs.mkdirSync(hooksDir, { recursive: true })
+      writeFileSync(
+        path.join(hooksDir, 'pre-commit'),
+        `#!/bin/sh\nprintf fired > '${hookMarker}'\n`,
+        { mode: 0o700 },
+      )
+
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      const pemFile = path.join(tempDir, 'app.pem')
+      writeFileSync(pemFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
+      const cfg = parseGithubAuthBlock(authBlock({}, pemFile), repoDir).githubApp!
+      const service = new GithubAppAuthService(cfg, REPO, mockGithubFetch({
+        token: 'ghs_installation_token_fixture',
+      }))
+      const runGit = service.createAuthenticatedGitRun()
+      const run = (args: string[]) => runGit(args, { cwd: repoDir })
+
+      const status = await run(['status', '--porcelain'])
+      expect(status.code).toBe(0)
+      expect(fs.existsSync(fsmonitorMarker)).toBe(false)
+
+      const configOutput = await run(['config', '--list', '--show-origin', '--show-scope'])
+      expect(configOutput.code).toBe(0)
+      expect(configOutput.stdout).toContain('command\tcommand line:\tcore.hookspath=/dev/null')
+      expect(configOutput.stdout).toContain('command\tcommand line:\tcore.fsmonitor=false')
+      expect(configOutput.stdout).toContain('command\tcommand line:\tuploadpack.packobjectshook=')
+      expect(configOutput.stdout).toContain('command\tcommand line:\tcredential.helper=')
+      expect(configOutput.stdout).toContain('Authorization: Bearer ghs_installation_token_fixture')
+      expect(configOutput.stdout).toContain('user_local_gitconfig_token_fixture')
+      expect(configOutput.stdout).toContain('evil.example.invalid')
+
+      const commit = await run(['commit', '--allow-empty', '-m', 'local hook isolation probe'])
+      expect(commit.code).toBe(0)
+      expect(fs.existsSync(hookMarker)).toBe(false)
+      expect(fs.existsSync(fsmonitorMarker)).toBe(false)
     } finally {
       for (const key of envKeys) {
         const value = oldEnv[key]
