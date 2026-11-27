@@ -165,6 +165,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         if (request.method === 'GET') {
           const dispatches = registry.listDispatches(team.id).map(entry => ({
             ...entry,
+            active: activeDispatches.has(team.id + '/' + entry.id),
             results: team.botIds.map(botId => ({
               botId,
               body: registry.findTurn(botId, memberTurnId(team.id, entry.id, botId)) ?? { status: registry.isDispatchCancelled(team.id, entry.id) ? 'cancelled' : 'not-started' },

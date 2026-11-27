@@ -118,14 +118,21 @@ function mountBotsPanel(ctx, React, request) {
         h('button', { type: 'submit', disabled: !ready || sending || !draft.trim() }, sending ? '执行中…' : '发送')));
   }
 
+  const teamRequests = new Map();
+
   function TeamDispatch({ team, members }) {
     const [running, setRunning] = React.useState(false);
     const [activeId, setActiveId] = React.useState(null);
+    const [resumedId, setResumedId] = React.useState(() => teamRequests.get(team.id) ?? null);
     const [cancelling, setCancelling] = React.useState(false);
     const [history, setHistory] = React.useState([]);
     const [notice, setNotice] = React.useState('');
     const pending = React.useRef(null);
     const endpoint = '/api/bots/teams/' + team.id + '/dispatch';
+    const recoveredDispatch = history.find(entry => entry.active || entry.results.some(item => item.body.status === 'running'));
+    const busy = running || Boolean(resumedId || recoveredDispatch);
+    const canRefresh = busy && !running;
+
 
     React.useEffect(() => {
       const controller = new AbortController();
@@ -144,9 +151,35 @@ function mountBotsPanel(ctx, React, request) {
       return () => controller.abort();
     }, [endpoint]);
 
+    React.useEffect(() => {
+      if (!canRefresh) return undefined;
+      const controller = new AbortController();
+      let nextPoll;
+      async function poll() {
+        try {
+          const response = await request(endpoint, { signal: controller.signal });
+          if (!response.ok) throw new Error();
+          const { dispatches } = await response.json();
+          if (!controller.signal.aborted) {
+            setHistory(dispatches);
+            setResumedId(teamRequests.get(team.id) ?? null);
+          }
+        } catch {
+          if (!controller.signal.aborted) setNotice('无法刷新派工状态。');
+        } finally {
+          if (!controller.signal.aborted) nextPoll = setTimeout(poll, 1500);
+        }
+      }
+      nextPoll = setTimeout(poll, 1500);
+      return () => {
+        controller.abort();
+        clearTimeout(nextPoll);
+      };
+    }, [endpoint, canRefresh, team.id]);
+
     async function submit(event) {
       event.preventDefault();
-      if (running) return;
+      if (busy) return;
       const form = event.currentTarget;
       const prompt = String(new FormData(form).get('task') ?? '').trim();
       if (!prompt) return;
@@ -157,7 +190,8 @@ function mountBotsPanel(ctx, React, request) {
     }
 
     async function dispatch(task, form) {
-      if (running) return;
+      if (busy) return;
+      teamRequests.set(team.id, task.id);
       setActiveId(task.id);
       setRunning(true);
       setNotice('');
@@ -176,6 +210,7 @@ function mountBotsPanel(ctx, React, request) {
       } catch {
         setNotice('无法确认派工结果。保留原任务文字重试可沿用本次请求。');
       } finally {
+        teamRequests.delete(team.id);
         setActiveId(null);
         setRunning(false);
       }
@@ -204,9 +239,10 @@ function mountBotsPanel(ctx, React, request) {
 
     return h('div', null,
       h('form', { className: 'bots-composer', onSubmit: submit },
-        h('label', null, '团队任务', h('textarea', { name: 'task', required: true, maxLength: 2400, disabled: running })),
-        h('button', { type: 'submit', disabled: running || cancelling }, running ? '正在派工…' : '发给团队')),
-      activeId && h('button', { type: 'button', disabled: cancelling, onClick: () => void cancelDispatch(activeId) }, '请求中止派工'),
+        h('label', null, '团队任务', h('textarea', { name: 'task', required: true, maxLength: 2400, disabled: busy })),
+        h('button', { type: 'submit', disabled: busy || cancelling }, busy ? '正在派工…' : '发给团队')),
+      (activeId || recoveredDispatch) && h('button', { type: 'button', disabled: cancelling,
+        onClick: () => void cancelDispatch(activeId ?? recoveredDispatch.id) }, '请求中止派工'),
       notice && h('p', { role: 'alert' }, notice),
       ...history.map(entry => h('details', { key: entry.id },
         h('summary', null, entry.prompt),
