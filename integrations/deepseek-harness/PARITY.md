@@ -17,11 +17,11 @@ interface for the following workflows.
 
 | Workflow | Verified evidence | Remaining |
 | --- | --- | --- |
-| Bot profiles and chat | Native desktop created a Bot, switched it to Codex, received a real reply, and reopened the conversation with its reply intact. Earlier installed-host tests covered ds-agent persistence across restart. | Repeat the live ds-agent journey through the desktop UI. |
+| Bot profiles and chat | Native desktop created a Bot, switched it to Codex, and reopened its saved reply. A separate ds-agent Bot answered a new question in the desktop and restored the reply after a full app restart. | Verify recovery of interrupted turns in the native desktop. |
 | Runtime selection | Installed host advertised four runtimes after a restart without adapter environment overrides. Codex and Harness returned and persisted real replies. | Claude Code returned a quota error. Verify each selection in the desktop window. |
 | Host registration | Installed host registered grokbot and returned an offline status after SSH closed before authentication. | Pair a reachable device and run a real remote turn. |
-| Proposal and approval | Installed MCP submitted a pending offer without creating a Bot. Isolated host approval returned the same Bot on replay. | Approve or reject in the native desktop window. Verify an initial run if enabled. |
-| Teams | Installed host dispatched a real Codex and Harness task and recovered both replies from team history after restart. Offline-member retry is covered using a simulated device. | Verify desktop dispatch, task recovery, and cancellation. |
+| Proposal and approval | Installed MCP submitted a pending offer. Approving it in the native desktop added the Bot to the list. An isolated host test covered approval replay. | Verify rejection in the desktop and an initial run if enabled. |
+| Teams | Native desktop dispatched a real Codex and Harness task, restored both results after a full app restart, and persisted cancellation of another running dispatch. | Verify offline-member retry against a real host. |
 | Tools and triggers | Codex adapter passed a real turn while ignoring user-level tool configuration. | Implement and verify persisted per-Bot tool grants and trigger delivery. |
 
 ## Runtime configuration

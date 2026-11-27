@@ -253,7 +253,7 @@ function mountBotsPanel(ctx, React, request) {
       error && h('p', { role: 'alert' }, error),
       editing && h('form', { onSubmit: create, 'aria-label': '新建团队' },
         h('label', null, '团队名称', h('input', { name: 'teamName', required: true, maxLength: 80 })),
-        h('fieldset', null, h('legend', null, '成员'),
+        h('fieldset', { className: 'bots-team-members' }, h('legend', null, '成员'),
           ...profiles.map(bot => h('label', { key: bot.id },
             h('input', { type: 'checkbox', name: 'member', value: bot.id }), bot.name))),
         h('button', { type: 'submit', disabled: saving }, '保存团队'),
@@ -488,6 +488,10 @@ function mountBotsPanel(ctx, React, request) {
         .dsh-bots label{display:grid;gap:6px;margin:12px 0;font-weight:550}
         .dsh-bots input,.dsh-bots select,.dsh-bots textarea,.dsh-bots button{box-sizing:border-box;font:inherit;padding:9px 12px;border-radius:9px;border:1px solid var(--bot-line);color:inherit;background:transparent}
         .dsh-bots input,.dsh-bots select,.dsh-bots textarea{width:100%;background:color-mix(in srgb,Canvas 72%,transparent)}
+        .dsh-bots .bots-team-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:16px 0;padding:12px;border:1px solid var(--bot-line);border-radius:12px}
+        .dsh-bots .bots-team-members label{display:flex;align-items:center;gap:9px;margin:0;padding:9px;border-radius:8px}
+        .dsh-bots .bots-team-members label:has(:checked){background:var(--bot-tint)}
+        .dsh-bots .bots-team-members input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--bot-accent)}
         .dsh-bots textarea{min-height:80px;resize:vertical}.dsh-bots option{color:CanvasText;background:Canvas}
         .dsh-bots :focus-visible{outline:2px solid var(--bot-accent);outline-offset:2px}
         .dsh-bots button{cursor:pointer;transition:background-color .16s ease,border-color .16s ease}
