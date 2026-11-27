@@ -408,6 +408,22 @@ function mountBotsPanel(ctx, React, request) {
       }
     }
 
+    async function updateIdentity(event, id) {
+      event.preventDefault();
+      setError('');
+      const fields = new FormData(event.currentTarget);
+      try {
+        const response = await request('/api/bots/' + id + '/profile', {
+          method: 'POST', body: JSON.stringify({ name: fields.get('name'), purpose: fields.get('purpose') }),
+        });
+        if (!response.ok) throw new Error();
+        const saved = await response.json();
+        setProfiles(current => current.map(bot => bot.id === id ? saved : bot));
+      } catch {
+        setError('无法保存 Bot 名称或职责。请检查名称是否已被使用。');
+      }
+    }
+
     async function updateAvatar(id, avatar) {
       setError('');
       try {
@@ -481,8 +497,14 @@ function mountBotsPanel(ctx, React, request) {
       !loading && h(Teams, { profiles }),
       ...profiles.map(bot => h('article', { key: bot.id },
         h('strong', null, (avatars[bot.avatar] && bot.avatar !== 'initial' ? avatars[bot.avatar] : Array.from(bot.name)[0]) + ' · ' + bot.name), h('p', null, bot.purpose),
-        h('small', null, `本机 Mac · ${bot.engine} · 配置已保存`),
+        h('small', null, `${devices.find(device => device.id === bot.device)?.label ?? bot.device} · ${bot.engine} · 配置已保存`),
         h('button', { type: 'button', onClick: () => setSelected(bot.id), 'aria-pressed': selected === bot.id }, '打开会话'),
+        selected === bot.id && h('details', null,
+          h('summary', null, '编辑 Bot'),
+          h('form', { onSubmit: event => void updateIdentity(event, bot.id) },
+            h('label', null, '名称', h('input', { name: 'name', required: true, maxLength: 80, defaultValue: bot.name })),
+            h('label', null, '职责', h('textarea', { name: 'purpose', required: true, maxLength: 1000, defaultValue: bot.purpose })),
+            h('button', { type: 'submit' }, '保存配置'))),
         selected === bot.id && h('label', null, '编辑头像', h('select', {
           value: bot.avatar ?? 'initial', onChange: event => void updateAvatar(bot.id, event.target.value),
         }, ...Object.entries(avatars).map(([value, label]) => h('option', { key: value, value }, label)))),

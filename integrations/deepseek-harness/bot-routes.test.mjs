@@ -62,7 +62,14 @@ test('conversation invokes its adapter once and persists the reply', async () =>
     assert.equal((await post(turns, input)).status, 201);
     assert.equal((await post(turns, input)).status, 200);
     assert.equal(calls, 1);
+    const profile = url + '/' + bot.id + '/profile';
+    assert.equal((await post(profile, { name: ' ', purpose: 'Review' })).status, 400);
+    assert.equal((await post(profile, { name: 'Peanut Review', purpose: 'Review' })).status, 200);
     const reopened = createBotRoutes({ home, allowedOrigin: origin });
+    const inventory = await (await reopened(new Request(url, { headers }))).json();
+    assert.equal(inventory.bots[0].id, bot.id);
+    assert.equal(inventory.bots[0].name, 'Peanut Review');
+    assert.equal(inventory.bots[0].purpose, 'Review');
     const data = await (await reopened(new Request(turns, { headers }))).json();
     assert.equal(data.turns[0].reply, 'Peanut: Hello');
     assert.equal(data.turns[0].status, 'completed');

@@ -73,18 +73,23 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
   }
   const insert = db.prepare('INSERT INTO bot_profiles (id, name, purpose, device, engine, createdAt, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const list = db.prepare('SELECT * FROM bot_profiles ORDER BY createdAt, id');
-  function normalizeProfile(input) {
+  function normalizeIdentity(input) {
     const name = typeof input?.name === 'string' ? input.name.trim() : '';
     const purpose = typeof input?.purpose === 'string' ? input.purpose.trim() : '';
     if (!name || name.length > 80 || !purpose || purpose.length > 1000) {
       throw new RangeError('Bot name and purpose are required and must fit the field limits.');
     }
+    return { name, purpose };
+  }
+
+  function normalizeProfile(input) {
+    const identity = normalizeIdentity(input);
     if (!devices.some(device => device.id === input.device && device.status === 'ready' && device.engines.includes(input.engine))) {
       throw new RangeError('The selected Agent is unavailable on this device.');
     }
     const avatar = input.avatar ?? 'initial';
     if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');
-    return { name, purpose, device: input.device, engine: input.engine, avatar };
+    return { ...identity, device: input.device, engine: input.engine, avatar };
   }
 
   function create(input) {
@@ -95,6 +100,10 @@ export function openBotRegistry(home, devices = [{ id: 'local', status: 'ready',
   return {
     close: () => db.close(),
     list: () => list.all(),
+    updateIdentity(id, input) {
+      const { name, purpose } = normalizeIdentity(input);
+      return db.prepare('UPDATE bot_profiles SET name = ?, purpose = ? WHERE id = ? RETURNING *').get(name, purpose, id);
+    },
     setAvatar(id, avatar) {
       if (!['initial', 'leaf', 'spark', 'moon'].includes(avatar)) throw new RangeError('Unknown avatar.');
       return db.prepare('UPDATE bot_profiles SET avatar = ? WHERE id = ? RETURNING *').get(avatar, id);

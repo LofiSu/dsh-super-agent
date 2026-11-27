@@ -44,6 +44,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
   return async function botRoutes(request) {
     const pathname = new URL(request.url).pathname;
     const conversation = /^\/api\/bots\/([a-f0-9-]{36})\/turns$/.exec(pathname);
+    const profile = /^\/api\/bots\/([a-f0-9-]{36})\/profile$/.exec(pathname);
     const avatar = /^\/api\/bots\/([a-f0-9-]{36})\/avatar$/.exec(pathname);
     const probe = /^\/api\/bots\/devices\/(device-[a-f0-9-]{36})\/probe$/.exec(pathname);
     const cancel = /^\/api\/bots\/teams\/([a-f0-9-]{36})\/dispatch\/([a-z0-9-]{1,80})\/cancel$/i.exec(pathname);
@@ -52,7 +53,7 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
     const decision = /^\/api\/bots\/offers\/([a-f0-9-]{36})\/decision$/.exec(pathname);
     const teams = pathname === '/api/bots/teams';
     const addDevice = pathname === '/api/bots/devices';
-    if (!cancel && !offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar) return undefined;
+    if (!cancel && !offers && !decision && !dispatch && !teams && !probe && !addDevice && pathname !== '/api/bots' && !conversation && !avatar && !profile) return undefined;
     const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
     const json = (data, status) => Response.json(data, { status, headers });
     const desktop = request.headers.get('Origin') === origin;
@@ -197,6 +198,11 @@ export function createBotRoutes({ home, allowedOrigin, runTurn, adapters = {}, r
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
         const { id, label } = registry.addDevice(input);
         return json({ id, label, status: 'offline', engines: [] }, 201);
+      }
+      if (profile) {
+        if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+        const bot = registry.updateIdentity(profile[1], input);
+        return bot ? json(bot, 200) : json({ error: 'Bot not found' }, 404);
       }
       if (avatar) {
         if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
