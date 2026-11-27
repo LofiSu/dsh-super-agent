@@ -103,8 +103,10 @@ One-time setup:
 
 `ds-agent channels check --feishu` reports only presence and pairing, never the
 secret. Add `--network` for one real `tenant_access_token` call (still no
-message); exit 0 means the app credentials authenticate and the chat id is
-configured. Chat membership and scope errors surface on the first poll.
+message); this remains a token-only check. `--check-chat` implies `--network`,
+then reads chat metadata and at most one history item. It is read-only and does
+not verify send capability. Chat membership and scope errors can be diagnosed
+with this probe without exposing message contents.
 
 Inbound paths:
 
@@ -178,17 +180,21 @@ Run the preflight before a live serve. It needs no model and opens no SQLite:
 ds-agent channels check                  # iMessage + Feishu, offline
 ds-agent channels check --imessage       # one channel
 ds-agent channels check --feishu
-ds-agent channels check --feishu --network  # real tenant_access_token, no message
+ds-agent channels check --feishu --network  # token only; no message
+ds-agent channels check --feishu --check-chat # token + chat metadata + at most one history item; read-only
 ```
 
 - iMessage: opens `chat.db` read-only, checks the required schema, prints
   `COUNT(*)` and `MAX(ROWID)` only (never text), reports admission and whether
   `osascript` exists. It prints the manual Automation command but does not run
   it, so it cannot prompt or send.
-- Feishu: reports paired credentials, chat presence, base URL, and scopes with
-  values hidden. `--network` performs one real `tenant_access_token` call and
-  reports success/failure without printing the token or secret. The default is
-  fully offline.
+- Feishu: reports paired credentials, chat presence, base URL, and documented
+  scopes with credential values hidden. `--network` performs only one real
+  `tenant_access_token` call. `--check-chat` implies `--network`, reads the
+  target chat metadata, then requests one history item with a one-page cap. It
+  never prints message bodies, ids, tokens, or secrets. Empty history is a
+  successful read. Send capability remains `未验证`; no message is sent. The
+  default is fully offline.
 - Exit 0 only when every selected channel is ready; otherwise every actionable
   reason is printed and the exit code is 1.
 
