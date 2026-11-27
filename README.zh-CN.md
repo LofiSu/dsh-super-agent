@@ -480,9 +480,9 @@ DS_AGENT_GH_KEEP=1 pnpm demo           # 故意保留真实 issue
 
 ### pstack 工程工作流
 
-在 ds-agent 的对话里输入 `/poteto-mode <任务>`，例如
-`/poteto-mode 复现这个 CLI 错误，给出修前和修后的命令输出`。
-工程任务也会收到 pstack 的路由提示。`pnpm ds-agent skills` 可列出可读取的技能和手册。
+直接用自然语言描述工程任务，例如「修复登录超时，先复现再验证」。
+匹配的工程工单会在 Worker 第一次调用模型前加载 pstack 和对应手册。
+`pnpm ds-agent skills` 可列出可读取的技能和手册。
 pstack 使用现有的 ds-agent 模型和已配置的本地专家，发布和其他外部动作仍走现有审批流程。
 
 这个仓库的开发编排也由项目内的 pstack 技能驱动。上游版本和适配入口见

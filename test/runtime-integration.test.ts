@@ -98,26 +98,31 @@ function reportingModel(prompts: string[] = []): ScriptedModel {
 }
 
 describe('Runtime service integration', () => {
-  it('passes a pstack request and both workflow documents through the CLI ticket to the worker', async () => {
-    let mode = ''
-    let playbook = ''
-    let prompt = ''
+  it.each([
+    ['请修复登录超时，先复现再验证', 'pstack-playbook-bug-fix'],
+    ['请评审 PR #42 并处理 CI 失败', 'pstack-playbook-babysit'],
+    ["Don't merge the PR, just review the diff", 'interrogate'],
+    ['Fix the login timeout described in PR #42', 'pstack-playbook-bug-fix'],
+    ['请只排查登录超时', 'pstack-playbook-investigation'],
+    ['背景信息。'.repeat(42) + '请修复登录超时', 'pstack-playbook-bug-fix'],
+    ['帮我整理这周的会议笔记', undefined],
+  ])('starts the matching engineering workflow without a command for %s', async (text, playbook) => {
+    let system = ''
     const runtime = start({ model: new ScriptedModel(request => {
-      if (request.role !== 'worker') return { text: 'router-ok' }
-      prompt = request.messages.map(message => message.content).join(' ')
-      const workflow = request.messages.filter(message => message.role === 'tool' && message.name === 'read_skill')
-      mode = workflow[0]?.content ?? ''
-      playbook = workflow[1]?.content ?? ''
-      if (workflow.length >= 2) return { text: 'workflow loaded' }
-      const skill = workflow.length ? 'pstack-playbook-bug-fix' : 'poteto-mode'
-      return { toolCalls: [{ id: skill, name: 'read_skill', args: { skill } }] }
+      if (request.role === 'worker') {
+        system ||= request.messages.find(message => message.role === 'system')?.content ?? ''
+      }
+      return { text: 'ok' }
     }) })
-    const request = '/poteto-mode Reproduce the login timeout'
-    runtime.ingest(cliTrigger({ text: request }))
+    runtime.ingest(cliTrigger({ text }))
     await runtime.jobsSettled()
-    expect(prompt).toContain(request)
-    expect(mode).toContain('Non-negotiables')
-    expect(playbook).toContain('Verify on the same surface')
+    expect(system).toBeTruthy()
+    if (playbook) {
+      expect(system).toContain('Non-negotiables')
+      expect(system).toContain(`loaded ${playbook} before this turn`)
+    } else {
+      expect(system).not.toContain('Non-negotiables')
+    }
   })
 
   it('resumes a trigger-only interrupted ingress and leaves completed retries duplicate', () => {

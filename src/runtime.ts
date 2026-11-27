@@ -67,6 +67,7 @@ import { createModelFromEnv, HttpOpenAI, roleModelsFromEnv, type Model } from '.
 import { directChatRouterShard, directChatThread, SessionJournal, sharesDirectChatThread, workerSessionId } from './harness/session.ts'
 import { loadPromptFiles, type PromptFiles } from './harness/prompts.ts'
 import { LocalAgentRegistry, loadLocalAgents, type LocalAgentSpec } from './env/local-agents.ts'
+import { engineeringWorkflow } from './harness/engineering-workflow.ts'
 import { SkillRegistry } from './env/skills.ts'
 import { ToolRegistry } from './harness/tools.ts'
 import {
@@ -1923,7 +1924,7 @@ export class Runtime {
       jobDelayMs: opts.jobDelayMs ?? 40,
       prompts: promptFiles,
       ...(localAgents ? { localAgents: localAgents.list() } : {}),
-      ...(skills.size ? { skills: skills.list() } : {}),
+      ...(skills.size ? { skills: skills.list(), engineeringWorkflow: (ticket: Ticket) => engineeringWorkflow(ticket, skills, store) } : {}),
       teams,
       takeGuidance: (ticketId, audience) => engine.takeGuidance(ticketId, audience),
       singleSession: opts.singleSession === true,
