@@ -96,13 +96,3 @@ export function oneLine(value: string, max = 240): string {
   const clean = value.replace(/\s+/g, ' ').trim()
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`
 }
-
-/** Small deterministic hash for trigger ids; collisions are handled by dedupe. */
-export function stableHash(value: string): string {
-  let hash = 0x811c9dc5
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(36)
-}

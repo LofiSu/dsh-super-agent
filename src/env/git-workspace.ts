@@ -242,20 +242,6 @@ export function assertGitCommonDirInsideWorkspace(workspace: string): void {
   }
 }
 
-export function currentBranch(workspace: string): string | undefined {
-  try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd: workspace,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      env: { ...process.env, ...GIT_ENV },
-    }).trim()
-    return branch && branch !== 'HEAD' ? branch : undefined
-  } catch {
-    return undefined
-  }
-}
-
 const PROTECTED_SLUGS = new Set(['main', 'master'])
 const PEANUT_MAIN = `${PEANUT_BRANCH_PREFIX}main`
 
