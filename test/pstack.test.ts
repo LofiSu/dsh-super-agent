@@ -10,7 +10,7 @@ describe('pstack runtime integration', () => {
 
   it('routes engineering requests and explicit invocations to pstack', () => {
     const prompt = buildSystemPrompt({ role: 'worker', skills: skills.list() })
-    expect(prompt).toContain('/poteto-mode')
+    expect(prompt).toContain('Every accepted work ticket starts with pstack')
     expect(skills.read('poteto-mode').body).toContain('Autopilot')
   })
 

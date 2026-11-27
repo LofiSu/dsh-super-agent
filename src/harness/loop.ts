@@ -1013,7 +1013,11 @@ export class Harness {
         prompts: this.opts.prompts,
         localAgents: this.opts.localAgents,
         skills: this.opts.skills,
-        workflow: ticket ? this.opts.engineeringWorkflow?.(ticket) : undefined,
+        workflow: ticket && !ticket.ended && ticket.assignments.at(-1)?.state === 'running'
+          && !isConversationTicket(ticket)
+          && !isProactiveTicket(ticket) && !isConnectorWakeTicket(ticket)
+          ? this.opts.engineeringWorkflow?.(ticket)
+          : undefined,
         pause: () => this.pauseReason(ticketId, prompt),
       })
     } finally {

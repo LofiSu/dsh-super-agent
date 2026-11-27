@@ -20,6 +20,7 @@ import {
 import { Evals } from './evals.ts'
 import type { Host } from './host.ts'
 import { Intake } from './intake.ts'
+import { assertPstackDelivery, markPstackDelivered } from './pstack-run.ts'
 import { Replies } from './replies.ts'
 import { assertSessionMay } from './session-role.ts'
 import { handback } from './subscribe.ts'
@@ -83,7 +84,12 @@ export class Engine {
   }
 
   report(ticketId: string, report: WorkerReport): ReportResult {
-    return this.host.repo.atomic(() => this.assignments.report(ticketId, report))
+    return this.host.repo.atomic(() => {
+      if (report.kind === 'ready') assertPstackDelivery(this.host.repo, ticketId)
+      const result = this.assignments.report(ticketId, report)
+      if (report.kind === 'ready' && result.verdict === 'deliver') markPstackDelivered(this.host.repo, ticketId)
+      return result
+    })
   }
 
   /** Start a new Assignment on the same Ticket after a failed or blocked turn. */

@@ -29,6 +29,8 @@ export interface LocalAgentSpec {
   maxOutputBytes?: number
   /** Extra environment names to copy from the parent, e.g. `ANTHROPIC_API_KEY`. */
   env?: string[]
+  /** Official client profile directory. Contains a path, never credential values. */
+  profileEnvironment?: { CODEX_HOME?: string; CLAUDE_CONFIG_DIR?: string }
 }
 
 export interface LocalAgentInfo {
@@ -69,7 +71,7 @@ export const MAX_LOCAL_AGENTS = 16
 const ID = /^[a-z][a-z0-9_-]{0,31}$/
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const COMMAND = /^[A-Za-z0-9._-]+$/
-const SPEC_KEYS = new Set(['id', 'command', 'args', 'description', 'timeoutMs', 'maxOutputBytes', 'env'])
+const SPEC_KEYS = new Set(['id', 'command', 'args', 'description', 'timeoutMs', 'maxOutputBytes', 'env', 'profileEnvironment'])
 
 /**
  * Read the owner's local-agent list. A file wins over the environment seed.
@@ -166,6 +168,20 @@ export function normalizeLocalAgents(list: readonly unknown[]): LocalAgentSpec[]
       throw new UserError(`local agent ${id} env must be an array of environment names`)
     }
 
+    const profile: LocalAgentSpec['profileEnvironment'] = {}
+    if (raw.profileEnvironment !== undefined) {
+      if (raw.profileEnvironment === null || typeof raw.profileEnvironment !== 'object' || Array.isArray(raw.profileEnvironment)) {
+        throw new UserError(`local agent ${id} profileEnvironment must be an object`)
+      }
+      for (const [key, value] of Object.entries(raw.profileEnvironment)) {
+        if ((key !== 'CODEX_HOME' && key !== 'CLAUDE_CONFIG_DIR') || typeof value !== 'string'
+          || !path.isAbsolute(value) || /[\x00-\x1f\x7f]/.test(value)) {
+          throw new UserError(`local agent ${id} needs an absolute official client profile directory`)
+        }
+        profile[key] = value
+      }
+    }
+
     return {
       id,
       command: expanded,
@@ -178,6 +194,7 @@ export function normalizeLocalAgents(list: readonly unknown[]): LocalAgentSpec[]
         maxOutputBytes: boundedInt(raw.maxOutputBytes, id, 'maxOutputBytes', 100, MAX_LOCAL_AGENT_OUTPUT_BYTES),
       }),
       ...(env.length ? { env: [...env] as string[] } : {}),
+      ...(Object.keys(profile).length ? { profileEnvironment: profile } : {}),
     }
   })
 }
@@ -273,7 +290,7 @@ export class LocalAgentRegistry {
         spec,
         args,
         cwd,
-        env: agentEnv(this.env, spec.env ?? []),
+        env: { ...agentEnv(this.env, spec.env ?? []), ...spec.profileEnvironment },
         timeoutMs,
         maxOutputBytes,
         onSpawn: child => {

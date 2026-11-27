@@ -161,7 +161,17 @@ export class MockModel implements Model, SemanticPolicy {
       if (!used(turn, 'list_tasks')) return call('list_tasks', {})
       return { text: '[watchdog] healthy' }
     }
-    return this.worker(turn, blob)
+    const result = this.worker(turn, blob)
+    if (request.tools.some(tool => tool.name === 'pstack_checkpoint')
+      && !request.messages.some(message => message.name === 'pstack_checkpoint')
+      && result.toolCalls?.some(tool => tool.name === 'report_to_router' && tool.args.kind === 'ready')) {
+      const checkpoints = ['plan', 'execute', 'verify'].map(phase => ({
+        id: `fixture-pstack-${phase}`, name: 'pstack_checkpoint',
+        args: { phase, playbook: 'pstack-playbook-investigation', evidence: 'Deterministic fixture execution' },
+      }))
+      return { ...result, toolCalls: [...checkpoints, ...result.toolCalls] }
+    }
+    return result
   }
 
   private router(messages: ModelMessage[], blob: string): Completion {

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { discoverLocalEndpoints, type DiscoveredEndpoint } from '../gateway/discover.ts'
 import { gatewayConfigPath } from '../gateway/config-file.ts'
+import { printAgentSetup } from './agent-connections.ts'
 
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -35,6 +36,7 @@ function buildConfig(found: DiscoveredEndpoint[]): Record<string, unknown> {
  * extra endpoint. Hint: add an `apiKey` to any provider that needs auth.
  */
 export async function runSetupCommand(home: string): Promise<void> {
+  printAgentSetup(home)
   const extra = flag('url')
   const write = process.argv.includes('--write')
   const found = await discoverLocalEndpoints(extra ? [extra] : [])

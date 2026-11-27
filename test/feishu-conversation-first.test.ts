@@ -467,7 +467,7 @@ describe('Feishu conversation-first 1:1', () => {
 
     const envelopes = runtime.store.listDocs<Ticket>('ticket').filter(isConversationTicket)
     expect(envelopes).toHaveLength(1)
-    expect(workerSystem).toContain('loaded pstack-playbook-investigation before this turn')
+    expect(workerSystem).toContain('Every accepted work ticket starts here')
     expect(runtime.store.listReplies().some(r => r.text.includes('查'))).toBe(true)
     const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
     expect(work.assignments.some(a => a.state === 'pending' || a.state === 'running')).toBe(true)

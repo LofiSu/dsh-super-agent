@@ -173,6 +173,7 @@ export interface ReceiptExternalOperation {
   kind: string
   phase: string
   assignmentId?: string
+  agentId?: string
   updatedAt?: string
 }
 
@@ -362,19 +363,21 @@ export class Store {
              json_extract(payload, '$.kind') AS kind,
              json_extract(payload, '$.phase') AS phase,
              json_extract(payload, '$.assignmentId') AS assignment_id,
+             json_extract(payload, '$.agentId') AS agent_id,
              json_extract(payload, '$.updatedAt') AS updated_at
       FROM documents
       WHERE kind = ? AND CASE WHEN json_valid(payload)
         THEN json_extract(payload, '$.ticketId') END = ?
       ORDER BY rowid
     `).all('external_op', ticketId) as {
-      id: string; kind: string; phase: string; assignment_id: string | null; updated_at: string | null
+      id: string; kind: string; phase: string; assignment_id: string | null; agent_id: string | null; updated_at: string | null
     }[]
     return rows.map(row => ({
       id: row.id,
       kind: row.kind,
       phase: row.phase,
       ...(row.assignment_id !== null ? { assignmentId: row.assignment_id } : {}),
+      ...(row.agent_id !== null ? { agentId: row.agent_id } : {}),
       ...(row.updated_at !== null ? { updatedAt: row.updated_at } : {}),
     }))
   }

@@ -501,10 +501,23 @@ Built on Node.js, TypeScript, `node:sqlite`, `tsx`, and Vitest — no agent fram
 ### pstack engineering workflows
 
 Describe a software engineering task in a ds-agent conversation. For example,
-“Fix the checkout timeout and verify the original repro.” For matching work
-tickets, ds-agent loads the pstack mode and playbook before the first Worker
-model call. The workflow uses the configured tools and specialists. List the available
+“Fix the checkout timeout and verify the original repro.” Every accepted work
+ticket starts in pstack before the first local Worker model call. The Worker
+chooses a playbook and records plan, execution and verification checkpoints.
+Use `ds-agent receipt <ticketId>` to see stored workflow and delegation status. List the available
 documents with `pnpm ds-agent skills`. Existing approval rules apply.
 
 Repository development uses the project-local pstack skill. See the
 [upstream source and host adapters](vendor/pstack/UPSTREAM.md).
+
+### Local AI connections
+
+Run `ds-agent setup` or `ds-agent agents discover` to see installed clients.
+Link an officially signed-in CLI with `ds-agent agents bind codex-work codex`
+or `ds-agent agents bind claude-review claude`. The `agents list`,
+`agents check <id>`, and `agents unbind <id>` commands manage local aliases.
+Use `--profile <absolute-directory>` to select an official client profile and
+`--workspace-write` when the connection needs workspace write permission.
+
+WorkBuddy and other bots can be registered through a user-supplied execution
+bridge. Local settings and execution receipts stay in the ds-agent home.

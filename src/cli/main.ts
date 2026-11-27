@@ -45,6 +45,8 @@ import { backupUsage, runBackupCli } from './backup.ts'
 import { runUi } from './ui.ts'
 import { runProfileCommand, runWireCommand } from './wiring.ts'
 import { runSetupCommand } from './setup.ts'
+import { loadBoundAgentSpecs } from '../env/agent-connections.ts'
+import { printAgentSetup, runAgentConnectionsCommand } from './agent-connections.ts'
 import { readPackageVersion } from './version.ts'
 import { runEvolutionCommand } from './evolution.ts'
 import { parseApprovalActionId } from './approval-args.ts'
@@ -203,7 +205,11 @@ function help(): void {
   pnpm ds-agent a2a [--limit 10]      # persisted A2A envelopes
   pnpm ds-agent prompt [--role router|worker|watchdog] [--layers] [--json]
                             # the layered system prompt and where each layer comes from
-  pnpm ds-agent agents [--json]  # local specialist agents configured for delegation
+  pnpm ds-agent agents [--json]  # legacy local specialist agents
+  pnpm ds-agent agents discover|list [--json]
+  pnpm ds-agent agents bind <id> <codex|claude> [--profile <absolute-dir>] [--workspace-write]
+  pnpm ds-agent agents bind <id> bridge --command <absolute-executable> [--args-json <array>]
+  pnpm ds-agent agents check|unbind <id>
   pnpm ds-agent skills [--json]  # owner-authored playbooks the agent can load
   pnpm ds-agent routines [--json]  # owner-defined recurring work and its channel
   pnpm ds-agent evolution run|approve|rollback|status  # offline deliver-gate strategy evolution (fixture dataset)
@@ -529,9 +535,11 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'init') {
+    const firstRun = !fs.existsSync(path.join(home, 'ds-agent.db'))
     const store = new Store(home)
     store.close()
     console.log(`initialized ${home}`)
+    if (firstRun && process.stdout.isTTY) printAgentSetup(home)
     return
   }
   if (cmd === 'tasks') {
@@ -1092,7 +1100,7 @@ async function main(): Promise<void> {
     if (role !== 'router' && role !== 'worker' && role !== 'watchdog') {
       throw new Error('role must be router, worker, or watchdog')
     }
-    const agents = loadLocalAgents(home, process.env).map(agent => ({
+    const agents = [...loadLocalAgents(home, process.env), ...loadBoundAgentSpecs(home)].map(agent => ({
       id: agent.id,
       ...(agent.description ? { description: agent.description } : {}),
     }))
@@ -1161,6 +1169,10 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'agents') {
+    if (sub && !sub.startsWith('-')) {
+      runAgentConnectionsCommand(home, sub, process.argv.slice(4))
+      return
+    }
     const agents = loadLocalAgents(home, process.env)
     if (process.argv.includes('--json')) {
       console.log(JSON.stringify(agents, null, 2))

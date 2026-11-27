@@ -481,9 +481,23 @@ DS_AGENT_GH_KEEP=1 pnpm demo           # 故意保留真实 issue
 ### pstack 工程工作流
 
 直接用自然语言描述工程任务，例如「修复登录超时，先复现再验证」。
-匹配的工程工单会在 Worker 第一次调用模型前加载 pstack 和对应手册。
+每张已受理的工作工单都会在本地 Worker 第一次调用模型前进入 pstack。
+Worker 按任务选择手册，在本机记录计划、执行和验证。用 `ds-agent receipt <工单 ID>` 查看阶段和委派记录。
 `pnpm ds-agent skills` 可列出可读取的技能和手册。
 pstack 使用现有的 ds-agent 模型和已配置的本地专家，发布和其他外部动作仍走现有审批流程。
 
 这个仓库的开发编排也由项目内的 pstack 技能驱动。上游版本和适配入口见
 [导入说明](vendor/pstack/UPSTREAM.md)。
+
+### 本地 AI 账号和代理
+
+`ds-agent setup` 会列出可连接的客户端。用 `ds-agent agents discover`
+探测本机安装，用 `ds-agent agents bind codex-work codex` 或
+`ds-agent agents bind claude-review claude` 绑定已登录的官方客户端。
+`agents list`、`agents check <名称>` 和 `agents unbind <名称>` 用于管理。
+不同账号可以用 `--profile <绝对目录>` 指定各自的官方客户端配置目录。
+你可以用 `--workspace-write` 为执行实现的连接开启工作区写权限，评审连接默认只读。
+
+WorkBuddy 和其他 bot 可注册为用户配置的执行桥。固定命令由用户选择，
+任务由 ds-agent 作为参数交给该命令。只有安装并授权了可执行桥，才能实际调用相应服务。
+连接目录和运行收据保存在本机，账号凭据留在官方客户端或各自的执行桥中。

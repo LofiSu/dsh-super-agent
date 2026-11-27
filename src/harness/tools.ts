@@ -25,6 +25,7 @@ import { UserError } from '../shared/errors.ts'
 import type { EnvPort, EnvRunOptions, RolePortFor, RolePorts } from '../shared/ports.ts'
 import type { ApprovalRequest, Disposition, PublishApprovalBinding, Role, Ticket } from '../shared/types.ts'
 import { settleSpeculation, visibleTickets } from '../speculate/index.ts'
+import { assertPstackDelegation, recordPstack } from '../core/pstack-run.ts'
 import type { ToolCall, ToolSpec } from './model.ts'
 import type { McpToolSourceLike } from './mcp.ts'
 import { routerOwnerShard, routerSessionId, workerSessionId } from './session.ts'
@@ -123,7 +124,7 @@ export class ToolRegistry {
       }),
       ...watchdogTools(deps.ports.watchdog, { env: deps.env, log, metrics, nudge: deps.nudge }),
       ...(deps.localAgents ? localAgentTools(deps.localAgents, store, log) : []),
-      ...(deps.skills ? skillTools(deps.skills) : []),
+      ...(deps.skills ? skillTools(deps.skills, store, deps.redact) : []),
       ...(deps.browserErrands ? browserErrandTools(deps.browserErrands, store) : []),
     ]
   }
@@ -999,8 +1000,25 @@ function fillTools(
  * tool loads one body by id. It reads documentation only: the skill cannot
  * grant a tool or widen the caller's role.
  */
-function skillTools(registry: SkillRegistry): ToolDef[] {
+function skillTools(registry: SkillRegistry, store: Store, redact: (text: string) => string): ToolDef[] {
   return [
+    ...(!registry.list().some(skill => skill.bundled && skill.id === 'poteto-mode') ? [] : [{
+      name: 'pstack_checkpoint',
+      description: 'Record the plan, execution result, or verification evidence for the current ticket.',
+      parameters: schema({ phase: { type: 'string' }, playbook: { type: 'string' }, evidence: { type: 'string' } }),
+      roles: ['worker' as const],
+      run: guard('worker', 'pstack_checkpoint', async (args, ctx) => {
+        const ticket = ctx.ticketId ? store.getDoc<Ticket>('ticket', ctx.ticketId) : undefined
+        if (!ticket) throw new UserError('pstack checkpoint requires an active work ticket')
+        const phase = String(args.phase ?? '')
+        const playbook = String(args.playbook ?? '')
+        if (phase === 'plan' && !registry.list().some(skill => skill.bundled && skill.id === playbook
+          && (skill.id.startsWith('pstack-playbook-') || ['figure-it-out', 'interrogate'].includes(skill.id)))) {
+          throw new UserError('pstack plan needs a bundled workflow playbook')
+        }
+        return recordPstack(store, ticket, ctx.sessionId, phase, redact(String(args.evidence ?? '')), playbook)
+      }),
+    }]),
     {
       name: 'read_skill',
       description: 'Load the full instructions for one bundled or owner-authored skill by id.',
@@ -1060,6 +1078,7 @@ function localAgentTools(
         if (ticket.speculative) {
           throw new UserError('delegate_agent is unavailable to speculative workers (local agents run unsandboxed)')
         }
+        assertPstackDelegation(store, ticket.id)
         const assignmentId = activeAssignmentId(ticket)
         if (!assignmentId) throw new UserError('delegate_agent needs a running assignment on the ticket')
         const now = new Date().toISOString()
@@ -1076,14 +1095,14 @@ function localAgentTools(
         try {
           result = await registry.run(agent, task, ctx.sessionId)
         } catch (error) {
-          finishDelegateOperation(store, op.id, 'failed', now, error instanceof Error ? error.message : String(error))
+          finishDelegateOperation(store, op.id, 'failed', new Date().toISOString(), error instanceof Error ? error.message : String(error))
           throw error
         }
         finishDelegateOperation(
           store,
           op.id,
           result.code === 0 ? 'completed' : 'failed',
-          now,
+          new Date().toISOString(),
         )
         log(
           `[local-agent] agent=${agent} session=${ctx.sessionId} code=${result.code}`

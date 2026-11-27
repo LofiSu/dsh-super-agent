@@ -66,6 +66,7 @@ import { TeamRegistry } from './harness/team.ts'
 import { createModelFromEnv, HttpOpenAI, roleModelsFromEnv, type Model } from './harness/model.ts'
 import { directChatRouterShard, directChatThread, SessionJournal, sharesDirectChatThread, workerSessionId } from './harness/session.ts'
 import { loadPromptFiles, type PromptFiles } from './harness/prompts.ts'
+import { loadBoundAgentSpecs } from './env/agent-connections.ts'
 import { LocalAgentRegistry, loadLocalAgents, type LocalAgentSpec } from './env/local-agents.ts'
 import { engineeringWorkflow } from './harness/engineering-workflow.ts'
 import { SkillRegistry } from './env/skills.ts'
@@ -761,7 +762,10 @@ export class Runtime {
       + `minIntervalMinutes=${connectorConfig.wake.minIntervalMinutes} maxPerDay=${connectorConfig.wake.maxPerDay}`,
     )
     const promptFiles = opts.prompts ?? loadPromptFiles(opts.home, baseEnv, line => log.info(line))
-    const localAgentSpecs = opts.localAgents ?? loadLocalAgents(opts.home, baseEnv)
+    const localAgentSpecs = opts.localAgents ?? [
+      ...loadLocalAgents(opts.home, baseEnv),
+      ...loadBoundAgentSpecs(opts.home),
+    ]
     const localAgents = localAgentSpecs.length
       ? new LocalAgentRegistry(localAgentSpecs, {
         env: baseEnv,

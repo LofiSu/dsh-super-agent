@@ -21,8 +21,18 @@ export class ScriptedModel implements Model {
     return ruleClassify(trigger)
   }
 
-  complete(request: CompletionRequest): Promise<Completion> {
-    return Promise.resolve(this.script(request))
+  async complete(request: CompletionRequest): Promise<Completion> {
+    const result = await this.script(request)
+    // Older control-plane fixtures test reporting, not workflow planning.
+    const ready = result.toolCalls?.some(tool => tool.name === 'report_to_router'
+      && (tool.args.kind === 'ready' || (tool.args.kind === undefined && tool.args.deliver === true)))
+    if (!ready || !request.tools.some(tool => tool.name === 'pstack_checkpoint')
+      || request.messages.some(message => message.name === 'pstack_checkpoint')) return result
+    const checkpoints = ['plan', 'execute', 'verify'].map(phase => ({
+      id: `fixture-pstack-${phase}`, name: 'pstack_checkpoint',
+      args: { phase, playbook: 'pstack-playbook-investigation', evidence: 'Scripted control-plane fixture' },
+    }))
+    return { ...result, toolCalls: [...checkpoints, ...result.toolCalls!] }
   }
 }
 
