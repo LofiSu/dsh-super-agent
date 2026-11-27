@@ -255,6 +255,7 @@ interface PublishRunInput {
   prBody: string
   workerId: string
   runImplement: (workspace: string) => Promise<void>
+  assertCanPublish?: () => void
 }
 
 /**
@@ -313,7 +314,7 @@ async function runIsolatedImplementPublish(
       branch: input.branch,
     }
     const binding = await publisher.prepare(publishInput)
-    const result = await publisher.publish(publishInput, binding)
+    const result = await publisher.publish(publishInput, binding, input.assertCanPublish)
     return { prUrl: result.url, prNumber: result.number }
   } finally {
     try {
@@ -341,6 +342,7 @@ export function createClaudeGithubFixRunner(deps: ClaudeGithubFixRunnerDeps): (c
       prTitle: `fix: issue #${issueNumber}`,
       workerId: `dispatch-${issueNumber}`,
       prBody: `Issue: ${ctx.job.issueUrl ?? `https://github.com/${parseRepo(deps.github.repo).full}/issues/${issueNumber}`}`,
+      assertCanPublish: ctx.assertCanPublish,
       runImplement: async workspace => {
         await runCoder({
           workspace,
@@ -377,6 +379,7 @@ export function createClaudeRsiImplementRunner(deps: ClaudeGithubFixRunnerDeps):
       prTitle: `rsi: ${gap.title.slice(0, 72)}`,
       workerId: `rsi-${gap.id}`,
       prBody: body,
+      assertCanPublish: ctx.assertCanPublish,
       runImplement: async workspace => {
         await runRsiCoder({
           workspace,

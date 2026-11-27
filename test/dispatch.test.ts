@@ -19,7 +19,7 @@ import { hasOpenPeanutPrForRepo } from '../src/dispatch/github-peanut.ts'
 import { createClaudeDispatchJobRunner } from '../src/dispatch/implementer.ts'
 import { createJobRunner, IMPLEMENTER_NOT_CONFIGURED } from '../src/dispatch/job-runner.ts'
 import { buildOfflineHoldoutEnv, OFFLINE_HOLDOUT_API_KEYS, OFFLINE_VITEST_EXCLUDE } from '../src/dispatch/holdout.ts'
-import { drainDispatchQueue } from '../src/dispatch/queue.ts'
+import { cancelDispatchJob, drainDispatchQueue } from '../src/dispatch/queue.ts'
 import {
   recoverInterruptedJobs,
   seedDispatchCursorNow,
@@ -439,6 +439,86 @@ describe('dispatch queue', () => {
     store.putDoc('dispatch_queue', 'main', { runningJobId: 'dead' })
     recoverInterruptedJobs(store)
     expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'dead')?.status).toBe('queued')
+    store.close()
+  })
+})
+
+describe('dispatch cancel during run', () => {
+  it('keeps a running job cancelled when its runner succeeds', async () => {
+    const store = new Store(tempHome())
+    let resolveRun!: (value: { prUrl: string; prNumber: number }) => void
+    let started!: () => void
+    const running = new Promise<void>(resolve => { started = resolve })
+    const runner = createJobRunner({ githubFix: () => {
+      started()
+      return new Promise(resolve => { resolveRun = resolve })
+    } })
+    store.putDoc('dispatch_job', 'cancelled-success', {
+      id: 'cancelled-success', type: 'github_fix', status: 'queued', createdAt: '2026-11-01T00:00:00Z', commentId: '1',
+    } satisfies DispatchJobDoc)
+    const drain = drainDispatchQueue({ store, runner })
+    await running
+    expect(cancelDispatchJob(store, 'cancelled-success')).toBe(true)
+    resolveRun({ prUrl: 'https://example.test/pr/99', prNumber: 99 })
+    await drain
+    const job = store.getDoc<DispatchJobDoc>('dispatch_job', 'cancelled-success')
+    expect(job?.status).toBe('cancelled')
+    expect(job?.prUrl).toBeUndefined()
+    expect(job?.prNumber).toBeUndefined()
+    store.close()
+  })
+
+  it('keeps a running job cancelled when its runner throws', async () => {
+    const store = new Store(tempHome())
+    let rejectRun!: (error: Error) => void
+    let started!: () => void
+    const running = new Promise<void>(resolve => { started = resolve })
+    const runner = createJobRunner({ githubFix: () => {
+      started()
+      return new Promise((_resolve, reject) => { rejectRun = reject })
+    } })
+    store.putDoc('dispatch_job', 'cancelled-throw', {
+      id: 'cancelled-throw', type: 'github_fix', status: 'queued', createdAt: '2026-11-01T00:00:00Z', commentId: '1',
+    } satisfies DispatchJobDoc)
+    const drain = drainDispatchQueue({ store, runner })
+    await running
+    expect(cancelDispatchJob(store, 'cancelled-throw')).toBe(true)
+    rejectRun(new Error('late runner failure'))
+    await drain
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'cancelled-throw')?.status).toBe('cancelled')
+    store.close()
+  })
+
+  it('holds the queue slot after cancel until the in-flight runner returns', async () => {
+    const store = new Store(tempHome())
+    let resolveRun!: (value: { prUrl: string }) => void
+    let started!: () => void
+    const running = new Promise<void>(resolve => { started = resolve })
+    const calls: string[] = []
+    const runner = createJobRunner({ githubFix: ctx => {
+      calls.push(ctx.job.id)
+      if (ctx.job.id === 'first') {
+        started()
+        return new Promise(resolve => { resolveRun = resolve })
+      }
+      return Promise.resolve({ prUrl: 'https://example.test/pr/next' })
+    } })
+    for (const [id, createdAt] of [['first', '2026-11-01T00:00:00Z'], ['next', '2026-11-01T00:00:01Z']]) {
+      store.putDoc('dispatch_job', id, {
+        id, type: 'github_fix', status: 'queued', createdAt, commentId: id,
+      } satisfies DispatchJobDoc)
+    }
+    const drain = drainDispatchQueue({ store, runner })
+    await running
+    expect(cancelDispatchJob(store, 'first')).toBe(true)
+    await drainDispatchQueue({ store, runner })
+    expect(calls).toEqual(['first'])
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'next')?.status).toBe('queued')
+    resolveRun({ prUrl: 'https://example.test/pr/99' })
+    await drain
+    expect(calls).toEqual(['first', 'next'])
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'first')?.status).toBe('cancelled')
+    expect(store.getDoc<DispatchJobDoc>('dispatch_job', 'next')?.status).toBe('completed')
     store.close()
   })
 })

@@ -7,12 +7,14 @@ export const IMPLEMENTER_NOT_CONFIGURED =
 
 export interface GithubFixJobContext {
   job: DispatchJobDoc
+  assertCanPublish?: () => void
   issueTitle: string
   issueBody: string
 }
 
 export interface RsiImplementContext {
   job: DispatchJobDoc
+  assertCanPublish?: () => void
   gap: DispatchGapDoc
 }
 
