@@ -84,18 +84,6 @@ export function redactSecrets(
   return redactCredentialPatterns(out)
 }
 
-/** Redact explicitly identified credentials even when they are short. */
-export function redactLiteralSecrets(text: string, secrets: readonly string[]): string {
-  const ordered = [...new Set(secrets)]
-    .filter(secret => secret.length > 0)
-    .sort((a, b) => b.length - a.length)
-  let out = text
-  for (const secret of ordered) {
-    if (out.includes(secret)) out = out.split(secret).join('[redacted]')
-  }
-  return out
-}
-
 /** Match explicit and discovered secrets against the same original text. */
 export function redactKnownSecrets(
   text: string,
