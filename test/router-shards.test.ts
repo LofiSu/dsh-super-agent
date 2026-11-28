@@ -20,6 +20,7 @@ describe('Router shards', () => {
     shards.register({ id: 'work', filter: 'source:im' })
     expect(shards.route(imTrigger({ thread: 'topic/chat', text: 'hello' }))).toEqual(['work'])
     expect(() => shards.register({ id: 'bad', filter: 'unsupported:value' })).toThrow()
+    expect(() => shards.register({ id: 'thread:shared', filter: 'source:im' })).toThrow(/reserved/)
   })
 
   it('matches combined predicates in priority order', () => {

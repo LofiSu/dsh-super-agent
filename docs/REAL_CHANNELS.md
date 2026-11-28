@@ -75,6 +75,7 @@ Set these for a live Feishu/Lark channel:
 | `FEISHU_VERIFICATION_TOKEN` | no | event-callback token check |
 | `FEISHU_ENCRYPT_KEY` | no | decrypt encrypted event envelopes |
 | `FEISHU_BOT_OPEN_ID` | no | detect mentions of the bot (`ou_...`) |
+| `FEISHU_REPLY_FORMAT` | no | `auto` (default): structured Markdown replies use cards; `text`: force plain text |
 
 Bot permissions: `im:message`, `im:message:send_as_bot`, `im:message:readonly`,
 and for group chats the sensitive scope `im:message.group_msg` (list/poll
@@ -103,8 +104,10 @@ One-time setup:
 
 `ds-agent channels check --feishu` reports only presence and pairing, never the
 secret. Add `--network` for one real `tenant_access_token` call (still no
-message); exit 0 means the app credentials authenticate and the chat id is
-configured. Chat membership and scope errors surface on the first poll.
+message); this remains a token-only check. `--check-chat` implies `--network`,
+then reads chat metadata and at most one history item. It is read-only and does
+not verify send capability. Chat membership and scope errors can be diagnosed
+with this probe without exposing message contents.
 
 Inbound paths:
 
@@ -139,17 +142,30 @@ messages so a backfill does not retry them.
 
 Outbound: `FeishuOutboxAdapter` replies in-thread with
 `/open-apis/im/v1/messages/:message_id/reply` when the source message is known,
-otherwise sends to the chat with `/open-apis/im/v1/messages`. Feishu replies use
-the latest human inbound message on the selected thread as their quote target. When a user
-asks to stop quoting/replying on that thread, that preference is saved there and later messages
-are sent directly to the chat without a `message_id`.
+otherwise sends to the chat with `/open-apis/im/v1/messages`. In the default
+`FEISHU_REPLY_FORMAT=auto` mode, short plain replies stay text and replies with
+Markdown headings, lists, or fenced code use a single-column interactive card.
+Set `FEISHU_REPLY_FORMAT=text` to force the existing plain text format. Card
+content is kept under Feishu's 30 KiB card limit. If a structured reply's card
+would exceed that limit, the complete original is sent as text when its
+serialized request body fits Feishu's 150 KiB text limit. Larger bodies are split
+into clearly marked text messages sent in the same chat or reply thread, with the
+continuation messages carrying the rest of the body. Retries resume after already
+accepted chunks. Card send and mobile display
+still need mobile acceptance; this change does not cut over live `serve`. Feishu
+replies use the latest human inbound message on the selected
+thread as their quote target. When a user asks to stop quoting/replying on that
+thread, that preference is saved there and later messages are sent directly to
+the chat without a `message_id`.
 
 ### Inbound poll loop from `serve --feishu`
 
 `ds-agent serve --feishu` runs an inbound Feishu poll loop alongside the daemon
 timer. The loop lives in `src/cli/feishu.ts` and mirrors `src/cli/channel-loop.ts`
-(the shared iMessage loop): pull, ingest, persist the cursor, await
-`jobsSettled()`, flush the durable outbox, then sleep abortably between polls.
+(the shared iMessage loop): pull, ingest, persist the cursor, request a
+non-blocking `jobsSettled()` drain, flush the durable outbox, then sleep abortably
+between polls. The history request receives the loop's abort signal, so shutdown
+cancels an in-flight message-list fetch.
 
 Requirements, validated before `Runtime.create` and before any network call:
 
@@ -178,33 +194,38 @@ Run the preflight before a live serve. It needs no model and opens no SQLite:
 ds-agent channels check                  # iMessage + Feishu, offline
 ds-agent channels check --imessage       # one channel
 ds-agent channels check --feishu
-ds-agent channels check --feishu --network  # real tenant_access_token, no message
+ds-agent channels check --feishu --network  # token only; no message
+ds-agent channels check --feishu --check-chat # token + chat metadata + at most one history item; read-only
 ```
 
 - iMessage: opens `chat.db` read-only, checks the required schema, prints
   `COUNT(*)` and `MAX(ROWID)` only (never text), reports admission and whether
   `osascript` exists. It prints the manual Automation command but does not run
   it, so it cannot prompt or send.
-- Feishu: reports paired credentials, chat presence, base URL, and scopes with
-  values hidden. `--network` performs one real `tenant_access_token` call and
-  reports success/failure without printing the token or secret. The default is
-  fully offline.
+- Feishu: reports paired credentials, chat presence, base URL, and documented
+  scopes with credential values hidden. `--network` performs only one real
+  `tenant_access_token` call. `--check-chat` implies `--network`, reads the
+  target chat metadata, then requests one history item with a one-page cap. It
+  never prints message bodies, ids, tokens, or secrets. Empty history is a
+  successful read. Send capability remains `未验证`; no message is sent. The
+  default is fully offline.
 - Exit 0 only when every selected channel is ready; otherwise every actionable
   reason is printed and the exit code is 1.
 
 **Cursor semantics.** The loop stores one document, `feishu_cursor/cursor`, as
-`{ chatId, lastCreateTimeMs }`, where `lastCreateTimeMs` is the highest message
-`create_time` observed by `FeishuSource`. Seed precedence is: explicit
+`{ chatId, lastCreateTimeMs }`. Seed precedence is: explicit
 `--since`/`FEISHU_SINCE` (positive finite ms) > stored cursor for this chat >
-`FeishuSource` default `now - 5 minutes`. The cursor is written only after a
-successful pull and ingest, and only when it advances. On restart the stored
-value is passed back to `FeishuSource`, so the previous window is not replayed.
-`FeishuSource` queries one second before the cursor to catch messages sharing a
-boundary second; any overlap is deduped by Trigger id (`feishu_<message_id>`) in
-`Runtime.ingest`, so a message already processed is never processed twice. If
-the cursor write fails, the source cursor is restored to the beginning of that
-pull and the full window is retried. A stored cursor whose `chatId` differs from
-the current chat is ignored.
+`FeishuSource` default `now - 5 minutes`. After a fully ingested pull, the cursor
+advances to the highest message time observed by the source. If ingestion fails,
+it advances only through the last successfully ingested trigger; the failed
+message and later messages remain available on the next poll and after restart.
+If no trigger was confirmed, the source returns to the cursor at pull start. A
+cursor write failure restores the source cursor to that same start. On restart
+the stored value is passed back to `FeishuSource`. It queries one second before
+the cursor to catch same-second messages; overlap is deduped by Trigger id
+(`feishu_<message_id>`) in `Runtime.ingest`, so a message already processed is
+never processed twice. A stored cursor whose `chatId` differs from the current
+chat is ignored.
 
 **Admission semantics.** The loop calls `runtime.ingest(trigger)` with the
 Trigger returned by `feishuTriggerFromMessage`; it does not bypass the ingress
@@ -227,9 +248,9 @@ both in-flight polls and their drains (jobs, outbox flush), closes the iMessage
 API, and only then runs `Runtime.finish()` to stop the daemon and close SQLite.
 The loops never close the Runtime or the clients; `serve` owns them. A failed
 pull is logged and retried with bounded exponential backoff (cap 30s). An
-ingest error restores the source cursor to the beginning of that pull, so the
-next poll replays the window and durable trigger-id dedupe handles any earlier
-successful items. A TCC/Full
+ingest error restores the source cursor to the last confirmed trigger, so the
+next poll replays from the failed message and durable trigger-id dedupe handles
+any overlap. A TCC/Full
 Disk Access denial is terminal for the iMessage loop (not retried forever), names
 the exact System Settings path, and leaves a combined Feishu loop and the daemon
 running.

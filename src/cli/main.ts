@@ -30,6 +30,8 @@ import { aggregateReportOf, describeTopologyOf, type TeamRecord } from '../harne
 import { formatMetricsJson, Metrics } from '../metrics/metrics.ts'
 import { executionReceipt, formatExecutionReceipt } from '../core/receipt.ts'
 import type { A2AEnvelope } from '../channels/a2a.ts'
+import { dreamMemory } from '../memory/dream.ts'
+import { SessionMemory, supportsSessionMemory } from '../memory/tools.ts'
 import type { LongTermMemoryEntry } from '../memory/long-term.ts'
 import { Runtime } from '../runtime.ts'
 import { visibleTickets } from '../speculate/index.ts'
@@ -179,9 +181,10 @@ function help(): void {
                             # daemon timer over persisted state; optional inbound iMessage
                             # and/or Feishu poll loop; the two loops share one Runtime but
                             # keep independent cursors, outboxes, and abort controllers
-  pnpm ds-agent channels check [--imessage] [--feishu] [--network]
+  pnpm ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]
                             # offline preflight: no model, no SQLite, no message send;
-                            # --network only calls Feishu tenant_access_token
+                            # --network checks token only; --check-chat implies it and reads chat metadata + one history item;
+                            # send capability remains unverified
   pnpm ds-agent chat "fix the login timeout"
   pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
   pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
@@ -200,6 +203,7 @@ function help(): void {
   pnpm ds-agent emit github --pr 42 --text "CI failed on auth test"
   pnpm ds-agent metrics
   pnpm ds-agent memory [--limit 10]   # persisted cross-ticket memories
+  pnpm ds-agent memory dream --session <id>  # consolidate notes for one session
   pnpm ds-agent a2a [--limit 10]      # persisted A2A envelopes
   pnpm ds-agent prompt [--role router|worker|watchdog] [--layers] [--json]
                             # the layered system prompt and where each layer comes from
@@ -606,10 +610,11 @@ async function main(): Promise<void> {
   }
   if (cmd === 'channels') {
     if (sub !== 'check') {
-      throw new Error('channels needs "check": ds-agent channels check [--imessage] [--feishu] [--network]')
+      throw new Error('channels needs "check": ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]')
     }
     const report = await runChannelsCheck({
       network: process.argv.includes('--network'),
+      checkChat: process.argv.includes('--check-chat'),
     })
     for (const line of report.lines) console.log(line)
     process.exitCode = report.code
@@ -621,6 +626,30 @@ async function main(): Promise<void> {
   }
   if (cmd === 'metrics') {
     console.log(formatMetricsJson(home))
+    return
+  }
+  if (cmd === 'memory' && sub === 'dream') {
+    const sessionId = option('session')
+    if (!sessionId || sessionId.startsWith('--')) throw new Error('memory dream requires --session <id>')
+    const store = new Store(home)
+    try {
+      const session = store.listSessions().find(row => row.id === sessionId)
+      if (!session || !supportsSessionMemory(session.role, session.id)) {
+        throw new Error('No direct-chat Router or Worker session with that ID')
+      }
+      try {
+        await runWithEmbeddedGateway(home, async () => {
+          const redact = promptRedactor(process.env)
+          const memory = new SessionMemory(store, redact)
+          console.log(JSON.stringify(await dreamMemory(requireLiveModelFromEnv(), memory, session, redact), null, 2))
+        })
+      } catch (error) {
+        const redact = promptRedactor(process.env)
+        throw new Error(redact(error instanceof Error ? error.message : String(error)))
+      }
+    } finally {
+      store.close()
+    }
     return
   }
   if (cmd === 'memory' || cmd === 'a2a') {

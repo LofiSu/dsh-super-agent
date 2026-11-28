@@ -76,6 +76,7 @@ describe('package manifest', () => {
       'README.zh-CN.md',
       'LICENSE',
       'docs/MODULES.md',
+      'docs/ANTHROPIC_AGENT_MEMORY.md',
       'docs/REAL_CHANNELS.md',
     ])
     // dist is build output and must stay untracked; the unit suite runs

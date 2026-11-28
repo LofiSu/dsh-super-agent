@@ -92,6 +92,7 @@ import { RouterShardRegistry, type RouterShard } from './ingress/shards.ts'
 import { inlineOrSpill } from './memory/recall.ts'
 import { DEFAULT_EMBEDDING_FLOOR, HashedEmbedding, type EmbeddingPort } from './memory/embedding.ts'
 import { refsForTrigger, triggerRef } from './memory/graph.ts'
+import { SessionMemory } from './memory/tools.ts'
 import { SpillBackedLongTermMemory } from './memory/long-term.ts'
 import { Metrics } from './metrics/metrics.ts'
 import { A2ARouter, type A2ADelivery, type A2AEnvelope } from './channels/a2a.ts'
@@ -1913,6 +1914,7 @@ export class Runtime {
       })
     const tools = new ToolRegistry({
       store,
+      memory: new SessionMemory(store, redact),
       ports: bindRolePorts(engine),
       env,
       metrics,

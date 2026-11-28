@@ -676,6 +676,15 @@ export class Store {
     ).run(externalId ?? null, new Date().toISOString(), id)
   }
 
+  /** Persist adapter progress without releasing the row while its send is active. */
+  updateSendingOutboxProgress(id: string, target: Record<string, string>, externalId?: string): void {
+    this.assertWritable()
+    const result = this.db.prepare(
+      `UPDATE outbox SET target = ?, external_id = COALESCE(?, external_id) WHERE id = ? AND status = 'sending'`,
+    ).run(JSON.stringify(target), externalId ?? null, id)
+    if (Number(result.changes ?? 0) !== 1) throw new Error(`outbox row ${id} is not sending`)
+  }
+
   markOutboxRetry(id: string, error: string, nextAttemptAt: string, attempts: number): void {
     this.assertWritable()
     this.db.prepare(
@@ -919,6 +928,21 @@ export class Store {
         'SELECT session_id, role, body FROM messages ORDER BY id',
       ).all()) as { session_id: string; role: string; body: string }[]
     return rows.map(row => ({ sessionId: row.session_id, role: row.role, body: row.body }))
+  }
+
+  /** Recent evidence candidates. A row id remains stable across appends and reopen. */
+  listTranscriptPage(
+    sessionId: string,
+    before: number,
+    limit: number,
+  ): { id: number; role: string; body: string | null; createdAt: string }[] {
+    return this.db.prepare(`
+      SELECT id, role, created_at AS createdAt,
+        CASE WHEN length(CAST(body AS BLOB)) <= 65536 THEN body END AS body
+      FROM messages
+      WHERE session_id = ? AND id < ? AND role IN ('user', 'assistant')
+      ORDER BY id DESC LIMIT ?
+    `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
   }
 
   addArtifact(ticketId: string, filePath: string): string {

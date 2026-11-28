@@ -135,7 +135,7 @@ describe('published package layout', () => {
     expect(childScript).toBe(path.join(publishedRoot, 'dist/scripts/evolution-eval-child.mjs'))
     expect(childScript && fs.existsSync(childScript)).toBe(true)
     expect(argv).not.toContain('--import')
-    expect(argv.some(arg => arg.includes('tsx'))).toBe(false)
+    expect(argv).not.toContain('tsx')
   })
 
   it('scores a tiny fixture through plain node in the published layout', async () => {

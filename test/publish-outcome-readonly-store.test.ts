@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Store } from '../src/store/sqlite.ts'
-import { MIGRATIONS, migrate } from '../src/store/schema.ts'
+import { LATEST_SCHEMA_VERSION, MIGRATIONS, migrate } from '../src/store/schema.ts'
 
 const roots: string[] = []
 
@@ -112,6 +112,7 @@ describe('publish-outcome read-only database entry', () => {
   })
 
   it('rejects an unsupported future schema before treating a missing ledger as unavailable history', () => {
+    const futureVersion = LATEST_SCHEMA_VERSION + 1
     for (const withLedger of [false, true]) {
       const home = path.join(makeRoot(), withLedger ? 'future-with-ledger' : 'future-without-ledger')
       fs.mkdirSync(home)
@@ -121,12 +122,13 @@ describe('publish-outcome read-only database entry', () => {
         store.close()
         const db = new DatabaseSync(dbPath)
         db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
-          .run(8, 'owned future-schema fixture')
+          .run(futureVersion, 'owned future-schema fixture')
         db.close()
       } else {
         const db = new DatabaseSync(dbPath)
-        db.exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-                 INSERT INTO schema_migrations VALUES(8, 'owned future-schema fixture')`)
+        db.exec('CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+        db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
+          .run(futureVersion, 'owned future-schema fixture')
         db.close()
       }
       const before = createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex')

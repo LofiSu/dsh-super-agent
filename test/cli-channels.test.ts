@@ -311,6 +311,175 @@ describe('channels check preflight', () => {
     expect(output).not.toContain('token-value-must-not-print')
   })
 
+  it('keeps --network token-only and probes token, metadata, then one history item for --check-chat', async () => {
+    const secret = 'fixture-secret-never-print'
+    const token = 'fixture-token-never-print'
+    const chat = 'oc_fixture_chat_never_print'
+    const body = 'fixture-message-body-never-print'
+    const calls: string[] = []
+    const fetchImpl = async (input: string, init?: RequestInit): Promise<Response> => {
+      calls.push(input)
+      if (input.includes('tenant_access_token')) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: token, expire: 7200 }))
+      }
+      if (input.includes('/im/v1/chats/')) {
+        return new Response(JSON.stringify({ code: 0, data: { chat_mode: 'p2p' } }))
+      }
+      const query = new URL(input).searchParams
+      expect(query.get('page_size')).toBe('1')
+      expect(init?.method ?? 'GET').toBe('GET')
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { items: [{ body: { content: body } }], has_more: true, page_token: 'second-page-token' },
+      }))
+    }
+    const env = baseEnv({ FEISHU_APP_ID: 'fixture-app', FEISHU_APP_SECRET: secret, FEISHU_CHAT_ID: chat })
+    const tokenOnly = await checkFeishuChannel({
+      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu'],
+      env,
+      network: true,
+      fetchImpl,
+    })
+    expect(tokenOnly.ready).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain('tenant_access_token')
+
+    calls.length = 0
+    const probe = await runChannelsCheck({
+      channels: ['feishu'],
+      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat'],
+      env,
+      fetchImpl,
+    })
+    const output = probe.lines.join('\n')
+    expect(probe.ready).toBe(true)
+    expect(calls).toHaveLength(3)
+    expect(calls[0]).toContain('tenant_access_token')
+    expect(calls[1]).toContain('/open-apis/im/v1/chats/')
+    expect(calls[2]).toContain('/open-apis/im/v1/messages?')
+    expect(output).toContain('chat metadata: ok')
+    expect(output).toContain('chat history: ok (API /open-apis/im/v1/messages; items=1; one-message probe)')
+    expect(output).toContain('send capability: 未验证')
+    for (const forbidden of [secret, token, chat, body, 'second-page-token']) expect(output).not.toContain(forbidden)
+  })
+
+  it('accepts empty history and reports chat missing without metadata/history requests', async () => {
+    let calls = 0
+    const fetchImpl = async (input: string): Promise<Response> => {
+      calls += 1
+      if (input.includes('tenant_access_token')) {
+        return new Response(JSON.stringify({ code: 0, tenant_access_token: 'token-fixture', expire: 7200 }))
+      }
+      if (input.includes('/im/v1/chats/')) return new Response(JSON.stringify({ code: 0, data: {} }))
+      return new Response(JSON.stringify({ code: 0, data: { items: [], has_more: false } }))
+    }
+    const base = ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat']
+    const empty = await checkFeishuChannel({
+      argv: [...base, '--chat', 'oc_empty_fixture'],
+      env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret' }),
+      fetchImpl,
+    })
+    expect(empty.ready).toBe(true)
+    expect(empty.lines.join('\n')).toContain('items=0')
+    expect(calls).toBe(3)
+
+    calls = 0
+    const missing = await checkFeishuChannel({
+      argv: base,
+      env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret' }),
+      fetchImpl,
+    })
+    const output = missing.lines.join('\n')
+    expect(missing.ready).toBe(false)
+    expect(output).toContain('chat metadata: FAILED chat missing / not configured')
+    expect(output).toContain('chat history: FAILED chat missing / not configured')
+    expect(calls).toBe(1)
+  })
+
+  it('stops after failed token or chat metadata and reports sanitized API status and code', async () => {
+    const secret = 'credential-fixture-secret'
+    const chat = 'oc_error_fixture'
+    const common = {
+      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat', '--chat', chat],
+      env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: secret }),
+    }
+    const tokenCalls: string[] = []
+    const rejected = await checkFeishuChannel({
+      ...common,
+      fetchImpl: async input => {
+        tokenCalls.push(input)
+        return new Response(JSON.stringify({ code: 99991663, msg: secret }), { status: 401 })
+      },
+    })
+    const rejectedOutput = rejected.lines.join('\n')
+    expect(rejected.ready).toBe(false)
+    expect(tokenCalls).toHaveLength(1)
+    expect(rejectedOutput).toContain('tenant_access_token: FAILED API auth/v3/tenant_access_token')
+    expect(rejectedOutput).toContain('HTTP 401 Feishu code=99991663')
+    expect(rejectedOutput).toContain('chat metadata: skipped (prior token stage failed)')
+    expect(rejectedOutput).not.toContain(secret)
+
+    const unreadable = await checkFeishuChannel({
+      ...common,
+      fetchImpl: async input => {
+        if (input.includes('tenant_access_token')) {
+          return new Response(JSON.stringify({ code: 0, tenant_access_token: 'token-fixture', expire: 7200 }))
+        }
+        return new Response(JSON.stringify({ code: 230002, msg: 'private provider details' }), { status: 403 })
+      },
+    })
+    const unreadableOutput = unreadable.lines.join('\n')
+    expect(unreadable.ready).toBe(false)
+    expect(unreadableOutput).toContain('HTTP 403 Feishu code=230002')
+    expect(unreadableOutput).toContain('bot is not in the chat')
+    expect(unreadableOutput).toContain('chat is not visible')
+    expect(unreadableOutput).toContain('required chat read scope is unavailable')
+    expect(unreadableOutput).toContain('chat history: skipped (prior chat metadata stage failed)')
+    expect(unreadableOutput).not.toContain('private provider details')
+    expect(unreadableOutput).not.toContain(secret)
+  })
+
+  it('reports history denial and bounded probe timeouts without exposing fixture data', async () => {
+    const shared = {
+      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat', '--chat', 'oc_history_fixture'],
+      env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret-fixture' }),
+    }
+    const denied = await checkFeishuChannel({
+      ...shared,
+      fetchImpl: async input => {
+        if (input.includes('tenant_access_token')) return new Response(JSON.stringify({ code: 0, tenant_access_token: 'token-hidden', expire: 7200 }))
+        if (input.includes('/im/v1/chats/')) return new Response(JSON.stringify({ code: 0, data: { chat_mode: 'group' } }))
+        return new Response(JSON.stringify({ code: 230002, msg: 'history fixture body' }), { status: 403 })
+      },
+    })
+    const deniedOutput = denied.lines.join('\n')
+    expect(denied.ready).toBe(false)
+    expect(deniedOutput).toContain('chat history: FAILED API /open-apis/im/v1/messages failed HTTP 403 Feishu code=230002')
+    for (const forbidden of ['secret-fixture', 'token-hidden', 'history fixture body', 'oc_history_fixture']) {
+      expect(deniedOutput).not.toContain(forbidden)
+    }
+
+    const timedOut = await checkFeishuChannel({
+      ...shared,
+      fetchImpl: async (input, init) => {
+        if (input.includes('tenant_access_token')) {
+          return new Response(JSON.stringify({ code: 0, tenant_access_token: 'timeout-token', expire: 7200 }))
+        }
+        if (input.includes('/im/v1/chats/')) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+          })
+        }
+        return new Response(JSON.stringify({ code: 0, data: {} }))
+      },
+    })
+    const timeoutOutput = timedOut.lines.join('\n')
+    expect(timedOut.ready).toBe(false)
+    expect(timeoutOutput).toContain('chat metadata: FAILED API /open-apis/im/v1/chats/:chat_id timeout')
+    expect(timeoutOutput).toContain('chat history: skipped (prior chat metadata stage failed)')
+    expect(timeoutOutput).not.toContain('timeout-token')
+  }, 8_000)
+
   it('exits non-zero when any selected channel is not ready', async () => {
     const dir = tempDir('ds-agent-check-code-')
     const dbPath = chatDb(dir)
@@ -364,6 +533,9 @@ describe('channel docs and help', () => {
     expect(help.status, help.stderr).toBe(0)
     expect(help.stdout).toContain('channels check')
     expect(help.stdout).toContain('[--imessage] [--feishu]')
+    expect(help.stdout).toContain('[--network] [--check-chat]')
+    expect(help.stdout).toContain('one history item')
+    expect(help.stdout).toContain('send capability remains unverified')
     expect(help.stdout).toContain('independent cursors')
     expect(help.stdout).not.toContain('cannot be combined')
 
@@ -374,6 +546,8 @@ describe('channel docs and help', () => {
     expect(readme).toContain('serve --imessage --feishu')
     expect(realChannels).toContain('Inbound webhooks')
     expect(realChannels).toContain('long-connection')
+    expect(realChannels).toContain('--check-chat')
+    expect(realChannels).toContain('one history item')
     expect(imessage).toContain('Full Disk Access')
     expect(imessage).toContain('channels check')
   })

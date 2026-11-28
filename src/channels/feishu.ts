@@ -1,6 +1,59 @@
 import crypto from 'node:crypto'
 import type { OutboxRow, Trigger } from '../shared/types.ts'
-import type { OutboundAdapter } from './outbox-adapter.ts'
+import type { OutboxProgress, OutboundAdapter } from './outbox-adapter.ts'
+import { FEISHU_CARD_CONTENT_LIMIT_BYTES, hasFeishuMarkdownStructure, renderFeishuMarkdownCard } from './feishu-card.ts'
+
+/** Feishu documents a 150 KB maximum for serialized text-message request bodies. */
+export const FEISHU_TEXT_REQUEST_LIMIT_BYTES = 150 * 1024
+
+// Reserve ample room for the send API's receive_id envelope without using a real
+// chat id. This also safely covers the smaller reply API request body.
+const FEISHU_RECEIVE_ID_RESERVE = 'x'.repeat(256)
+const FEISHU_TEXT_PROGRESS_KEY = '__ds_feishu_text_progress'
+
+function textRequestBodyBytes(text: string): number {
+  return Buffer.byteLength(JSON.stringify({
+    receive_id: FEISHU_RECEIVE_ID_RESERVE,
+    msg_type: 'text',
+    content: JSON.stringify({ text }),
+  }), 'utf8')
+}
+
+function textChunkMarker(index: number, total: number): string {
+  return index === 1 ? `（${index}/${total}）\n` : `（续 ${index}/${total}）\n`
+}
+
+/** Split on Unicode code points while keeping each serialized send body under Feishu's cap. */
+function splitFeishuText(text: string): string[] {
+  const points = Array.from(text)
+  let totalGuess = 2
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const chunks: string[] = []
+    let offset = 0
+    while (offset < points.length) {
+      const marker = textChunkMarker(chunks.length + 1, totalGuess)
+      let low = 1
+      let high = points.length - offset
+      let best = 0
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        const candidate = marker + points.slice(offset, offset + middle).join('')
+        if (textRequestBodyBytes(candidate) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES) {
+          best = middle
+          low = middle + 1
+        } else {
+          high = middle - 1
+        }
+      }
+      if (best === 0) throw new Error('Feishu text chunk marker exceeds the request body limit')
+      chunks.push(marker + points.slice(offset, offset + best).join(''))
+      offset += best
+    }
+    if (chunks.length === totalGuess) return chunks
+    totalGuess = chunks.length
+  }
+  throw new Error('Could not determine Feishu text chunk count')
+}
 
 /**
  * Production Feishu/Lark IM channel.
@@ -92,6 +145,8 @@ export interface FeishuListOptions {
   startTimeSec?: number
   endTimeSec?: number
   pageSize?: number
+  maxPages?: number
+  signal?: AbortSignal
   threadId?: string
 }
 
@@ -115,7 +170,7 @@ function isStaleFeishuMessage(message: FeishuMessage, nowMs: number, maxAgeMs: n
 }
 
 export class FeishuApiError extends Error {
-  constructor(readonly code: number, message: string, readonly path: string) {
+  constructor(readonly code: number, message: string, readonly path: string, readonly status?: number) {
     super(`Feishu ${path} failed code=${code}: ${message}`)
     this.name = 'FeishuApiError'
   }
@@ -152,7 +207,7 @@ export class FeishuClient {
       expire?: number
     }
     if (!response.ok || json.code !== 0 || !json.tenant_access_token) {
-      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'no tenant_access_token', 'auth/v3/tenant_access_token')
+      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'no tenant_access_token', 'auth/v3/tenant_access_token', response.status)
     }
     const ttlMs = Math.max(60, Number(json.expire ?? 3600) - 60) * 1000
     this.token = { value: json.tenant_access_token, expiresAt: Date.now() + ttlMs }
@@ -177,7 +232,7 @@ export class FeishuClient {
     }))
     const json = await response.json() as { code?: number; msg?: string; data?: T }
     if (!response.ok || json.code !== 0) {
-      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path)
+      throw new FeishuApiError(json.code ?? response.status, json.msg ?? 'request failed', path, response.status)
     }
     return (json.data ?? {}) as T
   }
@@ -186,7 +241,8 @@ export class FeishuClient {
   async listMessages(chatId: string, options: FeishuListOptions = {}): Promise<FeishuMessage[]> {
     const items: FeishuMessage[] = []
     let pageToken: string | undefined
-    for (let page = 0; page < 20; page += 1) {
+    const maxPages = Math.max(1, Math.min(20, Math.floor(options.maxPages ?? 20)))
+    for (let page = 0; page < maxPages; page += 1) {
       const data = await this.request<{
         items?: FeishuMessage[]
         has_more?: boolean
@@ -201,6 +257,7 @@ export class FeishuClient {
           page_size: options.pageSize ?? 50,
           page_token: pageToken,
         },
+        ...(options.signal ? { signal: options.signal } : {}),
       })
       for (const item of data.items ?? []) items.push(item)
       if (!data.has_more || !data.page_token) break
@@ -209,18 +266,33 @@ export class FeishuClient {
     return items.filter(item => !item.deleted)
   }
 
-  async sendText(chatId: string, text: string): Promise<{ message_id: string }> {
+  async sendText(chatId: string, text: string, uuid: string = crypto.randomUUID()): Promise<{ message_id: string }> {
     return this.request<{ message_id: string }>('/open-apis/im/v1/messages', {
       method: 'POST',
       query: { receive_id_type: 'chat_id' },
-      body: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }) },
+      body: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }), uuid },
     })
   }
 
-  async replyText(messageId: string, text: string): Promise<{ message_id: string }> {
+  async replyText(messageId: string, text: string, uuid: string = crypto.randomUUID()): Promise<{ message_id: string }> {
     return this.request<{ message_id: string }>(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, {
       method: 'POST',
-      body: { msg_type: 'text', content: JSON.stringify({ text }) },
+      body: { msg_type: 'text', content: JSON.stringify({ text }), uuid },
+    })
+  }
+
+  async sendInteractive(chatId: string, content: string, uuid: string = crypto.randomUUID()): Promise<{ message_id: string }> {
+    return this.request<{ message_id: string }>('/open-apis/im/v1/messages', {
+      method: 'POST',
+      query: { receive_id_type: 'chat_id' },
+      body: { receive_id: chatId, msg_type: 'interactive', content, uuid },
+    })
+  }
+
+  async replyInteractive(messageId: string, content: string, uuid: string = crypto.randomUUID()): Promise<{ message_id: string }> {
+    return this.request<{ message_id: string }>(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, {
+      method: 'POST',
+      body: { msg_type: 'interactive', content, uuid },
     })
   }
 
@@ -492,6 +564,7 @@ export class FeishuSource {
     const items = await this.client.listMessages(this.chatId, {
       startTimeSec,
       pageSize: this.pageSize,
+      signal,
     })
     const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()
@@ -630,18 +703,111 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
   ) {}
 
   async send(row: OutboxRow): Promise<{ externalId: string }> {
+    return this.sendRow(row)
+  }
+
+  async sendWithProgress(row: OutboxRow, onProgress: OutboxProgress): Promise<{ externalId: string }> {
+    return this.sendRow(row, onProgress)
+  }
+
+  private async sendRow(row: OutboxRow, onProgress?: OutboxProgress): Promise<{ externalId: string }> {
     const provider = row.target.provider
     if (provider && provider !== 'feishu') {
       throw new Error(`im outbox row ${row.id} targets ${provider}, not feishu`)
     }
     const messageId = row.target.message_id
     const chatId = row.target.chat_id
+    if (!messageId && !chatId) throw new Error(`feishu outbox row ${row.id} has no chat_id/message_id`)
+
+    type ProgressMetadata = {
+      textHash?: string
+      nextChunk?: number
+      total?: number
+      firstExternalId?: string
+      sendUuids?: Record<string, string>
+    }
+    let metadata: ProgressMetadata = {}
+    try {
+      const saved = JSON.parse(row.target[FEISHU_TEXT_PROGRESS_KEY] ?? '') as ProgressMetadata
+      if (saved && typeof saved === 'object') metadata = saved
+    } catch {
+      // Old rows and malformed progress metadata safely start without saved keys.
+    }
+    metadata.sendUuids ??= {}
+    const route = messageId ? `reply:${messageId}` : `send:${chatId}`
+    const uuidFor = (kind: string, content: string, index = 0, logicalHash?: string): string => {
+      const contentHash = crypto.createHash('sha256').update(content, 'utf8').digest('hex')
+      const key = `${route}:${kind}:${logicalHash ?? contentHash}:${contentHash}:${index}`
+      const existing = metadata.sendUuids![key]
+      if (existing) return existing
+      const uuid = crypto.randomUUID()
+      metadata.sendUuids![key] = uuid
+      if (onProgress) {
+        onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(metadata) })
+      }
+      return uuid
+    }
+    const sendTextBody = (text: string, uuid: string): Promise<{ message_id: string }> => messageId
+      ? this.client.replyText(messageId, text, uuid)
+      : this.client.sendText(chatId!, text, uuid)
+    const sendTextDelivery = async (text: string): Promise<{ message_id: string }> => {
+      const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
+        ? [text]
+        : splitFeishuText(text)
+      const textHash = crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+      let progress: ProgressMetadata | undefined
+      if (metadata.textHash === textHash && metadata.total === chunks.length
+        && Number.isInteger(metadata.nextChunk) && metadata.nextChunk! > 0 && metadata.nextChunk! <= chunks.length
+        && typeof metadata.firstExternalId === 'string' && metadata.firstExternalId.length > 0) {
+        progress = metadata
+      }
+      let firstResult: { message_id: string } | undefined = progress
+        ? { message_id: progress.firstExternalId! }
+        : undefined
+      for (let index = progress?.nextChunk ?? 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index]!
+        const uuid = uuidFor('text', chunk, index, textHash)
+        const sent = await sendTextBody(chunk, uuid)
+        if (!sent.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
+        firstResult ??= sent
+        if (chunks.length > 1 && onProgress) {
+          metadata = {
+            ...metadata,
+            textHash,
+            nextChunk: index + 1,
+            total: chunks.length,
+            firstExternalId: firstResult.message_id,
+          }
+          onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(metadata) }, firstResult.message_id)
+        }
+      }
+      if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
+      return firstResult
+    }
+    const format = process.env.FEISHU_REPLY_FORMAT?.trim().toLowerCase()
     let result: { message_id: string }
-    if (messageId) result = await this.client.replyText(messageId, row.text)
-    else if (chatId) result = await this.client.sendText(chatId, row.text)
-    else throw new Error(`feishu outbox row ${row.id} has no chat_id/message_id`)
+    if (format !== 'text' && hasFeishuMarkdownStructure(row.text)) {
+      const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
+      if (rendered.truncated || Buffer.byteLength(rendered.content, 'utf8') > FEISHU_CARD_CONTENT_LIMIT_BYTES) {
+        result = await sendTextDelivery(row.text)
+      } else {
+        const uuid = uuidFor('interactive', rendered.content)
+        try {
+          result = messageId
+            ? await this.client.replyInteractive(messageId, rendered.content, uuid)
+            : await this.client.sendInteractive(chatId!, rendered.content, uuid)
+        } catch (error) {
+          // Only documented format/size rejection codes guarantee that the
+          // card was rejected before acceptance and permit a text fallback.
+          if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
+          result = await sendTextDelivery(row.text)
+        }
+      }
+    } else {
+      result = await sendTextDelivery(row.text)
+    }
     if (!result.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
-    this.log(`[feishu] outbound message_id=${result.message_id} chat=${chatId ?? '-'} inReplyTo=${messageId ?? '-'}`)
+    this.log(`[feishu] outbound message_id=${result.message_id}`)
     return { externalId: result.message_id }
   }
 }
