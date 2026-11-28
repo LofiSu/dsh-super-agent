@@ -2547,7 +2547,9 @@ export class Runtime {
   /** Start an interactive session beside a serving process without claiming its work. */
   startForegroundChat(threadKey: string): void {
     this.foregroundThreadKey = threadKey
+    this.memoryOnExit = true
     this.armResidentRouters()
+    this.daemon.startForegroundMemory(threadKey)
   }
 
   private armResidentRouters(): void {
@@ -3368,7 +3370,7 @@ export class Runtime {
       await this.assessmentsSettled()
       this.flushEvals()
       await this.harness.jobsSettled()
-      if (this.memoryOnExit) await this.autoDream?.finishPass()
+      if (this.memoryOnExit) await this.autoDream?.finishPass(this.foregroundThreadKey)
     } catch (error) {
       remember(error)
     } finally {

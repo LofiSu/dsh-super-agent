@@ -12,7 +12,7 @@ pnpm build
 cargo run --locked --manifest-path desktop/Cargo.toml
 ```
 
-Use the same local home and model configuration as `lofibot chat`. The bridge reads the built CLI relative to this checkout. Set `LOFIBOT_DESKTOP_CLI` to an executable path to use an alternate CLI. The conversation is scoped to the current desktop process. Sound is off by default. The Sound button enables the synthesized completion and attention cues.
+Use the same local home and model configuration as `lofibot chat`. The bridge reads the built CLI relative to this checkout. Set `LOFIBOT_DESKTOP_CLI` to an executable path to use an alternate CLI. The default desktop conversation keeps its memory when the child or desktop restarts. Set `LOFIBOT_DESKTOP_CONVERSATION` to a different ID when launching the desktop to open an isolated conversation. IDs use up to 64 ASCII letters, digits, underscores, or hyphens and start with a letter or digit. The foreground bridge automatically processes memory for its own conversation. Sound is off by default. The Sound button enables the synthesized completion and attention cues.
 
 On macOS, run `desktop/scripts/bundle-macos.sh` and double-click the resulting app under `desktop/target`. The development bundle uses the checkout's built CLI and local Node installation. Configure the model through the CLI's persisted configuration for Finder launches.
 

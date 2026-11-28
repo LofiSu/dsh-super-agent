@@ -24,7 +24,7 @@ export class Daemon {
      * event to the normal ingress path.
      */
     private readonly connectors?: { tick: (now: number) => unknown },
-    private readonly autoDream?: { tick: (now: number) => unknown },
+    private readonly autoDream?: { tick: (now: number, thread?: string) => unknown },
   ) {}
 
   /**
@@ -41,6 +41,13 @@ export class Daemon {
     if (options.connectors !== false) this.safeTick(() => this.connectors?.tick(Date.now()))
     if (this.autoDreamOnPulse) this.safeTick(() => this.autoDream?.tick(Date.now()))
     this.timer = setInterval(() => this.tick(), this.watchdog.intervalMs)
+  }
+
+  /** Maintain only the foreground conversation while the owner may also be serving. */
+  startForegroundMemory(thread: string): void {
+    if (!this.autoDream || this.timer) return
+    this.timer = setInterval(() => this.safeTick(() => this.autoDream?.tick(Date.now(), thread)),
+      this.watchdog.intervalMs).unref()
   }
 
   /** One scheduling pulse: skip Env hands when all machines offline; never touch Session. */

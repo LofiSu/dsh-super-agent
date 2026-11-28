@@ -144,7 +144,11 @@ export async function runDesktopChat(home: string): Promise<void> {
       jobDelayMs: 20,
       watchdogIntervalMs: 60_000,
     })
-    const session = 'desktop-' + randomUUID()
+    const conversation = process.env.LOFIBOT_DESKTOP_CONVERSATION ?? 'local'
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(conversation)) {
+      throw new Error('Invalid desktop conversation ID.')
+    }
+    const session = 'desktop-' + conversation
     runtime.startForegroundChat(threadKey({ source: 'cli', id: session }))
     input = createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false })
     input.on('line', line => {

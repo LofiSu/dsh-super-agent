@@ -71,6 +71,39 @@ describe('desktop chat bridge', () => {
     }
   })
 
+  it('keeps its thread identity across process restarts and isolates an explicit new conversation', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-desktop-chat-'))
+    const run = (conversation: string): void => {
+      const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'desktop-bridge'], {
+        encoding: 'utf8',
+        input: JSON.stringify({ text: 'Please investigate a local note' }) + '\n',
+        env: {
+          PATH: process.env.PATH, NODE_NO_WARNINGS: '1', LOFIBOT_HOME: home,
+          LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_DESKTOP_CONVERSATION: conversation,
+        },
+        timeout: 10_000,
+      })
+      expect(result.status, result.stderr).toBe(0)
+    }
+    const threads = (): string[] => {
+      const runtime = Runtime.create({ home, model: new MockModel(), env: {} })
+      try {
+        return runtime.store.listDocs<Thread>('thread').map(thread => thread.key).sort()
+      } finally {
+        runtime.store.close()
+      }
+    }
+    try {
+      run('local')
+      run('local')
+      expect(threads()).toEqual(['cli:desktop-local'])
+      run('new-chat')
+      expect(threads()).toEqual(['cli:desktop-local', 'cli:desktop-new-chat'])
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('allows the desktop to request shutdown while a turn is running', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-desktop-chat-'))
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'desktop-bridge'], {

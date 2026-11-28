@@ -71,8 +71,11 @@ impl Bridge {
             },
             Command::new,
         );
+        let conversation = std::env::var_os("LOFIBOT_DESKTOP_CONVERSATION")
+            .unwrap_or_else(|| "local".into());
         let mut child = command
             .arg("desktop-bridge")
+            .env("LOFIBOT_DESKTOP_CONVERSATION", conversation)
             .env(
                 "LOFIBOT_DESKTOP_PARENT_PID",
                 std::process::id().to_string(),

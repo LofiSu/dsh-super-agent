@@ -68,12 +68,12 @@ export class AutoDream {
     private readonly log: (line: string) => void,
   ) {}
 
-  async tick(now: number): Promise<void> {
-    return this.run(now, IDLE_MS, 90_000)
+  async tick(now: number, thread?: string): Promise<void> {
+    return this.run(now, IDLE_MS, 90_000, thread)
   }
 
-  async finishPass(): Promise<void> {
-    const task = this.run(Date.now(), 0, 5_000)
+  async finishPass(thread?: string): Promise<void> {
+    const task = this.run(Date.now(), 0, 5_000, thread)
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([task, new Promise<void>(resolve => { timer = setTimeout(resolve, 5_000) })])
@@ -83,12 +83,12 @@ export class AutoDream {
     }
   }
 
-  private async run(now: number, idleMs: number, budgetMs: number): Promise<void> {
-    if (this.stopped || this.running || now < this.nextAt || !this.store.isOpen) return
+  private async run(now: number, idleMs: number, budgetMs: number, thread?: string): Promise<void> {
+    if (this.stopped || this.running || (now < this.nextAt && idleMs !== 0) || !this.store.isOpen) return
     this.nextAt = now + INTERVAL_MS
     this.running = true
     try {
-      const work = this.claim(now, idleMs)
+      const work = this.claim(now, idleMs, thread)
       if (!work) return
       this.work = work
       const controller = new AbortController()
@@ -135,14 +135,15 @@ export class AutoDream {
     return this.store.getDoc<Progress>(STATE_KIND, sessionId) ?? { through: 0 }
   }
 
-  private claim(now: number, idleMs: number): Work | undefined {
+  private claim(now: number, idleMs: number, thread?: string): Work | undefined {
     return this.store.atomic(() => {
       const pending: Omit<Work, 'lease' | 'previous' | 'notes'>[] = []
-      const cursor = this.store.getDoc<number>(SCAN_KIND, 'sessions') ?? 0
+      const scanKey = thread === undefined ? 'sessions' : 'foreground:' + thread
+      const cursor = this.store.getDoc<number>(SCAN_KIND, scanKey) ?? 0
       const idleBefore = new Date(now - idleMs).toISOString()
-      const rows = this.store.listIdleMemorySessions(cursor, idleBefore, SESSION_SCAN_LIMIT)
+      const rows = this.store.listIdleMemorySessions(cursor, idleBefore, SESSION_SCAN_LIMIT, thread)
       const nextCursor = rows.length === SESSION_SCAN_LIMIT ? rows.at(-1)!.cursor : 0
-      if (nextCursor !== cursor) this.store.putDoc(SCAN_KIND, 'sessions', nextCursor)
+      if (nextCursor !== cursor) this.store.putDoc(SCAN_KIND, scanKey, nextCursor)
       for (const row of rows) {
         const session = { sessionId: row.id, role: row.role, ticketId: row.ticketId ?? undefined }
         const progress = this.progress(row.id)
@@ -150,6 +151,7 @@ export class AutoDream {
         const scope = this.memory.consolidationScope(session)
         const model = this.modelFor(session.role)
         if (!scope || !model) continue
+        if (thread !== undefined && !this.memory.belongsToThread(session, scope, thread)) continue
         const held = this.store.getDoc<Lease>(LEASE_KIND, scope)
         if (held && held.expires > now) continue
         const scopeThrough = this.store.getDoc<number>(SCOPE_KIND, scope) ?? 0

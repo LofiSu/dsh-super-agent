@@ -102,6 +102,12 @@ export class SessionMemory {
     return this.noteScope(session, ticket)
   }
 
+  belongsToThread(session: MemorySession, scope: string, thread: string): boolean {
+    return session.role === 'router'
+      ? session.sessionId === 'router:thread:' + thread
+      : scope === workerThreadScope([thread])
+  }
+
   /** Proactive context is visible in an outgoing thread; require a matching singleton. */
   recallForDestination(ticket: Ticket, channel: ChannelRef): string | undefined {
     const key = threadKey({ source: channel.source, id: channel.thread })
