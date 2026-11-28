@@ -55,6 +55,10 @@ export class Assignments {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId) ?? ticket.assignments.at(-1)
     if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    if (assignment.state === 'ended') {
+      this.host.log(`[engine] Assignments.start skipped ended assignment ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return
+    }
     assignment.state = 'running'
     assignment.workerSessionId = sessionId
     assignment.startedAt = this.host.now()
@@ -72,6 +76,10 @@ export class Assignments {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId) ?? ticket.assignments.at(-1)
     if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    if (assignment.state === 'ended') {
+      this.host.log(`[engine] Assignments.placed skipped ended assignment ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return
+    }
     assignment.node = node
     assignment.remotePeerId = remotePeerId
     this.host.repo.putDoc('ticket', ticket.id, ticket)

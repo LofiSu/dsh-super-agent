@@ -376,8 +376,13 @@ export class Harness {
       this.opts.log(`[harness] worker skipped ticketId=${ticketId} paused reason=${paused}`)
       return
     }
-    if (!latest.assignments.at(-1)) {
+    const assignment = latest.assignments.at(-1)
+    if (!assignment) {
       this.opts.log(`[harness] worker skipped ticketId=${ticketId} no-assignment`)
+      return
+    }
+    if (assignment.state === 'ended') {
+      this.opts.log(`[harness] worker skipped ticketId=${ticketId} assignment-ended assignmentId=${assignment.id}`)
       return
     }
     // No mesh configured: keep the original no-placement behavior.
@@ -571,6 +576,10 @@ export class Harness {
     const assignment = ticket.assignments.at(-1)
     if (!assignment) {
       this.opts.log(`[harness] worker skipped ticketId=${ticket.id} no-assignment`)
+      return Promise.resolve()
+    }
+    if (assignment.state === 'ended') {
+      this.opts.log(`[harness] worker skipped ticketId=${ticket.id} assignment-ended assignmentId=${assignment.id}`)
       return Promise.resolve()
     }
     this.bookWorkerTurn(ticket.id)

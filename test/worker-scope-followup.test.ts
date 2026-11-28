@@ -474,6 +474,90 @@ describe('worker mandate scope', () => {
     expect(latest.ended?.outcome).toBe('ready')
   })
 
+  it('direct launch leaves a locally failed assignment ended', async () => {
+    const prompts: string[] = []
+    const runtime = start(dispatchModel(
+      prompts, undefined, () => scopeA, undefined, undefined, true, true, undefined, true, 'failed',
+    ))
+    runtime.ingest(directTrigger('trg_direct_launch_after_failed'))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+
+    const ticket = runtime.store.listDocs<Ticket>('ticket').find(item => !isConversationTicket(item))!
+    const assignmentId = ticket.assignments.at(-1)!.id
+    const startedBefore = runtime.store.listEvents().filter(event =>
+      event.type === 'assignment.started' && (event.payload as { assignmentId?: string }).assignmentId === assignmentId,
+    ).length
+    expect(ticket.assignments.at(-1)).toMatchObject({ state: 'ended', report: { kind: 'failed' } })
+    expect(ticket.ended).toBeUndefined()
+
+    await runtime.harness.launch(ticket)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticket.id)!
+    expect(latest.assignments).toHaveLength(1)
+    expect(latest.assignments[0]).toMatchObject({ id: assignmentId, state: 'ended', report: { kind: 'failed' } })
+    expect(runtime.store.listEvents().filter(event =>
+      event.type === 'assignment.started' && (event.payload as { assignmentId?: string }).assignmentId === assignmentId,
+    )).toHaveLength(startedBefore)
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
+  })
+
+  it('assignmentStarted does not resurrect an ended assignment', () => {
+    const runtime = start()
+    const decision = issue192Fixture(runtime, 'trg_assignment_started_after_ended')
+    const ticketId = decision.ticketId!
+    const assignmentId = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments[0]!.id
+    runtime.engine.assignmentStarted(ticketId, assignmentId, `worker_${ticketId}`)
+    runtime.engine.report(ticketId, { kind: 'failed', text: 'preserve this report', deliver: false })
+    const ended = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments[0]!
+    const startedEvents = runtime.store.listEvents().filter(event =>
+      event.type === 'assignment.started' && (event.payload as { assignmentId?: string }).assignmentId === assignmentId,
+    ).length
+
+    runtime.engine.assignmentStarted(ticketId, assignmentId, `worker_${ticketId}_again`)
+
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments[0]).toMatchObject({
+      id: assignmentId,
+      state: 'ended',
+      report: { kind: 'failed', text: 'preserve this report' },
+      workerSessionId: ended.workerSessionId,
+      startedAt: ended.startedAt,
+    })
+    expect(runtime.store.listEvents().filter(event =>
+      event.type === 'assignment.started' && (event.payload as { assignmentId?: string }).assignmentId === assignmentId,
+    )).toHaveLength(startedEvents)
+  })
+
+  it('re-dispatch after a local waiting assignment starts a new assignment with the revised scope', async () => {
+    const prompts: string[] = []
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, undefined, () => scope, redispatch, undefined, true, true, undefined, true, 'waiting'))
+    const triggerId = 'trg_redispatch_after_waiting'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+    const waitingAssignment = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments.at(-1)!
+    expect(waitingAssignment).toMatchObject({ state: 'ended', report: { kind: 'waiting' } })
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended).toBeUndefined()
+
+    scope = scopeB
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    const replacement = latest.assignments.at(-1)!
+    expect(latest.assignments).toHaveLength(2)
+    expect(replacement.id).not.toBe(waitingAssignment.id)
+    expect(waitingAssignment).toMatchObject({ state: 'ended', report: { kind: 'waiting' } })
+    expect(prompts.some(prompt => prompt.startsWith('TASK') && prompt.includes(`scope=${scopeB}`))).toBe(true)
+    expect(latest.ended?.outcome).toBe('ready')
+  })
+
   it('re-dispatch after a local blocked assignment starts a new assignment with the revised scope', async () => {
     const prompts: string[] = []
     let scope = scopeA
