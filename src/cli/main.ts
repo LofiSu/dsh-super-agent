@@ -203,7 +203,8 @@ function help(): void {
   pnpm lofibot emit im --thread bug-login --text "login still 500"
   pnpm lofibot emit github --pr 42 --text "CI failed on auth test"
   pnpm lofibot metrics
-  pnpm lofibot memory [--limit 10]   # persisted cross-ticket memories
+  pnpm lofibot memory [--session <id>] [--limit 10]   # current memory scopes and index
+  pnpm lofibot memory archive [--limit 10]  # old Ticket and Decision snapshots
   pnpm lofibot memory dream --session <id>  # consolidate notes for one session
   pnpm lofibot a2a [--limit 10]      # persisted A2A envelopes
   pnpm lofibot prompt [--role router|worker|watchdog] [--layers] [--json]
@@ -347,7 +348,7 @@ async function withRuntime(
     jobDelayMs: 20,
     watchdogIntervalMs: 60_000,
   })
-  runtime.start()
+  runtime.start({ memoryOnExit: true })
   try {
     await work(runtime)
     await runtime.finish()
@@ -659,7 +660,20 @@ async function main(): Promise<void> {
     const store = openInspectStore(home)
     try {
       const instance = process.env.LOFIBOT_INSTANCE_ID ?? 'local'
-      if (cmd === 'memory') {
+      if (cmd === 'memory' && sub !== 'archive') {
+        const scopeId = option('session')
+        const memory = new SessionMemory(store, promptRedactor(process.env))
+        const eligible = store.listSessions().filter(row =>
+          supportsSessionMemory(row.role, row.id) && (!scopeId || scopeId === row.id))
+        console.log(JSON.stringify({
+          instance,
+          sessions: eligible.slice(-limit).map(row => ({
+            sessionId: row.id,
+            role: row.role,
+            index: memory.index({ sessionId: row.id, role: row.role, ticketId: row.ticketId }),
+          })),
+        }, null, 2))
+      } else if (cmd === 'memory') {
         const memories = store.listDocs<LongTermMemoryEntry>('ltm')
         console.log(JSON.stringify({
           instance,

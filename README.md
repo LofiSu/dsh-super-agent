@@ -61,4 +61,6 @@ flowchart TD
 
 The Router owns replies. Workers report their results to it, and the Outbox handles delivery. Scheduled triggers and channel messages share the same ingress path.
 
+The agent reuses scoped notes across sessions and consolidates them automatically. Run `pnpm lofibot memory` to inspect indexes or `pnpm lofibot memory archive` to read historical snapshots. [Memory design](docs/ANTHROPIC_AGENT_MEMORY.md)
+
 [Architecture](docs/architecture.md) · [Module reference](docs/MODULES.md) · [Safety](docs/safety.md) · [MIT license](LICENSE)

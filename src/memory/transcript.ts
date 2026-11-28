@@ -96,3 +96,19 @@ export function readMemoryTranscript(
   if (consumed < rows.length) return { entries, before: rows[consumed - 1]!.id }
   return { entries }
 }
+
+/** Only user evidence contributes to unattended writes. Scan in journal order. */
+export function readPendingMemoryEvidence(
+  store: Store, sessionId: string, after: number, redact: (text: string) => string,
+): { through: number; entries: { id: number; text: string }[] } {
+  const rows = store.listTranscriptAfter(sessionId, after, 8)
+  return {
+    through: rows.at(-1)?.id ?? after,
+    entries: rows.flatMap(row => {
+      const text = evidenceText(row.body, 'user')
+      return text?.trim() && !/^(?:PROACTIVE_IDLE|CONNECTOR_EVENT)\r?\n/.test(text)
+        ? [{ id: row.id, text: redact(text).slice(0, MAX_ENTRY_CHARS) }]
+        : []
+    }),
+  }
+}

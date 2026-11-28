@@ -238,9 +238,9 @@ with stable evidence IDs.
 A short `/memories/MEMORY.md` index is loaded as reference data before the
 current prompt. Topic pages under `/memories/wiki/` are loaded on demand.
 Run `pnpm lofibot memory dream --session <id>` to review a session's notes
-against its transcript using the configured live model. The pass has only
-memory and transcript tools, requires user evidence before edits, and holds
-no background schedule. See [Anthropic memory design](ANTHROPIC_AGENT_MEMORY.md).
+against its transcript using the configured live model. The manual pass has only memory and transcript tools and requires user evidence
+before edits. Runtime also schedules bounded background consolidation through
+the existing Daemon, with an opt-out via `LOFIBOT_AUTO_DREAM=0`. See [Anthropic memory design](ANTHROPIC_AGENT_MEMORY.md).
 
 `src/connectors/index-store.ts` keeps connector source records under the
 separate `connector` document kind. It is a queryable index, not long-term
@@ -256,23 +256,11 @@ Session, Channel, and Actor. Spill rows persist those refs (`spills.refs`,
 schema v4). Router/Worker task lines carry `refs=`; the trigger text itself
 stays clean for user-facing acknowledgements.
 
-`long-term.ts` persists:
-
-- one entry per finished ticket (`ltm_<ticketId>`): title, brief, and last
-  report, plus ticket/thread/trigger/channel refs;
-- one entry per Router Decision (`ltm_decision_<decisionId>`): kind, thread,
-  reason, trigger ids, and refs. Accept/ignore/stop/unavailable all count, so
-  "plan A here, plan B there" survives across Tickets and channels.
-
-Both are `tier=hot`. On every terminal path, `remember(ticket)` upserts the
-ticket entry and grants that ticket access to its spill. Text is redacted
-before it reaches the spill, including `put()` callers. The next ticket
-queries by title (three most recent hits), receives a spill grant for each
-hit, and gets `memory=<id> spillId=<id> refs=<handles> text=<summary>` lines
-in the Worker task. The Router prompt and the main-agent assessment receive
-`recentDecisions()` (the global sequence point) plus
-`forThreads(ticket.threadKeys)`, so a same-Thread decision is visible without a
-lexical title match and a cross-channel decision can steer a new Ticket.
+`long-term.ts` implements the historical Ticket and Decision snapshot format.
+Runtime keeps the original Tickets, Decisions and journals as evidence and
+stops generating `ltm` snapshots or injecting their summaries in tasks.
+`pnpm ds-agent memory archive` reads existing snapshots without migrating,
+deleting or feeding them into a model.
 
 The Router is a resident Session, not a per-Ticket artifact. `Runtime.start()`
 arms every Router shard; each shard keeps one `sessions` row and one journal.
@@ -289,91 +277,10 @@ the reader ticket: a trigger/thread/ticket/decision is readable only when the
 reader owns or shares its Thread; a session only when it is the caller's own
 session. A handle is a pointer, never a grant.
 
-Recall is lexical-first and deterministic (ADR-010, implemented in
-`src/memory/long-term.ts`). `query()`:
+The archive's deterministic lexical, graph and optional semantic retrieval
+contracts are recorded in ADR-010 and ADR-016. Existing library callers can
+still inspect historical snapshots.
 
-- Normalizes query and body tokens with NFKC, lower-casing, and
-  punctuation/whitespace collapse, maps them through a small explicit in-repo
-  synonym/morphology table, and removes stop words from queries. There is no
-  model, provider, learned vocabulary, or new dependency.
-- Treats any query token found in a readable spill body or in an entry's tags
-  as a direct candidate, so tag-only queries retrieve. Requested `tags` remain
-  an exact AND filter (trimmed, case-sensitive) and are never relaxed.
-- Builds a per-query tag index over the same retention-bounded entry set and
-  expands exactly one hop from direct candidates across shared tags; entries
-  reached by the hop do not seed another hop. `remember()` already stores
-  ticket thread keys as tags, so those existing links participate in the same
-  hop without a new link table. Entries without a readable spill are never
-  eligible.
-- Orders by `tagHits` desc, then `textHits` desc (each query token capped at
-  5), then `hopScore` desc, then `similarity` desc, then hot before cold, then
-  `createdAt` desc, then `id` desc. There is no randomness, provider call, or
-  wall-clock-dependent ranking.
-
-Semantic recall is an optional hybrid layer (`src/memory/embedding.ts`).
-`EmbeddingPort` is a two-method contract (`id`, `embed`); the shipped
-`HashedEmbedding` is offline and deterministic: signed feature hashing over the
-character trigrams of `#word#`, 128 dimensions, L2-normalized. It shares the
-normalizer and synonym map in `src/memory/text.ts` with the lexical path. The
-Runtime enables it by default. `embeddings: false` or
-`LOFIBOT_SEMANTIC_RECALL=0` (also `false`, `off`, `no`, or empty) restores
-lexical-only behavior; an explicit programmatic port wins over the environment.
-A deployer can pass a local-model or hosted provider as the port; the memory
-store itself never calls the network.
-
-The indexed text is the first non-empty line, capped at 300 characters: the
-ticket title, the decision reason, or the newest archived digest summary.
-Indexing the whole body would dilute a short title query below any useful
-cosine. Vectors are stored on the entry (`embedding`, `embeddingId`) and
-recomputed lazily when the port id or dimensions change, including for entries
-written before a port existed. A read persists at most 32 new vectors and
-makes at most 64 entry-embedding calls plus one query vector; empty or failed
-results do not consume the vector budget, so a short bad prefix cannot starve
-later entries, and a vector from a different port is never scored. A persistent
-provider failure across 64 or more entries exhausts that read's call budget;
-work stays bounded, the entries are retried later, and their semantic recall
-degrades to lexical-only until the provider recovers. An upgrade therefore
-cannot turn one recall into thousands of provider calls or an unbounded write.
-`query()` embeds the
-query once and marks an entry as a semantic candidate when
-`cosine >= embeddingFloor` (default 0.35, clamped to 0..1;
-`RuntimeOptions.embeddingFloor` or `LOFIBOT_EMBEDDING_FLOOR`). Semantic
-candidates do not seed the one-hop tag walk; an entry is eligible when it is a
-lexical direct candidate, is reached by the hop, or clears the floor.
-
-A provider throw degrades to lexical-only: writes still succeed without a
-vector, and a query skips the semantic branch. Redaction runs before every port
-call, including the query text, so a hosted provider never receives a secret.
-Every returned hit still receives the same reader-ticket spill grant, so
-semantic recall does not widen access. Empty or punctuation-only text maps to a zero vector and cannot match.
-Evidence: `test/semantic-memory.test.ts`; design record: ADR-016.
-
-Retention is two-tier. Hot ticket/decision entries default to 1000 entries /
-90 days (`LOFIBOT_MEMORY_MAX_ENTRIES`, `LOFIBOT_MEMORY_MAX_AGE_DAYS`).
-Before a hot entry is pruned, its summary is folded into a cold Thread digest
-(`ltm_digest_<thread>`), which defaults to 200 entries / 3650 days
-(`LOFIBOT_MEMORY_COLD_MAX_ENTRIES`, `LOFIBOT_MEMORY_COLD_MAX_AGE_DAYS`).
-`query({ tier: 'cold' })` searches only digests. Both prune passes run inside
-the same transaction as the write; `forget()` deletes the entry, its spill,
-and its grants.
-
-Security and storage: `query()` throws without a reader ticket id; every
-ranked hit, including an expanded one, grants that ticket access to the exact
-spill; an `ltm` id alone is never a capability; redaction still runs before
-storage; and there is no lookup-by-id API. Object handles follow the same
-rule: `readObjectFor` re-checks the reader ticket's Thread on every hop.
-
-Evidence: `test/memory-recall-eval.test.ts` measures the shipped `query()` on
-the original 11 ADR-010 queries (macro recall@3 11/11 = 1.000; exact 2/2, word
-order 2/2, paraphrase 3/3, tag-only 2/2, multi-hop 2/2), 15 additional
-held-out-style queries authored in the same follow-up PR (regression coverage,
-not independent generalization evidence), and four negative controls (0
-results). It also checks deterministic
-ids across repeated runs and a reopened store and a 1000-entry fixture bounded
-to one body read per entry. ADR-010 records the pre-implementation baseline of
-4/11 = 0.364. Embeddings are **not implemented**: any future semantic index
-must sit behind an `EmbeddingPort` with a deterministic offline mock and no
-provider call in CI.
 
 ## M7 — speculate
 
