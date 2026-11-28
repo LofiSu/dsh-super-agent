@@ -637,11 +637,14 @@ async function main(): Promise<void> {
       if (!session || !supportsSessionMemory(session.role, session.id)) {
         throw new Error('No direct-chat Router or Worker session with that ID')
       }
-      const redact = promptRedactor(process.env)
-      const memory = new SessionMemory(store, redact)
       try {
-        console.log(JSON.stringify(await dreamMemory(requireLiveModelFromEnv(), memory, session, redact), null, 2))
+        await runWithEmbeddedGateway(home, async () => {
+          const redact = promptRedactor(process.env)
+          const memory = new SessionMemory(store, redact)
+          console.log(JSON.stringify(await dreamMemory(requireLiveModelFromEnv(), memory, session, redact), null, 2))
+        })
       } catch (error) {
+        const redact = promptRedactor(process.env)
         throw new Error(redact(error instanceof Error ? error.message : String(error)))
       }
     } finally {
