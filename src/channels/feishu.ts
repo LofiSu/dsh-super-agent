@@ -724,6 +724,9 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       nextChunk?: number
       total?: number
       firstExternalId?: string
+      interactiveHash?: string
+      interactiveExternalId?: string
+      textFallbackHash?: string
       sendUuids?: Record<string, string>
     }
     let metadata: ProgressMetadata = {}
@@ -764,13 +767,14 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       let firstResult: { message_id: string } | undefined = progress
         ? { message_id: progress.firstExternalId! }
         : undefined
+      if (progress?.nextChunk === chunks.length) return firstResult!
       for (let index = progress?.nextChunk ?? 0; index < chunks.length; index += 1) {
         const chunk = chunks[index]!
         const uuid = uuidFor('text', chunk, index, textHash)
         const sent = await sendTextBody(chunk, uuid)
         if (!sent.message_id) throw new Error(`Feishu send returned no message_id for outbox row ${row.id}`)
         firstResult ??= sent
-        if (chunks.length > 1 && onProgress) {
+        if (onProgress) {
           metadata = {
             ...metadata,
             textHash,
@@ -784,23 +788,54 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
       return firstResult
     }
+    const textHashFor = (text: string): string => crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+    const hasMatchingTextFallback = (text: string): boolean => metadata.textFallbackHash === textHashFor(text)
+    const hasCompletedTextAcceptance = (text: string): boolean => {
+      const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
+        ? [text]
+        : splitFeishuText(text)
+      const textHash = crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+      return metadata.textHash === textHash
+        && metadata.total === chunks.length
+        && metadata.nextChunk === chunks.length
+        && typeof metadata.firstExternalId === 'string'
+        && metadata.firstExternalId.length > 0
+    }
     const format = process.env.FEISHU_REPLY_FORMAT?.trim().toLowerCase()
     let result: { message_id: string }
     if (format !== 'text' && hasFeishuMarkdownStructure(row.text)) {
       const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
       if (rendered.truncated || Buffer.byteLength(rendered.content, 'utf8') > FEISHU_CARD_CONTENT_LIMIT_BYTES) {
         result = await sendTextDelivery(row.text)
+      } else if (hasCompletedTextAcceptance(row.text) || hasMatchingTextFallback(row.text)) {
+        result = await sendTextDelivery(row.text)
       } else {
-        const uuid = uuidFor('interactive', rendered.content)
-        try {
-          result = messageId
-            ? await this.client.replyInteractive(messageId, rendered.content, uuid)
-            : await this.client.sendInteractive(chatId!, rendered.content, uuid)
-        } catch (error) {
-          // Only documented format/size rejection codes guarantee that the
-          // card was rejected before acceptance and permit a text fallback.
-          if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
-          result = await sendTextDelivery(row.text)
+        const interactiveHash = crypto.createHash('sha256').update(rendered.content, 'utf8').digest('hex')
+        if (metadata.interactiveHash === interactiveHash
+          && typeof metadata.interactiveExternalId === 'string' && metadata.interactiveExternalId.length > 0) {
+          result = { message_id: metadata.interactiveExternalId }
+        } else {
+          const uuid = uuidFor('interactive', rendered.content)
+          let acceptedAsCard = false
+          try {
+            result = messageId
+              ? await this.client.replyInteractive(messageId, rendered.content, uuid)
+              : await this.client.sendInteractive(chatId!, rendered.content, uuid)
+            acceptedAsCard = true
+          } catch (error) {
+            // Only documented format/size rejection codes guarantee that the
+            // card was rejected before acceptance and permit a text fallback.
+            if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
+            if (onProgress) {
+              metadata = { ...metadata, textFallbackHash: textHashFor(row.text) }
+              onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(metadata) })
+            }
+            result = await sendTextDelivery(row.text)
+          }
+          if (acceptedAsCard && onProgress && result.message_id) {
+            metadata = { ...metadata, interactiveHash, interactiveExternalId: result.message_id }
+            onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(metadata) }, result.message_id)
+          }
         }
       }
     } else {
