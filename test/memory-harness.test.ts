@@ -49,6 +49,16 @@ function scripted(complete: Model['complete']): Model {
   }
 }
 
+it('reports oversized indices as errors after the authorized write commits', () => {
+  const { memory } = open(tempHome())
+  const session = { sessionId: 'router:thread:test', role: 'router' as const }
+  const path = '/memories/MEMORY.md'
+  const file_text = Array.from({ length: 201 }, (_, i) => 'Topic ' + (i + 1)).join('\n')
+  expect(() => memory.execute(session, { command: 'create', path, file_text })).toThrow(/was saved.*shorten/)
+  expect(memory.execute(session, { command: 'view', path, view_range: [201, 201] })).toContain('Topic 201')
+  expect(memory.index(session)).not.toContain('Topic 201')
+})
+
 it('persists tool-authored notes across restart and injects only the current scope index', async () => {
   const home = tempHome()
   const first = open(home)

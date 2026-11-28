@@ -3,7 +3,7 @@ import { workerSessionId } from '../harness/session.ts'
 import { UserError } from '../shared/errors.ts'
 import { threadKey, type ChannelRef, type Role, type Ticket } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
-import { MemoryNotes, type Note } from './notes.ts'
+import { memoryNoteResult, MemoryNotes, type Note } from './notes.ts'
 import { readMemoryTranscript } from './transcript.ts'
 
 export const memorySpec: ToolSpec = {
@@ -66,13 +66,14 @@ export class SessionMemory {
     if (args.command === 'view') {
       return this.notes.execute(this.noteScope(session, this.workerTicket(session)), args)
     }
-    return this.store.atomic(() => {
+    const outcome = this.store.atomic(() => {
       const ticket = this.workerTicket(session)
       if (ticket?.speculative || ticket?.ended?.silent) {
         throw new UserError('Speculative workers cannot write persistent memory')
       }
-      return this.notes.execute(this.noteScope(session, ticket), args)
+      return this.notes.executeWithFeedback(this.noteScope(session, ticket), args)
     })
+    return memoryNoteResult(outcome)
   }
 
   private workerTicket(session: MemorySession): Ticket | undefined {
