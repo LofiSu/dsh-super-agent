@@ -110,7 +110,7 @@ function normalizeProvider(input: GatewayProviderInput, env: NodeJS.ProcessEnv, 
   const models = Array.isArray(input.models)
     ? input.models.map(String)
     : preset
-      ? [env.DS_AGENT_API_MODEL?.trim() || preset.defaultModel]
+      ? [env.LOFIBOT_API_MODEL?.trim() || preset.defaultModel]
       : undefined
   const apiKeys = Array.isArray(input.apiKeys) ? input.apiKeys.map(String) : undefined
   return {
@@ -141,42 +141,42 @@ export function gatewayProvidersFromInput(inputs: unknown, env: NodeJS.ProcessEn
 }
 
 /**
- * Build the provider list from `DS_AGENT_GATEWAY_PROVIDERS` (a JSON array).
+ * Build the provider list from `LOFIBOT_GATEWAY_PROVIDERS` (a JSON array).
  * With no JSON, fall back to the single BYOM provider in
- * `DS_AGENT_API_BASE` + `DS_AGENT_API_KEY`.
+ * `LOFIBOT_API_BASE` + `LOFIBOT_API_KEY`.
  */
 export function gatewayProvidersFromEnv(env: NodeJS.ProcessEnv = process.env): GatewayProvider[] {
-  const raw = env.DS_AGENT_GATEWAY_PROVIDERS?.trim()
+  const raw = env.LOFIBOT_GATEWAY_PROVIDERS?.trim()
   if (raw) {
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
     } catch {
-      throw new Error('DS_AGENT_GATEWAY_PROVIDERS is not valid JSON')
+      throw new Error('LOFIBOT_GATEWAY_PROVIDERS is not valid JSON')
     }
     return gatewayProvidersFromInput(parsed, env)
   }
-  const baseUrl = env.DS_AGENT_API_BASE?.trim()
-  const apiKey = env.DS_AGENT_API_KEY?.trim()
+  const baseUrl = env.LOFIBOT_API_BASE?.trim()
+  const apiKey = env.LOFIBOT_API_KEY?.trim()
   if (baseUrl && apiKey) {
-    const model = env.DS_AGENT_API_MODEL?.trim()
+    const model = env.LOFIBOT_API_MODEL?.trim()
     return [{ id: 'default', baseUrl, apiKey, priority: 0, ...(model ? { models: [model] } : {}) }]
   }
   return []
 }
 
-/** Routing groups from `DS_AGENT_GATEWAY_ALIASES` (JSON object of name -> string[]). */
+/** Routing groups from `LOFIBOT_GATEWAY_ALIASES` (JSON object of name -> string[]). */
 export function gatewayAliasesFromEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string[]> {
-  const raw = env.DS_AGENT_GATEWAY_ALIASES?.trim()
+  const raw = env.LOFIBOT_GATEWAY_ALIASES?.trim()
   if (!raw) return {}
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('DS_AGENT_GATEWAY_ALIASES is not valid JSON')
+    throw new Error('LOFIBOT_GATEWAY_ALIASES is not valid JSON')
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('DS_AGENT_GATEWAY_ALIASES must be a JSON object')
+    throw new Error('LOFIBOT_GATEWAY_ALIASES must be a JSON object')
   }
   const aliases: Record<string, string[]> = {}
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {

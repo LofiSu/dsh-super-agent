@@ -12,7 +12,7 @@ import type { Trigger } from '../src/shared/types.ts'
  * P2-4/T17: the shipped default Slow Path is the deterministic rule classifier.
  * This test pins that both model implementations delegate to `ruleClassify`,
  * synchronously and without touching the network, and that the opt-in model
- * Slow Path is off unless `DS_AGENT_SLOW_PATH=model` is configured.
+ * Slow Path is off unless `LOFIBOT_SLOW_PATH=model` is configured.
  */
 
 /** Representative triggers: action+mention, action only, mention only, noise, short text, speculate hint. */
@@ -29,7 +29,7 @@ function cases(): Array<{ label: string; trigger: Trigger }> {
   return [
     {
       label: 'action + mention',
-      trigger: base({ text: '@ds-agent please fix the login timeout' }),
+      trigger: base({ text: '@lofibot please fix the login timeout' }),
     },
     {
       label: 'action only',
@@ -37,7 +37,7 @@ function cases(): Array<{ label: string; trigger: Trigger }> {
     },
     {
       label: 'mention only',
-      trigger: base({ text: '@ds-agent sharing the notes from standup', addressed: false }),
+      trigger: base({ text: '@lofibot sharing the notes from standup', addressed: false }),
     },
     {
       label: 'noise',
@@ -108,7 +108,7 @@ describe('slow-path policy classifier (P2-4)', () => {
   })
 
   it('defaults Runtime to rules mode and ingestAsync never fetches', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-slow-default-'))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-slow-default-'))
     const runtime = Runtime.create({
       home,
       model: new HttpOpenAI('http://127.0.0.1:1/v1', 'fake-key', 'fake-model', 1000),
@@ -123,7 +123,7 @@ describe('slow-path policy classifier (P2-4)', () => {
       await expect(runtime.ingestAsync(imTrigger({
         id: 'trg_default_rules',
         thread: 'topic/slow-path',
-        text: '@ds-agent please fix the login timeout',
+        text: '@lofibot please fix the login timeout',
       }))).resolves.toBe('stored')
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {

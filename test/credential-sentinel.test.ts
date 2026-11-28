@@ -15,7 +15,7 @@ import { freshRuntime, settleWithDeadline, shutdown, tempHome } from './fixtures
 /**
  * P0-5 / PLAN D13: a credential value must never reach a durable or outbound
  * artifact. The unique sentinel is known to the Runtime only through the env
- * (the same way a real DS_AGENT_API_KEY enters), then is deliberately repeated
+ * (the same way a real LOFIBOT_API_KEY enters), then is deliberately repeated
  * in the ticket text so every redaction boundary is exercised: ingress spill,
  * trigger/ticket documents, model prompts, tool output (read_object), session
  * journal (SQLite + JSONL), replies/outbox, events, and the SQLite file itself.
@@ -45,7 +45,7 @@ function baseEnv(sentinel: string): NodeJS.ProcessEnv {
     USER: process.env.USER,
     LANG: process.env.LANG,
     TMPDIR: process.env.TMPDIR,
-    DS_AGENT_API_KEY: sentinel,
+    LOFIBOT_API_KEY: sentinel,
   }
 }
 
@@ -95,14 +95,14 @@ function sqliteTables(dbPath: string): { name: string; rows: unknown[] }[] {
 }
 
 describe('credential sentinel non-leakage (P0-5/D13)', () => {
-  it('never persists or sends a DS_AGENT_API_KEY sentinel through a ticket', async () => {
+  it('never persists or sends a LOFIBOT_API_KEY sentinel through a ticket', async () => {
     // Deliberately not shaped like a known credential pattern: this test must
     // fail if exact-value/env redaction stops working.
     const sentinel = `sentinel-${randomUUID()}`
     const model = new CapturingMockModel()
     const runtime = runtimeFor(model, sentinel)
     const padding = 'The deploy log repeats the leaked value in CI output. '.repeat(4)
-    const text = `@ds-agent please investigate the credential leak ${sentinel} in the deploy log and rotate it. ${padding}`
+    const text = `@lofibot please investigate the credential leak ${sentinel} in the deploy log and rotate it. ${padding}`
 
     // Non-vacuous: the raw ticket really contains the unique sentinel.
     expect(text).toContain(sentinel)

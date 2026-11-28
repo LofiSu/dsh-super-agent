@@ -32,7 +32,7 @@ function sample(over: Partial<ImessageInbound> = {}): ImessageInbound {
   return {
     rowId: 10,
     guid: 'GUID-1',
-    text: 'hello ds-agent',
+    text: 'hello lofibot',
     handle: '+8613800000000',
     service: 'iMessage',
     chatGuid: 'iMessage;-;+8613800000000',
@@ -316,9 +316,9 @@ describe('iMessage admission decision', () => {
     expect(decision.allowed).toBe(false)
     expect(decision.error).toBe(IMESSAGE_ADMISSION_ERROR)
     expect(decision.error).toContain('--handle "+..."')
-    expect(decision.error).toContain('DS_AGENT_ACTOR_ALLOWLIST')
+    expect(decision.error).toContain('LOFIBOT_ACTOR_ALLOWLIST')
     expect(decision.error).toContain('--allow-any')
-    expect(decision.error).toContain('DS_AGENT_IMESSAGE_ALLOW_ANY=1')
+    expect(decision.error).toContain('LOFIBOT_IMESSAGE_ALLOW_ANY=1')
   })
 
   it('accepts a handle, a non-empty actor allowlist, or explicit opt-out', () => {
@@ -337,19 +337,19 @@ describe('iMessage admission decision', () => {
 
 describe('iMessage CLI admission', () => {
   it('refuses to start without an allowlist before touching the database', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-cli-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-cli-'))
     const dbPath = path.join(dir, 'missing-chat.db')
     const argv = process.argv
     const saved = {
-      handle: process.env.DS_AGENT_IMESSAGE_HANDLE,
-      actors: process.env.DS_AGENT_ACTOR_ALLOWLIST,
-      allowAny: process.env.DS_AGENT_IMESSAGE_ALLOW_ANY,
+      handle: process.env.LOFIBOT_IMESSAGE_HANDLE,
+      actors: process.env.LOFIBOT_ACTOR_ALLOWLIST,
+      allowAny: process.env.LOFIBOT_IMESSAGE_ALLOW_ANY,
     }
     try {
-      process.argv = ['node', 'ds-agent', 'imessage', '--once', '--db', dbPath]
-      delete process.env.DS_AGENT_IMESSAGE_HANDLE
-      delete process.env.DS_AGENT_ACTOR_ALLOWLIST
-      delete process.env.DS_AGENT_IMESSAGE_ALLOW_ANY
+      process.argv = ['node', 'lofibot', 'imessage', '--once', '--db', dbPath]
+      delete process.env.LOFIBOT_IMESSAGE_HANDLE
+      delete process.env.LOFIBOT_ACTOR_ALLOWLIST
+      delete process.env.LOFIBOT_IMESSAGE_ALLOW_ANY
       let error: unknown
       try {
         await runImessageCommand(dir)
@@ -358,14 +358,14 @@ describe('iMessage CLI admission', () => {
       }
       expect(error).toBeInstanceOf(Error)
       expect((error as Error).message).toContain('--handle "+..."')
-      expect((error as Error).message).toContain('DS_AGENT_ACTOR_ALLOWLIST')
+      expect((error as Error).message).toContain('LOFIBOT_ACTOR_ALLOWLIST')
       expect(fs.existsSync(dbPath)).toBe(false)
     } finally {
       process.argv = argv
       for (const [name, value] of [
-        ['DS_AGENT_IMESSAGE_HANDLE', saved.handle],
-        ['DS_AGENT_ACTOR_ALLOWLIST', saved.actors],
-        ['DS_AGENT_IMESSAGE_ALLOW_ANY', saved.allowAny],
+        ['LOFIBOT_IMESSAGE_HANDLE', saved.handle],
+        ['LOFIBOT_ACTOR_ALLOWLIST', saved.actors],
+        ['LOFIBOT_IMESSAGE_ALLOW_ANY', saved.allowAny],
       ] as const) {
         if (value === undefined) delete process.env[name]
         else process.env[name] = value
@@ -374,8 +374,8 @@ describe('iMessage CLI admission', () => {
     }
   })
 
-  it('trims DS_AGENT_IMESSAGE_HANDLE once for admission and the source filter', async () => {
-    const handle = resolveImessageHandle([], { DS_AGENT_IMESSAGE_HANDLE: '  +15551234567  ' })
+  it('trims LOFIBOT_IMESSAGE_HANDLE once for admission and the source filter', async () => {
+    const handle = resolveImessageHandle([], { LOFIBOT_IMESSAGE_HANDLE: '  +15551234567  ' })
     expect(handle).toBe('+15551234567')
     expect(decideImessageAdmission({ handle }).senders).toEqual(['+15551234567'])
     // The trimmed id is what the SQL/source filter matches, not the padded env.
@@ -391,32 +391,32 @@ describe('iMessage CLI admission', () => {
       .toThrow(/--handle needs a non-empty sender id/)
     expect(() => resolveImessageHandle(['--handle', '   '], {}))
       .toThrow(/--handle needs a non-empty sender id/)
-    expect(() => resolveImessageHandle([], { DS_AGENT_IMESSAGE_HANDLE: '   ' }))
-      .toThrow(/DS_AGENT_IMESSAGE_HANDLE must be a non-empty sender id/)
-    expect(() => resolveImessageHandle([], { DS_AGENT_IMESSAGE_HANDLE: ' --allow-any ' }))
-      .toThrow(/DS_AGENT_IMESSAGE_HANDLE must be a non-empty sender id/)
+    expect(() => resolveImessageHandle([], { LOFIBOT_IMESSAGE_HANDLE: '   ' }))
+      .toThrow(/LOFIBOT_IMESSAGE_HANDLE must be a non-empty sender id/)
+    expect(() => resolveImessageHandle([], { LOFIBOT_IMESSAGE_HANDLE: ' --allow-any ' }))
+      .toThrow(/LOFIBOT_IMESSAGE_HANDLE must be a non-empty sender id/)
   })
 
   it('refuses a whitespace-only env handle before touching the database', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-cli-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-cli-'))
     const dbPath = path.join(dir, 'missing-chat.db')
     const argv = process.argv
     const saved = {
-      handle: process.env.DS_AGENT_IMESSAGE_HANDLE,
-      actors: process.env.DS_AGENT_ACTOR_ALLOWLIST,
+      handle: process.env.LOFIBOT_IMESSAGE_HANDLE,
+      actors: process.env.LOFIBOT_ACTOR_ALLOWLIST,
     }
     try {
-      process.argv = ['node', 'ds-agent', 'imessage', '--once', '--db', dbPath]
-      process.env.DS_AGENT_IMESSAGE_HANDLE = '   '
-      delete process.env.DS_AGENT_ACTOR_ALLOWLIST
-      await expect(runImessageCommand(dir)).rejects.toThrow(/DS_AGENT_IMESSAGE_HANDLE/)
+      process.argv = ['node', 'lofibot', 'imessage', '--once', '--db', dbPath]
+      process.env.LOFIBOT_IMESSAGE_HANDLE = '   '
+      delete process.env.LOFIBOT_ACTOR_ALLOWLIST
+      await expect(runImessageCommand(dir)).rejects.toThrow(/LOFIBOT_IMESSAGE_HANDLE/)
       expect(fs.existsSync(dbPath)).toBe(false)
     } finally {
       process.argv = argv
-      if (saved.handle === undefined) delete process.env.DS_AGENT_IMESSAGE_HANDLE
-      else process.env.DS_AGENT_IMESSAGE_HANDLE = saved.handle
-      if (saved.actors === undefined) delete process.env.DS_AGENT_ACTOR_ALLOWLIST
-      else process.env.DS_AGENT_ACTOR_ALLOWLIST = saved.actors
+      if (saved.handle === undefined) delete process.env.LOFIBOT_IMESSAGE_HANDLE
+      else process.env.LOFIBOT_IMESSAGE_HANDLE = saved.handle
+      if (saved.actors === undefined) delete process.env.LOFIBOT_ACTOR_ALLOWLIST
+      else process.env.LOFIBOT_ACTOR_ALLOWLIST = saved.actors
       fs.rmSync(dir, { recursive: true, force: true })
     }
   })
@@ -424,7 +424,7 @@ describe('iMessage CLI admission', () => {
 
 describe('iMessage runtime admission', () => {
   it('drops an unallowlisted direct trigger even though it is 1:1', async () => {
-    const runtime = freshRuntime({ env: { DS_AGENT_ACTOR_ALLOWLIST: 'trusted@example.com' } })
+    const runtime = freshRuntime({ env: { LOFIBOT_ACTOR_ALLOWLIST: 'trusted@example.com' } })
     try {
       expect(runtime.ingest(imessageTrigger(sample({
         guid: 'G-DENY',
@@ -500,7 +500,7 @@ describe('iMessage source pull', () => {
 
 describe('ChatDbImessageApi pull', () => {
   it('ignores rows with no payload and never stalls the ROWID cursor on an empty decode', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -542,7 +542,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('turns an attachment-only bubble into a placeholder trigger', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-attachment-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-attachment-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -584,7 +584,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('reads macOS nanosecond dates that exceed Number.MAX_SAFE_INTEGER', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-date-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-date-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -620,7 +620,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('reads group metadata from chat.style and chat.room_name', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-group-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-group-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -662,7 +662,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('aggregates all joined chats: a message in a 1:1 and a group is a group', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-both-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-both-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -707,7 +707,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('disambiguates legacy group chats with no guid or identifier by chat.ROWID', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-group-rowid-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-group-rowid-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -767,7 +767,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('takes the group ROWID, never a joined 1:1 ROWID, for thread identity', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-group-rowid-join-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-group-rowid-join-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -810,7 +810,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('keeps the positive group address when the 1:1 join sorts first', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-order-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-order-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -856,7 +856,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('prefers a later positive group guid over an identifier-only positive row', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-group-guid-late-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-group-guid-late-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -907,7 +907,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('does not reuse the 1:1 chat guid when the positive group row has no guid', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-noguid-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-noguid-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -946,7 +946,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('aggregates every joined chat when a page boundary lands on the message', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-page-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-page-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -985,7 +985,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('does not leak a 1:1 chat guid across a page boundary for an ambiguous group', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-page-unknown-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-page-unknown-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -1025,7 +1025,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('never exposes the 1:1 chat guid for a group-then-1:1 ambiguous join', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-ambiguous-first-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-ambiguous-first-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -1063,7 +1063,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('treats a missing chat row and ambiguous metadata as group/unknown', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-unknown-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-unknown-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -1112,7 +1112,7 @@ describe('ChatDbImessageApi pull', () => {
   })
 
   it('fails once with a compatibility error when chat.style/room_name are absent', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-imessage-schema-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-imessage-schema-'))
     const dbPath = path.join(dir, 'chat.db')
     const db = new DatabaseSync(dbPath)
     db.exec(`
@@ -1155,7 +1155,7 @@ function outboxRow(over: Partial<OutboxRow> = {}): OutboxRow {
     channel: 'imessage',
     thread: 'chat:x',
     target: { provider: 'imessage', handle: '+8613800000000' },
-    text: 'ds-agent reply',
+    text: 'lofibot reply',
     status: 'pending',
     createdAt: new Date().toISOString(),
     ...over,
@@ -1168,7 +1168,7 @@ describe('iMessage outbound', () => {
     const adapter = new ImessageOutboxAdapter(api)
     const result = await adapter.send(outboxRow())
     expect(result.externalId).toBe('ext_1')
-    expect(api.sent).toEqual([{ target: { handle: '+8613800000000' }, text: 'ds-agent reply' }])
+    expect(api.sent).toEqual([{ target: { handle: '+8613800000000' }, text: 'lofibot reply' }])
   })
 
   it('prefers the chat guid when present', async () => {
@@ -1286,7 +1286,7 @@ describe('iMessage outbound', () => {
     const api = new FakeImessage()
     const adapter = new ImessageOutboxAdapter(api)
     await adapter.send(outboxRow({ target: { ...trigger.channel!.address! } }))
-    expect(api.sent).toEqual([{ target: { handle: '+8613800000000' }, text: 'ds-agent reply' }])
+    expect(api.sent).toEqual([{ target: { handle: '+8613800000000' }, text: 'lofibot reply' }])
   })
 })
 
@@ -1302,16 +1302,16 @@ describe('ChatDbImessageApi send', () => {
     expect(captured[0]!.script).not.toContain('hi "quoted"')
     expect(captured[0]!.script).toContain('item 1 of argv')
     expect(captured[0]!.args).toEqual(['hi "quoted" $HOME'])
-    expect(captured[0]!.env.DS_AGENT_IMSG_TEXT).toBeUndefined()
-    expect(captured[0]!.env.DS_AGENT_IMSG_TARGET).toBe('+1')
-    expect(captured[0]!.env.DS_AGENT_IMSG_MODE).toBe('buddy')
+    expect(captured[0]!.env.LOFIBOT_IMSG_TEXT).toBeUndefined()
+    expect(captured[0]!.env.LOFIBOT_IMSG_TARGET).toBe('+1')
+    expect(captured[0]!.env.LOFIBOT_IMSG_MODE).toBe('buddy')
     expect(result.externalId).toMatch(/^imessage_/)
   })
 
   it('delivers non-ASCII text as UTF-8 through osascript argv', async () => {
     // AppleScript's `system attribute` decodes the env with the system encoding,
     // which turned every Chinese reply into mojibake on a real Mac. argv is UTF-8.
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-osascript-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-osascript-'))
     const fake = path.join(dir, 'osascript')
     fs.writeFileSync(fake, '#!/bin/sh\nfor arg in "$@"; do printf "%s\\n" "$arg"; done\n', { mode: 0o755 })
     try {
@@ -1326,7 +1326,7 @@ describe('ChatDbImessageApi send', () => {
   it('uses chat mode for a chat guid target', async () => {
     let mode = ''
     const api = new ChatDbImessageApi('/tmp/unused.db', async (_script, env) => {
-      mode = String(env.DS_AGENT_IMSG_MODE)
+      mode = String(env.LOFIBOT_IMSG_MODE)
       return ''
     })
     await api.send({ chatGuid: 'iMessage;-;+1' }, 'hi')
@@ -1338,10 +1338,10 @@ describe('ChatDbImessageApi send', () => {
       PATH: '/usr/bin:/bin',
       HOME: '/Users/test',
       DEEPSEEK_API_KEY: 'sk-secret',
-      DS_AGENT_GATEWAY_TOKEN: 'gw_secret',
-      DS_AGENT_IMSG_TEXT: 'hi',
+      LOFIBOT_GATEWAY_TOKEN: 'gw_secret',
+      LOFIBOT_IMSG_TEXT: 'hi',
     })
-    expect(env).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/test', DS_AGENT_IMSG_TEXT: 'hi' })
+    expect(env).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/test', LOFIBOT_IMSG_TEXT: 'hi' })
   })
 
   it('merges a burst from one direct chat into one trigger', () => {

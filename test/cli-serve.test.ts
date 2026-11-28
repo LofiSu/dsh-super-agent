@@ -12,7 +12,7 @@ import type { Thread, Trigger } from '../src/shared/types.ts'
 import { Store } from '../src/store/sqlite.ts'
 
 /**
- * Child-process coverage for `ds-agent serve`. The daemon must boot without a
+ * Child-process coverage for `lofibot serve`. The daemon must boot without a
  * provider key (the runtime's normal factory falls back to MockModel), log a
  * ready line, and drain through Runtime.finish() on SIGINT/SIGTERM.
  */
@@ -22,10 +22,10 @@ const children: ChildProcess[] = []
 
 /** Mirrors the offline CI gate so an idle daemon never reaches a live endpoint. */
 const OFFLINE_KEYS = [
-  'DS_AGENT_API_BASE',
-  'DS_AGENT_API_KEY',
-  'DS_AGENT_API_MODEL',
-  'DS_AGENT_PROVIDER',
+  'LOFIBOT_API_BASE',
+  'LOFIBOT_API_KEY',
+  'LOFIBOT_API_MODEL',
+  'LOFIBOT_PROVIDER',
   'DEEPSEEK_API_KEY',
   'OPENAI_API_KEY',
   'OPENROUTER_API_KEY',
@@ -47,7 +47,7 @@ interface RunningServe {
 }
 
 function home(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-serve-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-serve-'))
   homes.push(dir)
   return dir
 }
@@ -55,7 +55,7 @@ function home(): string {
 function offlineEnv(stateHome: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    DS_AGENT_HOME: stateHome,
+    LOFIBOT_HOME: stateHome,
     NODE_NO_WARNINGS: '1',
   }
   for (const key of OFFLINE_KEYS) delete env[key]
@@ -166,11 +166,11 @@ function seedDeferred(state: string): { threadKey: string; triggerId: string } {
   return { threadKey: thread.key, triggerId: trigger.id }
 }
 
-describe('ds-agent serve', () => {
+describe('lofibot serve', () => {
   it('starts without a provider key and exits 0 on SIGTERM with SQLite usable', async () => {
     const state = home()
     const running = startServe(state)
-    await waitFor(running, 'ds-agent serve ready')
+    await waitFor(running, 'lofibot serve ready')
 
     const ready = text(running.out)
     expect(ready).toContain(`home=${state}`)
@@ -209,7 +209,7 @@ describe('ds-agent serve', () => {
 
   it('exits 0 on SIGINT', async () => {
     const running = startServe(home())
-    await waitFor(running, 'ds-agent serve ready')
+    await waitFor(running, 'lofibot serve ready')
 
     const exited = waitForExit(running)
     running.child.kill('SIGINT')
@@ -222,7 +222,7 @@ describe('ds-agent serve', () => {
     const state = home()
     const seeded = seedDeferred(state)
     const running = startServe(state)
-    await waitFor(running, 'ds-agent serve ready')
+    await waitFor(running, 'lofibot serve ready')
     expect(text(running.out))
       .toContain('[serve] MockModel: deferred assessments left queued until a live-model start')
 
@@ -255,11 +255,11 @@ describe('ds-agent serve', () => {
     try {
       const address = server.address() as AddressInfo
       const running = startServe(state, {
-        DS_AGENT_API_BASE: `http://127.0.0.1:${address.port}/v1`,
-        DS_AGENT_API_KEY: 'test-key',
-        DS_AGENT_API_MODEL: 'test-model',
+        LOFIBOT_API_BASE: `http://127.0.0.1:${address.port}/v1`,
+        LOFIBOT_API_KEY: 'test-key',
+        LOFIBOT_API_MODEL: 'test-model',
       })
-      await waitFor(running, 'ds-agent serve ready')
+      await waitFor(running, 'lofibot serve ready')
       expect(text(running.out)).toContain('model=HttpOpenAI')
 
       running.child.kill('SIGTERM')

@@ -35,7 +35,7 @@ function makeRuntime(
   env: NodeJS.ProcessEnv = {},
   model: Model = new MockModel(),
 ): Runtime {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-slow-path-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-slow-path-'))
   const runtime = Runtime.create({
     home,
     model,
@@ -51,7 +51,7 @@ function makeRuntime(
 }
 
 /** Fast path passes on the mention and the rules also pass. */
-function action(id: string, text = '@ds-agent please fix the login timeout'): Trigger {
+function action(id: string, text = '@lofibot please fix the login timeout'): Trigger {
   return imTrigger({ id, thread: 'topic/slow-path', text })
 }
 
@@ -287,9 +287,9 @@ describe('Runtime ingestAsync with a model policy', () => {
     const { policy, calls } = recordingPolicy({ pass: true, strength: 'explicit', reason: 'model-pass' })
     const runtime = makeRuntime(
       { mode: 'model', policy },
-      { DS_AGENT_TEST_API_KEY: sentinel },
+      { LOFIBOT_TEST_API_KEY: sentinel },
     )
-    expect(await runtime.ingestAsync(action('redacted', `@ds-agent please fix ${sentinel} timeout`)))
+    expect(await runtime.ingestAsync(action('redacted', `@lofibot please fix ${sentinel} timeout`)))
       .toBe('stored')
     expect(calls).toHaveLength(1)
     expect(calls[0]!.text).not.toContain(sentinel)
@@ -311,7 +311,7 @@ describe('Runtime ingestAsync with a model policy', () => {
     // Longer than INLINE_LIMIT so a non-duplicate path would spill twice.
     const trigger = action(
       'concurrent',
-      `@ds-agent please fix the login timeout ${'x'.repeat(240)}`,
+      `@lofibot please fix the login timeout ${'x'.repeat(240)}`,
     )
 
     const results = await Promise.all([
@@ -354,25 +354,25 @@ describe('Runtime slow-path configuration', () => {
   it('enables model mode from the environment with a bounded timeout', () => {
     const { policy } = recordingPolicy({ pass: true, strength: 'explicit', reason: 'ok' })
     const runtime = makeRuntime(undefined, {
-      DS_AGENT_SLOW_PATH: 'model',
-      DS_AGENT_SLOW_PATH_TIMEOUT_MS: '1500',
+      LOFIBOT_SLOW_PATH: 'model',
+      LOFIBOT_SLOW_PATH_TIMEOUT_MS: '1500',
     })
     expect(runtime.slowPathMode).toBe('model')
     expect(runtime.slowPathPolicy?.name).toBe('MockModel')
 
-    const injected = makeRuntime({ mode: 'model', policy }, { DS_AGENT_SLOW_PATH: 'rules' })
+    const injected = makeRuntime({ mode: 'model', policy }, { LOFIBOT_SLOW_PATH: 'rules' })
     expect(injected.slowPathMode).toBe('model')
     expect(injected.slowPathPolicy?.name).toBe('InjectedPolicy')
   })
 
   it('falls back to rules with a reason-only log on invalid configuration', () => {
-    const badMode = makeRuntime(undefined, { DS_AGENT_SLOW_PATH: 'maybe' })
+    const badMode = makeRuntime(undefined, { LOFIBOT_SLOW_PATH: 'maybe' })
     expect(badMode.slowPathMode).toBe('rules')
     expect(badMode.log.text()).toContain('reason=invalid-mode')
 
     const badTimeout = makeRuntime(undefined, {
-      DS_AGENT_SLOW_PATH: 'model',
-      DS_AGENT_SLOW_PATH_TIMEOUT_MS: '5',
+      LOFIBOT_SLOW_PATH: 'model',
+      LOFIBOT_SLOW_PATH_TIMEOUT_MS: '5',
     })
     expect(badTimeout.slowPathMode).toBe('rules')
     expect(badTimeout.log.text()).toContain('reason=invalid-timeout')
@@ -401,7 +401,7 @@ describe('HttpOpenAI.classifyPolicy', () => {
   const trigger = imTrigger({
     id: 'http-policy',
     thread: 'topic/slow-path',
-    text: '@ds-agent please fix the login timeout',
+    text: '@lofibot please fix the login timeout',
   })
 
   it('makes one strict tool-free JSON call and parses a fenced object', async () => {

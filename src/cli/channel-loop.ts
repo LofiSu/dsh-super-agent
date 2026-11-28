@@ -1,7 +1,7 @@
 /**
  * Reusable inbound iMessage polling loop.
  *
- * `ds-agent imessage` and `ds-agent serve --imessage` share this loop so the
+ * `lofibot imessage` and `lofibot serve --imessage` share this loop so the
  * cursor, outbox, and default-deny admission semantics cannot drift. The source,
  * API, and runtime are injectable: `chat` passes a real `ImessageSource` and
  * `Runtime`, while tests pass fakes.

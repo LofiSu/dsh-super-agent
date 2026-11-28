@@ -33,7 +33,7 @@ scraping or quota bypass.
 
 ### HTTP parity and controls
 - [x] Plugin runtime: `onRequest` / `onResponse` / `strategies`; fail-open + 250ms.
-- [x] Privacy masking plugin (`redact`), `DS_AGENT_GATEWAY_MASKING=1`.
+- [x] Privacy masking plugin (`redact`), `LOFIBOT_GATEWAY_MASKING=1`.
 - [x] Router strategies as plugins (`rotation`: `priority` / `smart`); `X-Gateway-Routing`.
 - [x] Gemini `generateContent` dialect.
 - [x] Allowance-aware failover: 402/429 rest a provider; `dailyTokens` budget exhaustion rests it.
@@ -48,8 +48,8 @@ scraping or quota bypass.
 - [x] Routing strategies `usage` / `free` / `fast` / `pace` over real data (requests, cost, latency, tokens).
 
 ### Wiring and shell
-- [x] Agent config wiring (generic JSON/env merge via `ds-agent wire`) + profiles (`ds-agent profile`). Per-agent presets are a future nicety.
-- [x] `ds-agent gateway` embedded mode (auto-start in-process for chat/imessage when a config file exists).
+- [x] Agent config wiring (generic JSON/env merge via `lofibot wire`) + profiles (`lofibot profile`). Per-agent presets are a future nicety.
+- [x] `lofibot gateway` embedded mode (auto-start in-process for chat/imessage when a config file exists).
 - [x] Minimal web dashboard at `GET /`; TUI deferred (optional).
 
 ## Definition of done

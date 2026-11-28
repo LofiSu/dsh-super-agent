@@ -3,6 +3,7 @@ import { UserError } from '../shared/errors.ts'
 import type { Store } from '../store/sqlite.ts'
 
 const ROOT = '/memories'
+export const CONSOLIDATED_MEMORY_PATH = '/memories/wiki/runtime.md'
 const INDEX_PATH = ROOT + '/MEMORY.md'
 const DOCUMENT_KIND = 'memory_notes'
 const MAX_PATH_CHARS = 240
@@ -13,7 +14,7 @@ const MAX_LINE_BYTES = 4 * 1024
 const MAX_VIEW_CHARS = 16_000
 const MAX_INDEX_CHARS = 2_000
 
-interface Note {
+export interface Note {
   path: string
   text: string
 }
@@ -27,10 +28,42 @@ export class MemoryNotes {
   constructor(private readonly store: Store, private readonly redact: (text: string) => string) {}
 
   readIndex(scope: string): string | undefined {
-    const index = this.load(scopeId(scope)).find(file => file.path === INDEX_PATH)
-    if (!index) return undefined
-    const text = this.redact(index.text).slice(0, MAX_INDEX_CHARS)
+    const files = this.load(scopeId(scope))
+    const index = files.find(file => file.path === INDEX_PATH)
+    const consolidated = files.find(file => file.path === CONSOLIDATED_MEMORY_PATH)?.text
+    const pointer = consolidated ? `Background-consolidated knowledge: ${CONSOLIDATED_MEMORY_PATH}` : ''
+    if (!index && !pointer) return undefined
+    const text = this.redact([pointer, index?.text].filter(Boolean).join('\n')).slice(0, MAX_INDEX_CHARS)
     return text.replace(/[\uD800-\uDBFF]$/, '')
+  }
+
+  readConsolidated(scope: string): string | undefined {
+    return this.load(scopeId(scope)).find(file => file.path === CONSOLIDATED_MEMORY_PATH)?.text
+  }
+
+  readEditableNotes(scope: string): Note[] {
+    return this.load(scopeId(scope)).filter(file => file.path !== CONSOLIDATED_MEMORY_PATH
+      && file.path.endsWith('.md') && file.text.length <= 1_200)
+      .slice(0, 6)
+      .map(file => ({ path: file.path, text: this.redact(file.text) }))
+  }
+
+  /** Caller owns a transaction including scope, cursor and snapshot checks. */
+  applyConsolidation(scope: string, page: string | undefined, edits: Note[]): void {
+    const id = scopeId(scope)
+    const files = this.load(id)
+    if (page !== undefined) {
+      const note = files.find(file => file.path === CONSOLIDATED_MEMORY_PATH)
+      const safePage = this.redact(inputText(page, 'consolidated memory'))
+      if (note) note.text = safePage
+      else {
+        assertAvailable(files, CONSOLIDATED_MEMORY_PATH)
+        files.push({ path: CONSOLIDATED_MEMORY_PATH, text: safePage })
+      }
+    }
+    for (const { path, text } of edits) getFile(files, path).text = this.redact(inputText(text, 'consolidated note'))
+    validateLimits(files)
+    this.store.putDoc(DOCUMENT_KIND, id, { files })
   }
 
   execute(scope: string, args: Record<string, unknown>): string {

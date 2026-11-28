@@ -17,13 +17,13 @@ interface FixtureFiles {
 }
 
 function fixture(options: FixtureFiles = {}): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-release-check-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-release-check-'))
   roots.push(root)
   const packageText = options.packageJson === undefined
     ? JSON.stringify({
-      name: 'ds-agent',
+      name: 'lofibot',
       version: '1.2.3',
-      bin: { 'ds-agent': './dist/cli/main.js' },
+      bin: { 'lofibot': './dist/cli/main.js' },
       files: ['dist'],
     })
     : typeof options.packageJson === 'string'
@@ -53,7 +53,7 @@ function packOf(paths: readonly string[], options: {
   return () => ({
     status: options.status ?? 0,
     stdout: options.raw ?? `${options.prefix ?? ''}${JSON.stringify([
-      { id: 'ds-agent@1.2.3', files: paths.map(file => ({ path: file, size: 1 })) },
+      { id: 'lofibot@1.2.3', files: paths.map(file => ({ path: file, size: 1 })) },
     ])}`,
     stderr: options.status && options.status !== 0 ? 'pack failed' : '',
   })
@@ -131,21 +131,21 @@ describe('release check', () => {
     const root = fixture({
       packageJson: {
         version: '1.2.3',
-        bin: { 'ds-agent': './dist/index.js' },
+        bin: { 'lofibot': './dist/index.js' },
         files: ['dist'],
       },
     })
     const result = check(root)
     expect(result.ok).toBe(false)
     expect(failed(result, 'bin')).toBe(true)
-    expect(result.errors.join('\n')).toMatch(/bin\.ds-agent must be/)
+    expect(result.errors.join('\n')).toMatch(/bin\.lofibot must be/)
   })
 
   it('reports a non-semver version', () => {
     const root = fixture({
       packageJson: {
         version: 'v1.2',
-        bin: { 'ds-agent': './dist/cli/main.js' },
+        bin: { 'lofibot': './dist/cli/main.js' },
         files: ['dist'],
       },
     })
@@ -158,7 +158,7 @@ describe('release check', () => {
     const root = fixture({
       packageJson: {
         version: '1.2.3',
-        bin: { 'ds-agent': './dist/cli/main.js' },
+        bin: { 'lofibot': './dist/cli/main.js' },
         files: ['README.md'],
       },
     })

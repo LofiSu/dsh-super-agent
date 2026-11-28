@@ -1,15 +1,15 @@
 /**
- * `ds-agent backup` / `ds-agent restore` command bodies.
+ * `lofibot backup` / `lofibot restore` command bodies.
  *
  * `src/cli/main.ts` wires them as:
  *
- *   ds-agent backup --out <file.db>
- *   ds-agent restore <file.db> [--force]
+ *   lofibot backup --out <file.db>
+ *   lofibot restore <file.db> [--force]
  *
  * The standalone entry at the bottom remains available for operators:
  *
- *   npx tsx src/cli/backup.ts --home .ds-agent --out ~/ds-agent-backup.db
- *   npx tsx src/cli/backup.ts --home .ds-agent --input ~/ds-agent-backup.db
+ *   npx tsx src/cli/backup.ts --home .lofibot --out ~/lofibot-backup.db
+ *   npx tsx src/cli/backup.ts --home .lofibot --input ~/lofibot-backup.db
  *
  * main.ts passes the resolved state home and lets a thrown UserError reach its
  * top-level handler, which prints the message and sets a non-zero exit code.
@@ -30,7 +30,7 @@ export interface BackupCommandOptions {
 export interface RestoreCommandOptions {
   readonly home: string
   readonly input: string
-  /** Required to replace an existing `ds-agent.db`; the old set is kept. */
+  /** Required to replace an existing `lofibot.db`; the old set is kept. */
   readonly force?: boolean
 }
 
@@ -55,7 +55,7 @@ export function runBackupCommand(options: BackupCommandOptions): StoreBackupResu
       : { allowUnknownExtension: options.allowUnknownExtension }),
   })
   console.log(
-    `Backed up ${path.join(path.resolve(home), 'ds-agent.db')} to ${path.resolve(out)} `
+    `Backed up ${path.join(path.resolve(home), 'lofibot.db')} to ${path.resolve(out)} `
     + `(${result.bytes} bytes, schema v${result.schemaVersion}, sha256=${result.sha256}).`,
   )
   return result
@@ -66,10 +66,10 @@ export function runRestoreCommand(options: RestoreCommandOptions): StoreRestoreR
   const { home, input } = options
   const result = restoreStore(home, input, { force: options.force === true })
   const legacy = result.schemaVersion === 0
-    ? ' The backup has no schema_migrations ledger (legacy schema 0); the next ds-agent start migrates it.'
+    ? ' The backup has no schema_migrations ledger (legacy schema 0); the next lofibot start migrates it.'
     : ''
   console.log(
-    `Restored ${path.join(path.resolve(home), 'ds-agent.db')} from ${path.resolve(input)} `
+    `Restored ${path.join(path.resolve(home), 'lofibot.db')} from ${path.resolve(input)} `
     + `(${result.bytes} bytes, schema v${result.schemaVersion}, sha256=${result.sha256}).${legacy}`,
   )
   return result
@@ -78,8 +78,8 @@ export function runRestoreCommand(options: RestoreCommandOptions): StoreRestoreR
 export function backupUsage(): string {
   return [
     'Usage:',
-    '  ds-agent backup --out <file.db> [--home <state-dir>] [--allow-any-extension]',
-    '  ds-agent restore <file.db> [--home <state-dir>] [--force]',
+    '  lofibot backup --out <file.db> [--home <state-dir>] [--allow-any-extension]',
+    '  lofibot restore <file.db> [--home <state-dir>] [--force]',
     '',
     'The standalone entry (npx tsx src/cli/backup.ts) also accepts',
     'restore --input <file.db> for compatibility.',
@@ -103,7 +103,7 @@ export function runBackupCli(
     return 0
   }
 
-  const home = flag(argv, 'home') ?? env.DS_AGENT_HOME ?? path.join(process.cwd(), '.ds-agent')
+  const home = flag(argv, 'home') ?? env.LOFIBOT_HOME ?? path.join(process.cwd(), '.lofibot')
   const out = flag(argv, 'out')
   const input = flag(argv, 'input')
 
@@ -129,7 +129,7 @@ export function runBackupCli(
     return 0
   } catch (error) {
     const command = out !== undefined ? 'backup' : 'restore'
-    console.error(`ds-agent ${command}: ${errorMessage(error)}`)
+    console.error(`lofibot ${command}: ${errorMessage(error)}`)
     return 1
   }
 }

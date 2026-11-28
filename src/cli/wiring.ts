@@ -11,10 +11,10 @@ function valuesOf(name: string): string[] {
   return out
 }
 
-/** `ds-agent wire <file> --set KEY=VALUE [--set ...] [--env] [--format json|env]` */
+/** `lofibot wire <file> --set KEY=VALUE [--set ...] [--env] [--format json|env]` */
 export function runWireCommand(): void {
   const file = process.argv[3]
-  if (!file || file.startsWith('--')) throw new Error('wire needs a config file: ds-agent wire <file> --set KEY=VALUE')
+  if (!file || file.startsWith('--')) throw new Error('wire needs a config file: lofibot wire <file> --set KEY=VALUE')
   const vars: Record<string, string> = {}
   for (const pair of valuesOf('set')) {
     const eq = pair.indexOf('=')
@@ -27,7 +27,7 @@ export function runWireCommand(): void {
   console.log(`wired ${Object.keys(vars).length} key(s) into ${file}`)
 }
 
-/** `ds-agent profile list | save <name> | use <name> | rm <name>` */
+/** `lofibot profile list | save <name> | use <name> | rm <name>` */
 export function runProfileCommand(home: string): void {
   const sub = process.argv[3]
   const name = process.argv[4]

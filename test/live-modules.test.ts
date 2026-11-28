@@ -25,16 +25,16 @@ import { freshRuntime, settleWithDeadline, shutdown } from './fixtures.ts'
 /**
  * One live end-to-end exercise per module.
  *
- * No Runtime here may use MockModel unless DS_AGENT_ALLOW_MOCK_FIXTURE=1
+ * No Runtime here may use MockModel unless LOFIBOT_ALLOW_MOCK_FIXTURE=1
  * (offline CI only). Structural assertions stay soft where the live model
  * chooses its own path; each test also writes its log under
- * /tmp/ds-agent-live-e2e-logs/modules/ for inspection.
+ * /tmp/lofibot-live-e2e-logs/modules/ for inspection.
  */
 
-const logDir = '/tmp/ds-agent-live-e2e-logs/modules'
+const logDir = '/tmp/lofibot-live-e2e-logs/modules'
 fs.mkdirSync(logDir, { recursive: true })
 
-const allowMock = process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1'
+const allowMock = process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1'
 
 function detectLive(): boolean {
   try {
@@ -44,7 +44,7 @@ function detectLive(): boolean {
   }
 }
 
-const forceOffline = process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
+const forceOffline = process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
 const hasLive = !forceOffline && detectLive()
 const enabled = hasLive || allowMock
 
@@ -60,7 +60,7 @@ function writeLog(name: string, runtime: Runtime | undefined, extra: Record<stri
   fs.writeFileSync(path.join(logDir, name), body)
 }
 
-/** Guard for task 1: MockModel appears only under DS_AGENT_ALLOW_MOCK_FIXTURE=1. */
+/** Guard for task 1: MockModel appears only under LOFIBOT_ALLOW_MOCK_FIXTURE=1. */
 function expectLiveRuntime(runtime: Runtime): void {
   if (allowMock) expect(runtime.model.name).toBe('MockModel')
   else expect(runtime.model.name).toBe('HttpOpenAI')
@@ -76,7 +76,7 @@ afterEach(async () => {
 })
 
 describe.skipIf(!enabled)('live module E2E', () => {
-  it('fixtures refuse MockModel unless DS_AGENT_ALLOW_MOCK_FIXTURE=1', () => {
+  it('fixtures refuse MockModel unless LOFIBOT_ALLOW_MOCK_FIXTURE=1', () => {
     if (allowMock) {
       runtime = freshRuntime({ model: new MockModel(), jobDelayMs: 0 })
       expect(runtime.model.name).toBe('MockModel')
@@ -93,7 +93,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     const im = imTrigger({
       id: 'mod_channel_im',
       thread: 'topic/mod-channel',
-      text: '@ds-agent please check the login timeout and reply in one sentence',
+      text: '@lofibot please check the login timeout and reply in one sentence',
       actor: 'alex',
     })
     const gh = githubTrigger({ id: 'mod_channel_gh', pr: 501, text: 'CI failed: login timeout on checkout' })
@@ -114,7 +114,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     expect(truncateWords(long, 100)).toContain('…')
     expect(imOut.length).toBeLessThan(long.length)
     const ghOut = renderOutbound('github', 'fixed the timeout', 'ticket_norm')
-    expect(ghOut).toContain('ds-agent note')
+    expect(ghOut).toContain('LofiBot note')
     expect(ghOut).toContain('ticket: ticket_norm')
     expect(renderOutbound('cli', 'plain reply', 'ticket_norm')).toBe('plain reply')
 
@@ -142,7 +142,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     const good = imTrigger({
       id: 'mod_ingress_good',
       thread: 'topic/mod-ingress',
-      text: '@ds-agent please investigate the login timeout',
+      text: '@lofibot please investigate the login timeout',
       actor: 'alex',
     })
     expect(filterTrigger(good, model).action).toBe('pass')
@@ -170,7 +170,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     const first = imTrigger({
       id: 'mod_engine_1',
       thread: 'topic/mod-engine',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
       actor: 'alex',
     })
     expect(runtime.engine.receive(first)).toBe('stored')
@@ -183,7 +183,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     const second = imTrigger({
       id: 'mod_engine_2',
       thread: 'topic/mod-engine-2',
-      text: '@ds-agent please investigate the payment timeout',
+      text: '@lofibot please investigate the payment timeout',
       actor: 'alex',
     })
     expect(runtime.engine.receive(second)).toBe('stored')
@@ -270,18 +270,18 @@ describe.skipIf(!enabled)('live module E2E', () => {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        DS_AGENT_API_KEY: secret,
+        LOFIBOT_API_KEY: secret,
         FOO_LEAK: 'should-not-pass',
       },
-      allowlist: ['PATH', 'HOME', 'DS_AGENT_API_KEY'],
+      allowlist: ['PATH', 'HOME', 'LOFIBOT_API_KEY'],
       vault,
       vaultNames: ['MODULE_VAULT_TOKEN'],
     })
-    expect(allowlistedEnv({ PATH: '/bin', DS_AGENT_API_KEY: secret, FOO_LEAK: 'x' })).toEqual({ PATH: '/bin' })
-    expect(secretValues({ DS_AGENT_API_KEY: secret })).toEqual([secret])
+    expect(allowlistedEnv({ PATH: '/bin', LOFIBOT_API_KEY: secret, FOO_LEAK: 'x' })).toEqual({ PATH: '/bin' })
+    expect(secretValues({ LOFIBOT_API_KEY: secret })).toEqual([secret])
     expect(redactSecrets(`key=${secret}`, [secret])).toBe('key=[redacted]')
 
-    const printed = await env.bash('mod_env', 'echo "PATH=$PATH" "KEY=$DS_AGENT_API_KEY" "LEAK=$FOO_LEAK" "VAULT=$MODULE_VAULT_TOKEN"')
+    const printed = await env.bash('mod_env', 'echo "PATH=$PATH" "KEY=$LOFIBOT_API_KEY" "LEAK=$FOO_LEAK" "VAULT=$MODULE_VAULT_TOKEN"')
     expect(printed.code).toBe(0)
     expect(printed.stdout).toContain('PATH=')
     expect(printed.stdout).not.toContain(secret)
@@ -310,7 +310,7 @@ describe.skipIf(!enabled)('live module E2E', () => {
     expect(runtime.ingest(imTrigger({
       id: 'mod_harness',
       thread: 'topic/mod-harness',
-      text: '@ds-agent please acknowledge the checkout login timeout in one short sentence',
+      text: '@lofibot please acknowledge the checkout login timeout in one short sentence',
       actor: 'alex',
     }))).toBe('stored')
     await settleWithDeadline(runtime, 60_000)
@@ -459,16 +459,16 @@ describe.skipIf(!enabled)('live module E2E', () => {
     expectLiveRuntime(runtime)
 
     const custom = resolveLiveApi({
-      DS_AGENT_API_BASE: 'http://127.0.0.1:3425/v1',
-      DS_AGENT_API_KEY: 'magpie',
-      DS_AGENT_API_MODEL: 'workbuddy/deepseek-v4.1-flash',
+      LOFIBOT_API_BASE: 'http://127.0.0.1:3425/v1',
+      LOFIBOT_API_KEY: 'magpie',
+      LOFIBOT_API_MODEL: 'workbuddy/deepseek-v4.1-flash',
     })
     expect(custom).toMatchObject({ provider: 'custom', model: 'workbuddy/deepseek-v4.1-flash' })
-    expect(resolveLiveApi({ DS_AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'k' })).toMatchObject({
+    expect(resolveLiveApi({ LOFIBOT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'k' })).toMatchObject({
       provider: 'deepseek',
       base: PROVIDER_PRESETS.find(preset => preset.id === 'deepseek')!.base,
     })
-    expect(() => resolveLiveApi({ DS_AGENT_API_BASE: 'http://example.invalid/v1' })).toThrow(/refusing MockModel/)
+    expect(() => resolveLiveApi({ LOFIBOT_API_BASE: 'http://example.invalid/v1' })).toThrow(/refusing MockModel/)
 
     let liveModel = allowMock ? 'MockModel' : 'unresolved'
     if (hasLive) {

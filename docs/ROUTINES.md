@@ -7,7 +7,7 @@ or delete one.
 
 The file is owner-controlled, not a sandbox boundary. A Worker that runs
 outside the normal write sandbox — a configured local specialist agent, an
-embedding with the sandbox disabled, or `bash` with `DS_AGENT_HOME` under a
+embedding with the sandbox disabled, or `bash` with `LOFIBOT_HOME` under a
 writable root such as `/tmp` — can modify it. Keep such agents trusted, or
 turn on strict read isolation. Symlinked writes from `write_file` are refused
 by `LocalEnv`, so the ordinary workspace cannot reach the file through a link.
@@ -18,7 +18,7 @@ execution loop.
 
 ## Configuration
 
-`routines.json` in the agent home, or `DS_AGENT_ROUTINES` as a JSON seed. A
+`routines.json` in the agent home, or `LOFIBOT_ROUTINES` as a JSON seed. A
 file wins over the seed; a blank file means "no routines" and also suppresses
 the seed.
 
@@ -50,14 +50,14 @@ the seed.
 | `prompt` | yes | What the owner wants done. Up to 4000 characters. |
 | `source` | no | Channel source: `cli` (default), `im`, `imessage`, `github`, or `a2a`. |
 | `thread` | no | Thread id in that source. Default `local`. |
-| `actor` | no | Actor id on the trigger. Default `you`. Use your allowlisted owner id when `DS_AGENT_ACTOR_ALLOWLIST` is set. |
-| `group` | no | Group id set as `channel.address.group`. Required for admission when `DS_AGENT_GROUP_ALLOWLIST` is active. |
+| `actor` | no | Actor id on the trigger. Default `you`. Use your allowlisted owner id when `LOFIBOT_ACTOR_ALLOWLIST` is set. |
+| `group` | no | Group id set as `channel.address.group`. Required for admission when `LOFIBOT_GROUP_ALLOWLIST` is active. |
 
 A routine has exactly one schedule: `everyMinutes` or `at`. Times are UTC, so
 the schedule does not depend on the host's local zone or DST rules.
 
 Up to 32 routines. A malformed entry fails loudly at startup and in
-`ds-agent routines`; a typo must not silently mean the work never runs.
+`lofibot routines`; a typo must not silently mean the work never runs.
 
 ## Scheduling semantics
 
@@ -88,16 +88,16 @@ Up to 32 routines. A malformed entry fails loudly at startup and in
 A routine enters through `Runtime.ingest`, exactly like a message:
 
 - it is an owner-authored, direct trigger on the configured channel and thread;
-- the normal admission rules still apply (`DS_AGENT_ACTOR_ALLOWLIST`,
-  `DS_AGENT_GROUP_ALLOWLIST`, and `DS_AGENT_DROP_SELF`, if set);
+- the normal admission rules still apply (`LOFIBOT_ACTOR_ALLOWLIST`,
+  `LOFIBOT_GROUP_ALLOWLIST`, and `LOFIBOT_DROP_SELF`, if set);
 - the rules layer, sandbox, and approval boundaries are unchanged: a routine
   is a standing instruction to do the work, not permission to do anything the
   owner could not ask for in chat;
 - replies go through the Router and the Outbox for that channel, like any other
   turn.
 
-The process must be running (`ds-agent serve`, plus `--imessage` or `--feishu`
-when the routine targets that channel, or the long-lived `ds-agent imessage`
+The process must be running (`lofibot serve`, plus `--imessage` or `--feishu`
+when the routine targets that channel, or the long-lived `lofibot imessage`
 loop). One-shot commands (`approve`, `retry`, `resume`, `chat`, `emit`) never
 tick routines. A routine does not wake a
 stopped process, and `cli` routines are visible in the runtime and the UI but
@@ -106,8 +106,8 @@ are not pushed to a terminal.
 ## CLI
 
 ```bash
-ds-agent routines           # id, cadence, channel, prompt
-ds-agent routines --json
+lofibot routines           # id, cadence, channel, prompt
+lofibot routines --json
 ```
 
 ## Current limits

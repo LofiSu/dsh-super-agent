@@ -12,7 +12,7 @@ describe('remoteResultTimeoutMsFromEnv', () => {
   })
 
   it('parses env', () => {
-    expect(remoteResultTimeoutMsFromEnv({ DS_AGENT_REMOTE_RESULT_TIMEOUT_MS: '1200' })).toBe(1200)
+    expect(remoteResultTimeoutMsFromEnv({ LOFIBOT_REMOTE_RESULT_TIMEOUT_MS: '1200' })).toBe(1200)
   })
 
   it('clamps an oversized override to the Node timer max', () => {
@@ -21,7 +21,7 @@ describe('remoteResultTimeoutMsFromEnv', () => {
 
   it('clamps an oversized env value to the Node timer max', () => {
     expect(
-      remoteResultTimeoutMsFromEnv({ DS_AGENT_REMOTE_RESULT_TIMEOUT_MS: '3000000000' }),
+      remoteResultTimeoutMsFromEnv({ LOFIBOT_REMOTE_RESULT_TIMEOUT_MS: '3000000000' }),
     ).toBe(MAX_REMOTE_RESULT_TIMEOUT_MS)
   })
 
@@ -30,13 +30,13 @@ describe('remoteResultTimeoutMsFromEnv', () => {
     expect(remoteResultTimeoutMsFromEnv({}, -1)).toBe(DEFAULT_REMOTE_RESULT_TIMEOUT_MS)
     expect(remoteResultTimeoutMsFromEnv({}, Number.NaN)).toBe(DEFAULT_REMOTE_RESULT_TIMEOUT_MS)
     expect(
-      remoteResultTimeoutMsFromEnv({ DS_AGENT_REMOTE_RESULT_TIMEOUT_MS: '-5' }),
+      remoteResultTimeoutMsFromEnv({ LOFIBOT_REMOTE_RESULT_TIMEOUT_MS: '-5' }),
     ).toBe(DEFAULT_REMOTE_RESULT_TIMEOUT_MS)
   })
 
   it('keeps zero as disabled', () => {
     expect(remoteResultTimeoutMsFromEnv({}, 0)).toBe(0)
-    expect(remoteResultTimeoutMsFromEnv({ DS_AGENT_REMOTE_RESULT_TIMEOUT_MS: '0' })).toBe(0)
+    expect(remoteResultTimeoutMsFromEnv({ LOFIBOT_REMOTE_RESULT_TIMEOUT_MS: '0' })).toBe(0)
   })
 })
 

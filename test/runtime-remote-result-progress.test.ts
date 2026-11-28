@@ -35,7 +35,7 @@ function progressRuntime(): Runtime {
     singleSession: true,
     jobDelayMs: 0,
     remoteResultTimeoutMs: RESULT_TIMEOUT_MS,
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_INSTANCE_ID: HOST },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_INSTANCE_ID: HOST },
     model: silentModel(),
   })
   runtime.placement.registerRemoteNode({
@@ -52,7 +52,7 @@ function progressRuntime(): Runtime {
 
 function placedTicket(runtime: Runtime, slug: string): { ticketId: string; assignmentId: string } {
   runtime.engine.receive(
-    imTrigger({ id: `trg_${slug}`, thread: `topic/${slug}`, text: '@ds-agent fix checkout' }),
+    imTrigger({ id: `trg_${slug}`, thread: `topic/${slug}`, text: '@lofibot fix checkout' }),
     { shards: ['default'] },
   )
   const ticketId = runtime.engine.evaluateDue()[0]?.ticketId ?? ''
@@ -140,7 +140,7 @@ describe('Runtime remote progress result', () => {
       instanceId: HOST,
       jobDelayMs: 0,
       remoteResultTimeoutMs: RESULT_TIMEOUT_MS,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_INSTANCE_ID: HOST },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_INSTANCE_ID: HOST },
       model: silentModel(),
       models: { router: routerModel },
     })

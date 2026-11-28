@@ -11,7 +11,7 @@ import { ENV_ALLOWLIST } from './sanitize.ts'
  * allowlisted, and never takes a command from the model:
  *
  * - the owner names each agent and its argv in `local-agents.json` or
- *   `DS_AGENT_LOCAL_AGENTS`;
+ *   `LOFIBOT_LOCAL_AGENTS`;
  * - the model only supplies an agent id and a task string;
  * - the task is one argv entry, never a shell string;
  * - cwd is the worker workspace, output and runtime are bounded, and the
@@ -58,7 +58,7 @@ export interface LocalAgentRegistryOptions {
 }
 
 export const LOCAL_AGENTS_FILE = 'local-agents.json'
-export const LOCAL_AGENTS_ENV = 'DS_AGENT_LOCAL_AGENTS'
+export const LOCAL_AGENTS_ENV = 'LOFIBOT_LOCAL_AGENTS'
 export const DEFAULT_LOCAL_AGENT_TIMEOUT_MS = 120_000
 export const MAX_LOCAL_AGENT_TIMEOUT_MS = 600_000
 export const DEFAULT_LOCAL_AGENT_OUTPUT_BYTES = 200_000
@@ -278,10 +278,10 @@ export class LocalAgentRegistry {
         maxOutputBytes,
         onSpawn: child => {
           this.active.add(child)
-          const ownerFile = this.env.DS_AGENT_TEST_DELEGATE_OWNER_FILE
-          const ownerAck = this.env.DS_AGENT_TEST_DELEGATE_OWNER_ACK
+          const ownerFile = this.env.LOFIBOT_TEST_DELEGATE_OWNER_FILE
+          const ownerAck = this.env.LOFIBOT_TEST_DELEGATE_OWNER_ACK
           if (ownerFile && ownerAck && child.pid !== undefined) {
-            const prePublishGate = this.env.DS_AGENT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE
+            const prePublishGate = this.env.LOFIBOT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE
             if (prePublishGate) {
               fs.writeFileSync(prePublishGate, `${child.pid}\n`, { flag: 'wx' })
               const deadline = Date.now() + 10_000
@@ -290,7 +290,7 @@ export class LocalAgentRegistry {
               }
               throw new Error('timed out at test pre-publication ownership gate')
             }
-            const pidAuditFile = this.env.DS_AGENT_TEST_DELEGATE_OWNER_PID_AUDIT
+            const pidAuditFile = this.env.LOFIBOT_TEST_DELEGATE_OWNER_PID_AUDIT
             if (pidAuditFile) fs.writeFileSync(pidAuditFile, `${child.pid}\n`, { flag: 'wx' })
             const temp = `${ownerFile}.${process.pid}.tmp`
             fs.writeFileSync(temp, `${JSON.stringify({ pid: child.pid, helperPid: process.pid })}\n`, { flag: 'wx' })

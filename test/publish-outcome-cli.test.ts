@@ -9,7 +9,7 @@ import { Store } from '../src/store/sqlite.ts'
 const homes: string[] = []
 
 function makeHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-publish-outcome-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-publish-outcome-'))
   homes.push(home)
   return home
 }
@@ -22,7 +22,7 @@ function runCli(home: string, args: string[]) {
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' },
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
@@ -95,7 +95,7 @@ describe('publish-outcome owner diagnosis', () => {
     } finally {
       store.close()
     }
-    const legacyDb = new DatabaseSync(path.join(home, 'ds-agent.db'))
+    const legacyDb = new DatabaseSync(path.join(home, 'lofibot.db'))
     legacyDb.prepare(`UPDATE publish_approval_admissions
                       SET binding_json = NULL, observation_state = 'legacy_unrecorded'
                       WHERE ticket_id = ? AND approval_id = ?`)

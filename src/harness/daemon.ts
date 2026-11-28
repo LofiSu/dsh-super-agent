@@ -3,6 +3,7 @@ import type { MachineRegistry } from './machines.ts'
 /** Process-local daemon: wakes the watchdog on a timer. Holds no session state (T38/T40). */
 export class Daemon {
   private timer?: NodeJS.Timeout
+  private autoDreamOnPulse = true
 
   constructor(
     private readonly watchdog: { tick: () => void; intervalMs: number },
@@ -23,6 +24,7 @@ export class Daemon {
      * event to the normal ingress path.
      */
     private readonly connectors?: { tick: (now: number) => unknown },
+    private readonly autoDream?: { tick: (now: number) => unknown },
   ) {}
 
   /**
@@ -30,12 +32,14 @@ export class Daemon {
    * One-shot CLI commands must leave them false: firing owner-level work from a
    * short-lived process starts messages whose channel loop is not running.
    */
-  start(options: { routines?: boolean; proactive?: boolean; connectors?: boolean } = {}): void {
+  start(options: { routines?: boolean; proactive?: boolean; connectors?: boolean; memory?: boolean } = {}): void {
     this.log('[daemon] start')
+    this.autoDreamOnPulse = options.memory !== false
     this.safeTick(() => this.watchdog.tick())
     if (options.routines !== false) this.safeTick(() => this.routines?.tick(Date.now()))
     if (options.proactive !== false) this.safeTick(() => this.proactive?.tick(Date.now()))
     if (options.connectors !== false) this.safeTick(() => this.connectors?.tick(Date.now()))
+    if (this.autoDreamOnPulse) this.safeTick(() => this.autoDream?.tick(Date.now()))
     this.timer = setInterval(() => this.tick(), this.watchdog.intervalMs)
   }
 
@@ -57,6 +61,7 @@ export class Daemon {
     this.safeTick(() => this.routines?.tick(now))
     this.safeTick(() => this.proactive?.tick(now))
     this.safeTick(() => this.connectors?.tick(now))
+    if (this.autoDreamOnPulse) this.safeTick(() => this.autoDream?.tick(now))
   }
 
   /**

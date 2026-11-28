@@ -48,4 +48,4 @@ Channel ──► Ingress (Fast/Slow → Thread key)
 - [Super-agent 设计探索](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg)（§2–§6）
 - [deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（Trigger → Eval → Ticket → Assignment）
 
-本仓库的 Harness 不是那份原型。计划和正在跑的代码哪里不一致，看 [docs/REVIEW.md]({{ site.repository_url }}/blob/main/docs/REVIEW.md)。能力清单在 [README]({{ site.repository_url }}/blob/main/README.zh-CN.md#能力清单)。
+本仓库的 Harness 不是那份原型。计划和正在跑的代码哪里不一致，看 [docs/REVIEW.md]({{ site.repository_url }}/blob/main/docs/REVIEW.md)。主要运行路径见 [README 架构图]({{ site.repository_url }}/blob/main/README.zh-CN.md#架构)。

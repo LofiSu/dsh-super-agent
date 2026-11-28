@@ -24,12 +24,12 @@ export class ResidentIngressAbortedError extends Error {
 }
 
 /**
- * Parse `DS_AGENT_RESIDENT_INGRESS_LIMIT`.
+ * Parse `LOFIBOT_RESIDENT_INGRESS_LIMIT`.
  * Non-negative integers; invalid values fall back to default.
  * `0` disables the cap (explicit unbounded opt-out for operators who accept the risk).
  */
 export function residentIngressLimitFromEnv(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.DS_AGENT_RESIDENT_INGRESS_LIMIT?.trim()
+  const raw = env.LOFIBOT_RESIDENT_INGRESS_LIMIT?.trim()
   if (raw === undefined || raw === '') return DEFAULT_RESIDENT_INGRESS_LIMIT
   // `Number.parseInt` would silently accept a prefix ("0abc" → 0,
   // "1e3" → 1), which can shrink or remove the bound on an operator typo.

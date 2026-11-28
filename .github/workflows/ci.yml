@@ -65,7 +65,7 @@ jobs:
 
       - name: Format check
         env:
-          DS_AGENT_FORMAT_BASE: origin/${{ github.base_ref || 'main' }}
+          LOFIBOT_FORMAT_BASE: origin/${{ github.base_ref || 'main' }}
         run: pnpm format:check
 
       - name: Typecheck
@@ -75,10 +75,10 @@ jobs:
         # Offline CI gate: fixture stand-in only. Local default suite uses Magpie live and forbids MockModel.
         env:
           CI: "true"
-          DS_AGENT_ALLOW_MOCK_FIXTURE: "1"
-          DS_AGENT_API_BASE: ""
-          DS_AGENT_API_KEY: ""
-          DS_AGENT_PROVIDER: ""
+          LOFIBOT_ALLOW_MOCK_FIXTURE: "1"
+          LOFIBOT_API_BASE: ""
+          LOFIBOT_API_KEY: ""
+          LOFIBOT_PROVIDER: ""
           DEEPSEEK_API_KEY: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
@@ -98,10 +98,10 @@ jobs:
         # the measured baseline is recorded in docs/ROADMAP.md P2-5.
         env:
           CI: "true"
-          DS_AGENT_ALLOW_MOCK_FIXTURE: "1"
-          DS_AGENT_API_BASE: ""
-          DS_AGENT_API_KEY: ""
-          DS_AGENT_PROVIDER: ""
+          LOFIBOT_ALLOW_MOCK_FIXTURE: "1"
+          LOFIBOT_API_BASE: ""
+          LOFIBOT_API_KEY: ""
+          LOFIBOT_PROVIDER: ""
           DEEPSEEK_API_KEY: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
@@ -120,9 +120,9 @@ jobs:
         id: live_key
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DS_AGENT_API_KEY: ${{ secrets.DS_AGENT_API_KEY }}
+          LOFIBOT_API_KEY: ${{ secrets.LOFIBOT_API_KEY || secrets.DS_AGENT_API_KEY }}
         run: |
-          if [ -n "$DEEPSEEK_API_KEY" ] || [ -n "$DS_AGENT_API_KEY" ]; then
+          if [ -n "$DEEPSEEK_API_KEY" ] || [ -n "$LOFIBOT_API_KEY" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -134,7 +134,7 @@ jobs:
     needs: check
     # Job `if` cannot read `secrets` (allowed: github, needs, vars, inputs).
     # `if: secrets.DEEPSEEK_API_KEY != ''` is rejected. Skip unless
-    # DEEPSEEK_API_KEY or DS_AGENT_API_KEY is non-empty, and only after the gate passes.
+    # DEEPSEEK_API_KEY or LOFIBOT_API_KEY is non-empty, and only after the gate passes.
     if: ${{ needs.check.result == 'success' && needs.check.outputs.live_demo == 'true' }}
     timeout-minutes: 10
     steps:
@@ -159,13 +159,13 @@ jobs:
 
       - name: Live demo
         env:
-          DS_AGENT_API_BASE: https://api.deepseek.com/v1
-          DS_AGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || secrets.DS_AGENT_API_KEY }}
-          DS_AGENT_API_MODEL: deepseek-chat
+          LOFIBOT_API_BASE: https://api.deepseek.com/v1
+          LOFIBOT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || secrets.LOFIBOT_API_KEY || secrets.DS_AGENT_API_KEY }}
+          LOFIBOT_API_MODEL: deepseek-chat
         run: |
           set -o pipefail
-          if [ -z "$DS_AGENT_API_KEY" ]; then
-            echo "::error::Live demo requires DEEPSEEK_API_KEY or DS_AGENT_API_KEY; refusing MockModel."
+          if [ -z "$LOFIBOT_API_KEY" ]; then
+            echo "::error::Live demo requires DEEPSEEK_API_KEY or LOFIBOT_API_KEY; refusing MockModel."
             exit 1
           fi
           # Offline fixture baseline. Real-channel acceptance is `pnpm demo`

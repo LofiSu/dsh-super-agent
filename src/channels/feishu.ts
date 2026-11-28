@@ -71,7 +71,7 @@ function splitFeishuText(text: string): string[] {
  * Bot permissions: im:message, im:message.send_as_bot, im:message:readonly (or
  * the corresponding granular scopes), plus im:message.group_msg for group
  * history. Polling chat classification (connector wake, and
- * DS_AGENT_FEISHU_P2P_DIRECT when enabled) needs im:chat:readonly (or
+ * LOFIBOT_FEISHU_P2P_DIRECT when enabled) needs im:chat:readonly (or
  * im:chat:read / im:chat); the direct path verifies chat_mode. The bot must be
  * a member of the chat.
  */
@@ -409,11 +409,11 @@ export function normalizeFeishuChatModeForDirect(mode: unknown): 'p2p' | 'group'
 
 function mentionsBot(message: FeishuMessage, config?: FeishuConfig): boolean {
   const text = flattenFeishuMessage(message)
-  if (/@ds-agent\b/i.test(text)) return true
+  if (/@lofibot\b/i.test(text)) return true
   const mentions = message.mentions ?? []
   return mentions.some(mention =>
     (config?.botOpenId != null && mention.id?.open_id === config.botOpenId)
-    || /ds-agent/i.test(mention.name ?? ''))
+    || /lofibot/i.test(mention.name ?? ''))
 }
 
 export function feishuTriggerFromMessage(message: FeishuMessage, config?: FeishuConfig): Trigger {
@@ -422,7 +422,7 @@ export function feishuTriggerFromMessage(message: FeishuMessage, config?: Feishu
   // The override applies only when Feishu identifies this message as a p2p chat.
   // Missing or unknown chat types retain group admission and noise filtering.
   const p2pDirect = message.chat_type === 'p2p'
-    && process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
+    && process.env.LOFIBOT_FEISHU_P2P_DIRECT?.trim() === '1'
   const addressed = mentionsBot(message, config) ? 'mention' as const : (p2pDirect ? 'direct' as const : undefined)
   const senderType = message.sender?.sender_type
   const chatType = normalizeFeishuChatMode(message.chat_type)
@@ -566,7 +566,7 @@ export class FeishuSource {
       pageSize: this.pageSize,
       signal,
     })
-    const p2pDirectEnabled = process.env.DS_AGENT_FEISHU_P2P_DIRECT?.trim() === '1'
+    const p2pDirectEnabled = process.env.LOFIBOT_FEISHU_P2P_DIRECT?.trim() === '1'
     const resolvedTypes = new Map<string, 'p2p' | 'group' | undefined>()
     if (items.length > 0) {
       // Connector wake classifies the single polled chat regardless of direct

@@ -75,13 +75,13 @@ afterEach(() => {
 })
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-store-migration-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-store-migration-'))
   homes.push(home)
   return home
 }
 
 function dbPath(home: string): string {
-  return path.join(home, 'ds-agent.db')
+  return path.join(home, 'lofibot.db')
 }
 
 function inspect<T>(home: string, work: (db: DatabaseSync) => T): T {

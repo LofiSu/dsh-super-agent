@@ -30,7 +30,7 @@ separates two things that are easy to confuse:
 | ADR-010 lexical recall: NFKC, case/punctuation, stop words, synonyms, tag-only, exactly one tag hop | `src/memory/long-term.ts` `query`; `docs/ARCHITECTURE_DECISIONS.md` ADR-010 | `test/memory-recall-eval.test.ts` (11/11 macro recall@3, held-out queries, negative controls) |
 | Semantic arm behind a tiny `EmbeddingPort` | `src/memory/embedding.ts` (`EmbeddingPort`, `cosine`) | `test/semantic-memory.test.ts` |
 | Default-on, offline, dependency-free `HashedEmbedding` (128 dimensions) | `src/memory/embedding.ts`; `src/runtime.ts` constructs it when semantic recall is enabled | #152 (commit `922b3b9`); `test/semantic-memory.test.ts` |
-| Opt-out and floor | `DS_AGENT_SEMANTIC_RECALL=0` (`semanticRecallEnabled`), `DS_AGENT_EMBEDDING_FLOOR` default `0.35` (`embeddingFloorFromEnv`), `DEFAULT_EMBEDDING_FLOOR` | `test/semantic-memory.test.ts` configuration cases |
+| Opt-out and floor | `LOFIBOT_SEMANTIC_RECALL=0` (`semanticRecallEnabled`), `LOFIBOT_EMBEDDING_FLOOR` default `0.35` (`embeddingFloorFromEnv`), `DEFAULT_EMBEDDING_FLOOR` | `test/semantic-memory.test.ts` configuration cases |
 | ACL preserved on every hit | `query()` requires a reader ticket and grants the exact spill; `readSpillFor` re-checks the grant | `test/long-term-memory.test.ts`, `test/semantic-memory.test.ts` |
 | Redaction before storage and before the embedding port | `SpillBackedLongTermMemory.put`/`remember`/`vectorOf` | `test/semantic-memory.test.ts` redaction case |
 
@@ -98,7 +98,7 @@ Requirements:
   corpus;
 - a copy of the database. Recall grants and lazy embedding write-back mutate
   the store; the measurement must not run against the live database without a
-  backup (`ds-agent backup`, see `docs/UPGRADE.md`).
+  backup (`lofibot backup`, see `docs/UPGRADE.md`).
 
 ## 5. Procedure
 
@@ -129,15 +129,15 @@ Record the output in the template below if you quote it. Label it
 ### 5.1.1 Longitudinal offline harness (synthetic clock, parent-scheduled)
 
 ```bash
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 pnpm t48:long
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm t48:long
 ```
 
 This runs the fixture smoke, simulates a store reopen, checks unrelated-query
 contamination (expect 0 hits), and **appends one JSONL row** to:
 
-`$DS_AGENT_HOME/.ds-agent/measurement/t48-journal/t48-measurements.jsonl`
+`$LOFIBOT_HOME/.lofibot/measurement/t48-journal/t48-measurements.jsonl`
 
-Override the file with `DS_AGENT_T48_JOURNAL=/absolute/path.jsonl`. The harness
+Override the file with `LOFIBOT_T48_JOURNAL=/absolute/path.jsonl`. The harness
 uses an injected multi-month clock only — label output **synthetic**, not
 calendar-month evidence. Recommended parent frequency: weekly or monthly cron
 on a **copy** of the store; this repo does not create cron jobs. See
@@ -146,19 +146,19 @@ on a **copy** of the store; this repo does not create cron jobs. See
 ### 5.1.2 Wall-clock observation mode (restartable, not `[x]`)
 
 ```bash
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 DS_AGENT_HOME=/copy/of/store pnpm t48:observe
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 LOFIBOT_HOME=/copy/of/store pnpm t48:observe
 ```
 
 Persists the fixture SQLite corpus under
-`$DS_AGENT_HOME/.ds-agent/measurement/t48-fixture` across invocations (incremental
+`$LOFIBOT_HOME/.lofibot/measurement/t48-fixture` across invocations (incremental
 inserts + held-out queries). Journal rows use `syntheticClock: false` (real retention clock)
 and **`syntheticWorkload: true`** (fixture data only — never implied non-synthetic workload).
 Uses real `recordedAt` timestamps and writes JSONL rows plus
-`$DS_AGENT_HOME/.ds-agent/measurement/t48-wall-clock-state.json` for restartable sampling.
+`$LOFIBOT_HOME/.lofibot/measurement/t48-wall-clock-state.json` for restartable sampling.
 Each observation has a durable run id. A lease protects concurrent observers; after a crash,
 the next observer reuses the persisted fixture report, appends a missing journal row once, and
 then clears the pending state without creating another corpus sample.
-Default cadence is 24h (`minIntervalMs`); force with `DS_AGENT_T48_OBSERVE_FORCE=1` for tests.
+Default cadence is 24h (`minIntervalMs`); force with `LOFIBOT_T48_OBSERVE_FORCE=1` for tests.
 This accumulates **longitudinal observation data** for future month-spanning analysis; it does
 **not** satisfy operator month-scale acceptance (§3) and must not flip T48 to `[x]`.
 

@@ -20,7 +20,7 @@ import { readCompleteMarker } from './helpers/marker-io.ts'
 describe('marker publication across processes', () => {
   it('publishes markers atomically and never observes a partial JSON record', async () => {
     const { publishMarker, readCompleteMarker } = await import('./helpers/marker-io.ts')
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-marker-'))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-marker-'))
     try {
       const marker = path.join(home, 'marker.json')
       publishMarker(marker, { phase: 'delegating', n: 1 })
@@ -61,22 +61,22 @@ else:
 
   it('runs capability probes from an isolated random temp home and allowlisted environment', async () => {
     const previousNodeOptions = process.env.NODE_OPTIONS
-    const previousApiKey = process.env.DS_AGENT_API_KEY
+    const previousApiKey = process.env.LOFIBOT_API_KEY
     const previousTmpdir = process.env.TMPDIR
     const spacedTemp = path.join(os.tmpdir(), `ds agent temp ${process.pid}-${Date.now()}`)
     fs.mkdirSync(spacedTemp)
-    const poisonPreload = path.join(os.tmpdir(), `ds-agent-poison-${process.pid}-${Date.now()}.cjs`)
+    const poisonPreload = path.join(os.tmpdir(), `lofibot-poison-${process.pid}-${Date.now()}.cjs`)
     const poisonedMarker = `${poisonPreload}.loaded`
     fs.writeFileSync(poisonPreload, `require('node:fs').writeFileSync(${JSON.stringify(poisonedMarker)}, 'loaded')\n`)
     process.env.NODE_OPTIONS = `--require=${poisonPreload}`
-    process.env.DS_AGENT_API_KEY = 'must-not-be-inherited'
+    process.env.LOFIBOT_API_KEY = 'must-not-be-inherited'
     process.env.TMPDIR = spacedTemp
     try {
       const result = await runDelegateCapabilityProbe('missing_open')
       try {
         expect(result.exitCode).toBe(0)
         expect(path.dirname(result.home)).toBe(spacedTemp)
-        expect(path.basename(result.home)).toMatch(/^ds-agent-capability-test-/u)
+        expect(path.basename(result.home)).toMatch(/^lofibot-capability-test-/u)
         const audit = JSON.parse(fs.readFileSync(path.join(result.home, 'probe-env.json'), 'utf8')) as Record<string, unknown>
         expect(audit.home).toBe(result.home)
         expect(audit.node_options).toBeNull()
@@ -88,8 +88,8 @@ else:
     } finally {
       if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
       else process.env.NODE_OPTIONS = previousNodeOptions
-      if (previousApiKey === undefined) delete process.env.DS_AGENT_API_KEY
-      else process.env.DS_AGENT_API_KEY = previousApiKey
+      if (previousApiKey === undefined) delete process.env.LOFIBOT_API_KEY
+      else process.env.LOFIBOT_API_KEY = previousApiKey
       if (previousTmpdir === undefined) delete process.env.TMPDIR
       else process.env.TMPDIR = previousTmpdir
       fs.rmSync(spacedTemp, { recursive: true, force: true })
@@ -101,8 +101,8 @@ else:
   it('reports missing Python before creating any probe home or fixture', async () => {
     const previousPath = process.env.PATH
     const previousTmpdir = process.env.TMPDIR
-    const pathWithoutPython = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-no-python-path-'))
-    const emptyTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-no-python-temp-'))
+    const pathWithoutPython = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-no-python-path-'))
+    const emptyTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-no-python-temp-'))
     process.env.PATH = pathWithoutPython
     process.env.TMPDIR = emptyTemp
     try {
@@ -201,7 +201,7 @@ else:
   })
 
   function tempHome(): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-ext-os-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-ext-os-'))
     homes.push(dir)
     return dir
   }
@@ -245,7 +245,7 @@ else:
       [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs')],
       {
         cwd: process.cwd(),
-        env: { ...process.env, DS_AGENT_TEST_FIXTURE_READY_FILE: readyFile },
+        env: { ...process.env, LOFIBOT_TEST_FIXTURE_READY_FILE: readyFile },
         stdio: ['ignore', 'ignore', 'ignore'],
       },
     )
@@ -278,7 +278,7 @@ else:
         id: 'ipc-hold',
         command: process.execPath,
         args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-        env: ['DS_AGENT_TEST_DELEGATE_PID_FILE', 'DS_AGENT_TEST_FIXTURE_START_DELAY_MS'],
+        env: ['LOFIBOT_TEST_DELEGATE_PID_FILE', 'LOFIBOT_TEST_FIXTURE_START_DELAY_MS'],
         timeoutMs: 60_000,
       }] }),
     )
@@ -288,7 +288,7 @@ else:
         process.cwd(), home, '5000'],
       {
         cwd: process.cwd(),
-        env: { ...process.env, DS_AGENT_NODE: process.execPath },
+        env: { ...process.env, LOFIBOT_NODE: process.execPath },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
@@ -325,7 +325,7 @@ else:
         id: 'ipc-hold',
         command: process.execPath,
         args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-        env: ['DS_AGENT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'],
+        env: ['LOFIBOT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'],
         timeoutMs: 60_000,
       }] }),
     )
@@ -338,9 +338,9 @@ else:
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_NODE: process.execPath,
-          DS_AGENT_TEST_SUPERVISOR_MODE: 'prepublish-timeout',
-          DS_AGENT_TEST_SUPERVISOR_REPORT_FILE: reportFile,
+          LOFIBOT_NODE: process.execPath,
+          LOFIBOT_TEST_SUPERVISOR_MODE: 'prepublish-timeout',
+          LOFIBOT_TEST_SUPERVISOR_REPORT_FILE: reportFile,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -381,7 +381,7 @@ else:
         id: 'ipc-hold',
         command: process.execPath,
         args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-        env: ['DS_AGENT_TEST_DELEGATE_PID_FILE', 'DS_AGENT_TEST_FIXTURE_START_DELAY_MS'],
+        env: ['LOFIBOT_TEST_DELEGATE_PID_FILE', 'LOFIBOT_TEST_FIXTURE_START_DELAY_MS'],
         timeoutMs: 60_000,
       }] }),
     )
@@ -392,7 +392,7 @@ else:
         process.cwd(), home, '5000'],
       {
         cwd: process.cwd(),
-        env: { ...process.env, DS_AGENT_NODE: process.execPath },
+        env: { ...process.env, LOFIBOT_NODE: process.execPath },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
@@ -428,7 +428,7 @@ else:
         id: 'ipc-hold',
         command: process.execPath,
         args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-        env: ['DS_AGENT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'],
+        env: ['LOFIBOT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'],
         timeoutMs: 60_000,
       }] }),
     )
@@ -440,8 +440,8 @@ else:
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_NODE: process.execPath,
-          DS_AGENT_TEST_SUPERVISOR_MODE: 'prepublish-kill',
+          LOFIBOT_NODE: process.execPath,
+          LOFIBOT_TEST_SUPERVISOR_MODE: 'prepublish-kill',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -483,8 +483,8 @@ else:
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_NODE: process.execPath,
-          DS_AGENT_TEST_WRAPPER_CHILD_HANG_MS: '5000',
+          LOFIBOT_NODE: process.execPath,
+          LOFIBOT_TEST_WRAPPER_CHILD_HANG_MS: '5000',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -516,7 +516,7 @@ else:
         id: 'ipc-hold',
         command: process.execPath,
         args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-        env: ['DS_AGENT_TEST_DELEGATE_PID_FILE', 'DS_AGENT_TEST_FIXTURE_START_DELAY_MS'],
+        env: ['LOFIBOT_TEST_DELEGATE_PID_FILE', 'LOFIBOT_TEST_FIXTURE_START_DELAY_MS'],
         timeoutMs: 60_000,
       }] }),
     )
@@ -528,10 +528,10 @@ else:
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_NODE: process.execPath,
-          DS_AGENT_TEST_SUPERVISOR_HANG_AFTER_OWNERSHIP_MS: '5000',
-          DS_AGENT_TEST_SUPERVISOR_OWNERSHIP_READY_FILE: readyFile,
-          DS_AGENT_TEST_SUPERVISOR_REPORT_FILE: supervisorReportFile,
+          LOFIBOT_NODE: process.execPath,
+          LOFIBOT_TEST_SUPERVISOR_HANG_AFTER_OWNERSHIP_MS: '5000',
+          LOFIBOT_TEST_SUPERVISOR_OWNERSHIP_READY_FILE: readyFile,
+          LOFIBOT_TEST_SUPERVISOR_REPORT_FILE: supervisorReportFile,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -597,7 +597,7 @@ else:
           command: process.execPath,
           // Specialists run in a Worker workspace, so resolve the fixture from the repo root.
           args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-          env: ['DS_AGENT_TEST_DELEGATE_PID_FILE'],
+          env: ['LOFIBOT_TEST_DELEGATE_PID_FILE'],
           timeoutMs: 60_000,
         }],
       }),
@@ -623,11 +623,11 @@ else:
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_HOME: home,
-          DS_AGENT_DELEGATE_TASK: 'ext-gate-task',
-          DS_AGENT_RECOVERY_CHILD_MODE: 'restart',
+          LOFIBOT_HOME: home,
+          LOFIBOT_DELEGATE_TASK: 'ext-gate-task',
+          LOFIBOT_RECOVERY_CHILD_MODE: 'restart',
           NODE_NO_WARNINGS: '1',
-          DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+          LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },

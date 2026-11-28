@@ -347,7 +347,7 @@ export function checkImessageChannel(options: ImessageCheckOptions = {}): Channe
   const dbPath = config?.dbPath ?? flagValue(argv, 'db') ?? imessageDbPath(env)
   lines.push(`[imessage] database: ${dbPath}`)
   if (!fs.existsSync(dbPath)) {
-    fail(`database: not found at ${dbPath}; set DS_AGENT_IMESSAGE_DB or pass --db <path>`)
+    fail(`database: not found at ${dbPath}; set LOFIBOT_IMESSAGE_DB or pass --db <path>`)
   } else {
     try {
       const inspection = inspectImessageDatabase(dbPath, options.openDatabase)
@@ -430,7 +430,7 @@ export async function checkFeishuChannel(options: FeishuCheckOptions = {}): Prom
   lines.push(
     '[feishu] scopes: im:message, im:message:send_as_bot, im:message:readonly, '
     + 'im:message.group_msg (group history), im:chat:readonly (required for connector wake chat_mode lookup even when direct mode is off; '
-    + 'im:chat:read or im:chat also work; DS_AGENT_FEISHU_P2P_DIRECT also needs it to resolve chat_mode); '
+    + 'im:chat:read or im:chat also work; LOFIBOT_FEISHU_P2P_DIRECT also needs it to resolve chat_mode); '
     + 'publish an app version after adding them',
   )
   if (checkChat) lines.push('[feishu] send capability: 未验证 (no message sent)')

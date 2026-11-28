@@ -23,7 +23,7 @@ describe('T48 longitudinal harness (synthetic)', () => {
     expect(rows.every(row => row.schemaVersion === 1)).toBe(true)
   })
 
-  it('does not read DS_AGENT_HOME outside the provided temp home', () => {
+  it('does not read LOFIBOT_HOME outside the provided temp home', () => {
     const home = tempHome()
     const journal = `${home}/only-here.jsonl`
     runT48LongitudinalHarness({ home, journalPath: journal })

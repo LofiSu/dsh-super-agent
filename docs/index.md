@@ -1,6 +1,6 @@
 ---
 layout: default
-title: deepseek-super-agent
+title: LofiBot
 lang: en
 nav: home
 home: true
@@ -8,9 +8,9 @@ alt: /zh/
 description: "Thin TypeScript harness. Router, Worker, triggers, Watchdog. Not an official DeepSeek product."
 ---
 
-# deepseek-super-agent
+# LofiBot
 
-CLI: `ds-agent`. License: MIT.
+CLI: `lofibot`. License: MIT.
 
 This is a thin TypeScript runtime. The harness is ours. It is not an official DeepSeek product, and it does not ship DeepSeek Harness, Cordis, or `@deepseek-ai/dsh*`.
 
@@ -25,7 +25,7 @@ Router talks and dispatches. Workers execute. Triggers drive the loop. Watchdog 
 
 ## Run it
 
-Node.js 22+, [pnpm](https://pnpm.io/). Set `DS_AGENT_API_BASE`, `DS_AGENT_API_KEY`, and `DS_AGENT_API_MODEL` before `pnpm test`. Before `pnpm demo`, point `DS_AGENT_GH_REPO` at a repository you can write. There is no mock on that path.
+Node.js 22+, [pnpm](https://pnpm.io/). Set `LOFIBOT_API_BASE`, `LOFIBOT_API_KEY`, and `LOFIBOT_API_MODEL` before `pnpm test`. Before `pnpm demo`, point `LOFIBOT_GH_REPO` at a repository you can write. There is no mock on that path.
 
 [Install and run]({{ '/install/' | relative_url }}) · [Architecture]({{ '/architecture/' | relative_url }}) · [Safety]({{ '/safety/' | relative_url }}) · [Skills]({{ site.repository_url }}/blob/main/docs/SKILLS.md) · [Routines]({{ site.repository_url }}/blob/main/docs/ROUTINES.md) · [Approvals]({{ site.repository_url }}/blob/main/docs/APPROVALS.md) · [Gateway]({{ site.repository_url }}/blob/main/docs/GATEWAY.md) · [iMessage]({{ site.repository_url }}/blob/main/docs/IMESSAGE.md)
 

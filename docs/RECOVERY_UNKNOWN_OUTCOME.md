@@ -16,16 +16,16 @@ Exactly-once side effects to local specialists (`delegate_agent`) or remote chan
 
 ## Operator recovery (no credentials)
 
-1. Inspect SQLite under `DS_AGENT_HOME`: ticket `collab.approvals`, `external_op` docs, outbox `unknown_outcome` rows.
+1. Inspect SQLite under `LOFIBOT_HOME`: ticket `collab.approvals`, `external_op` docs, outbox `unknown_outcome` rows.
 2. Verify remote/local state out of band (Feishu message, specialist workspace, etc.).
 3. Approve the recovery request only if safe to retry. It releases only the effect IDs embedded in that approval, moving eligible outbox rows back to `pending` and ops to `operator_released` for an **explicit** operator-approved retry.
 4. Deny if the effect already happened or must not repeat; then resume or close the ticket manually.
 
-Ended tickets have no resumable approval. Inspect their durable effect IDs with `pnpm ds-agent recovery-effects <ticketId>`, then resolve exactly one verified ID with `pnpm ds-agent recovery-effects <ticketId> retry <effectId>` or `pnpm ds-agent recovery-effects <ticketId> acknowledge <effectId>`. `retry` is available only for an uncertain Outbox row, because it has a durable redrain path. Delegate operations have no resumable child process after Ticket end, so the CLI requires `acknowledge` after remote verification. The CLI refuses live Tickets, which must use their recovery approval.
+Ended tickets have no resumable approval. Inspect their durable effect IDs with `pnpm lofibot recovery-effects <ticketId>`, then resolve exactly one verified ID with `pnpm lofibot recovery-effects <ticketId> retry <effectId>` or `pnpm lofibot recovery-effects <ticketId> acknowledge <effectId>`. `retry` is available only for an uncertain Outbox row, because it has a durable redrain path. Delegate operations have no resumable child process after Ticket end, so the CLI requires `acknowledge` after remote verification. The CLI refuses live Tickets, which must use their recovery approval.
 
 ## Feature PR publication approval outcome
 
-A feature PR approval is durably consumed before the host publisher runs. Inspect its persisted facts with the read-only command `pnpm ds-agent publish-outcome <ticketId>` (or add `--json`). It does not call GitHub, inspect credentials, change approval state, or retry publication.
+A feature PR approval is durably consumed before the host publisher runs. Inspect its persisted facts with the read-only command `pnpm lofibot publish-outcome <ticketId>` (or add `--json`). It does not call GitHub, inspect credentials, change approval state, or retry publication.
 
 - `admitted` means the approval and immutable repository/commit/branch/PR binding were recorded, but publisher entry was not recorded. The approval remains consumed.
 - `attempt_started` means the publisher boundary was recorded before entry. After a crash or a failed local confirmation write, an external push or PR effect may or may not have happened.

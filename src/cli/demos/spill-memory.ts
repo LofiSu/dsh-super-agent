@@ -37,7 +37,7 @@ function samples(count: number): string {
 // The known-good commit sits after the 72-char inline summary but inside the
 // first 200-char read_object page, so recall is genuinely required.
 const TURN_1 = [
-  '@ds-agent INCIDENT-42 triage note. The failing service is billing-worker in us-east-1.',
+  '@lofibot INCIDENT-42 triage note. The failing service is billing-worker in us-east-1.',
   `The last known good commit is ${KNOWN_GOOD}.`,
   'Checkout latency p99 rose to 4.2s after deploy 2026-10-31T22:10Z.',
   samples(8),
@@ -51,7 +51,7 @@ const TURN_2 = [
   samples(8),
 ].join(' ')
 
-const TURN_3 = '@ds-agent From the spilled INCIDENT-42 context, reply with the last known good commit id only.'
+const TURN_3 = '@lofibot From the spilled INCIDENT-42 context, reply with the last known good commit id only.'
 
 export async function runSpillMemoryDemo() {
   return runDemo('02-spill-github', async ctx => {
@@ -60,9 +60,9 @@ export async function runSpillMemoryDemo() {
 
     // 1. Real GitHub activity: one issue body + two real comments.
     const issue = await github.createIssue({
-      title: `[ds-agent demo ${ctx.runId}] INCIDENT-42 spill`,
+      title: `[lofibot demo ${ctx.runId}] INCIDENT-42 spill`,
       body: TURN_1,
-      labels: ['ds-agent-demo'],
+      labels: ['lofibot-demo'],
     })
     const second = await github.createIssueComment(issue.number, TURN_2)
     const third = await github.createIssueComment(issue.number, TURN_3)

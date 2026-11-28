@@ -78,7 +78,7 @@ export const IMESSAGE_DIRECT_CHAT_STYLE = 45
 
 /** Actionable guidance for the macOS TCC failure that blocks `chat.db`. */
 export const IMESSAGE_FULL_DISK_ACCESS_HINT =
-  'Grant Full Disk Access to your terminal (or whichever app launches ds-agent): '
+  'Grant Full Disk Access to your terminal (or whichever app launches lofibot): '
   + 'System Settings > Privacy & Security > Full Disk Access, enable that app, '
   + 'then quit and reopen it.'
 
@@ -134,7 +134,7 @@ export function imessageOpenError(dbPath: string, error: unknown): Error {
   }
   return new Error(
     `cannot open iMessage database ${dbPath}: ${message}. `
-    + 'Check the path (DS_AGENT_IMESSAGE_DB or --db) and file permissions.',
+    + 'Check the path (LOFIBOT_IMESSAGE_DB or --db) and file permissions.',
     { cause: error },
   )
 }
@@ -174,11 +174,11 @@ export function isGroupMessage(message: {
 }
 
 export interface ImessageAdmissionInput {
-  /** `--handle <id>` or `DS_AGENT_IMESSAGE_HANDLE`. */
+  /** `--handle <id>` or `LOFIBOT_IMESSAGE_HANDLE`. */
   handle?: string
-  /** Raw `DS_AGENT_ACTOR_ALLOWLIST` (comma-separated). */
+  /** Raw `LOFIBOT_ACTOR_ALLOWLIST` (comma-separated). */
   actorAllowlist?: string
-  /** `--allow-any` or `DS_AGENT_IMESSAGE_ALLOW_ANY=1`. */
+  /** `--allow-any` or `LOFIBOT_IMESSAGE_ALLOW_ANY=1`. */
   allowAny?: boolean
 }
 
@@ -194,8 +194,8 @@ export interface ImessageAdmissionDecision {
 /** Safe refusal shown when the channel would otherwise be default-open. */
 export const IMESSAGE_ADMISSION_ERROR =
   'iMessage channel refuses to start without a sender allowlist: '
-  + 'pass --handle "+..." (your phone number or Apple ID email) or set DS_AGENT_ACTOR_ALLOWLIST, '
-  + 'or opt into open use with --allow-any (DS_AGENT_IMESSAGE_ALLOW_ANY=1).'
+  + 'pass --handle "+..." (your phone number or Apple ID email) or set LOFIBOT_ACTOR_ALLOWLIST, '
+  + 'or opt into open use with --allow-any (LOFIBOT_IMESSAGE_ALLOW_ANY=1).'
 
 function parseAllowlist(raw: string | undefined): string[] {
   if (raw == null || raw.trim() === '') return []
@@ -228,7 +228,7 @@ export interface ImessageApi {
 }
 
 export function imessageDbPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DS_AGENT_IMESSAGE_DB?.trim() || path.join(env.HOME ?? '', 'Library/Messages/chat.db')
+  return env.LOFIBOT_IMESSAGE_DB?.trim() || path.join(env.HOME ?? '', 'Library/Messages/chat.db')
 }
 
 /** Apple-epoch date column -> ISO. Handles both nanosecond (new) and second (old) rows. */
@@ -304,7 +304,7 @@ export function imessageThreadFor(message: {
  * directly; group messages and messages whose chat metadata is missing or
  * ambiguous are not. "Direct" describes the conversation shape, not a verified
  * sender: the SQL `handle` filter may be unset (for example when
- * `DS_AGENT_ACTOR_ALLOWLIST` is the gate), so runtime admission still evaluates
+ * `LOFIBOT_ACTOR_ALLOWLIST` is the gate), so runtime admission still evaluates
  * the actor allowlist for every Trigger.
  */
 export function imessageTrigger(message: ImessageInbound): Trigger {
@@ -414,7 +414,7 @@ export function osascriptEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const childEnv: NodeJS.ProcessEnv = {}
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined) continue
-    if (OSASCRIPT_ENV.has(name) || name.startsWith('DS_AGENT_IMSG_')) childEnv[name] = value
+    if (OSASCRIPT_ENV.has(name) || name.startsWith('LOFIBOT_IMSG_')) childEnv[name] = value
   }
   return childEnv
 }
@@ -444,8 +444,8 @@ export const runOsascript: OsascriptRunner = (script, env, args = []) => new Pro
 
 const APPLE_SEND_SCRIPT = `on run argv
   set theText to item 1 of argv
-  set theTarget to system attribute "DS_AGENT_IMSG_TARGET"
-  set theMode to system attribute "DS_AGENT_IMSG_MODE"
+  set theTarget to system attribute "LOFIBOT_IMSG_TARGET"
+  set theMode to system attribute "LOFIBOT_IMSG_MODE"
   tell application "Messages"
     if theMode is "chat" then
       send theText to chat id theTarget
@@ -733,9 +733,9 @@ export class ChatDbImessageApi implements ImessageApi {
     const externalId = nextExternalId()
     await this.run(APPLE_SEND_SCRIPT, {
       ...process.env,
-      DS_AGENT_IMSG_TARGET: value,
-      DS_AGENT_IMSG_MODE: mode,
-      DS_AGENT_IMSG_EXTERNAL_ID: externalId,
+      LOFIBOT_IMSG_TARGET: value,
+      LOFIBOT_IMSG_MODE: mode,
+      LOFIBOT_IMSG_EXTERNAL_ID: externalId,
     }, [text])
     return { externalId }
   }

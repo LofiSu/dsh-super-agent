@@ -77,7 +77,7 @@ function putTicket(store: Store, ticket = fabricate()): Ticket {
 function runCli(home: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
   return spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
     cwd: path.resolve('.'),
-    env: { ...process.env, DS_AGENT_HOME: home },
+    env: { ...process.env, LOFIBOT_HOME: home },
     encoding: 'utf8',
   })
 }
@@ -211,7 +211,7 @@ describe('mid-task collaboration CLI', () => {
     expect(paused.status, paused.stderr).toBe(0)
     expect(paused.stdout).toContain('paused ticket_1 "fix login timeout"')
     expect(paused.stdout).toContain('person/paused')
-    expect(paused.stdout).toContain('pnpm ds-agent resume ticket_1')
+    expect(paused.stdout).toContain('pnpm lofibot resume ticket_1')
 
     const intervened = runCli(home, ['intervene', 'ticket_1', 'use the staging database only'])
     expect(intervened.status, intervened.stderr).toBe(0)

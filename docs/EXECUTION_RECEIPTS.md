@@ -1,6 +1,6 @@
 # Execution receipts
 
-`pnpm ds-agent receipt <ticketId>` reads the local SQLite state and prints an
+`pnpm lofibot receipt <ticketId>` reads the local SQLite state and prints an
 execution receipt. Add `--json` for a machine-readable result. The command is
 read-only at the application-data level: it opens an existing SQLite store
 without creating directories, migrating the schema, checkpointing, resuming
@@ -12,8 +12,8 @@ ticket id or a unique prefix. The read-only SQLite mode requires Node.js 22.12
 or newer.
 
 ```text
-pnpm ds-agent receipt ticket_42
-pnpm ds-agent receipt ticket_42 --json
+pnpm lofibot receipt ticket_42
+pnpm lofibot receipt ticket_42 --json
 ```
 
 The receipt reports `success`, `failed`, or `unknown` from persisted Ticket and

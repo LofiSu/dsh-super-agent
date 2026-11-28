@@ -18,13 +18,13 @@ does not include Slack, Notion, or any other connector.
 - Connector/event wake (`src/connectors/wake.ts`) driven by the existing Daemon
   pulse. It calls `Runtime.ingest`; it does not add a timer, a second agent
   loop, or a Worker. A connector wake ticket is a one-turn Router envelope.
-- An offline query surface: `pnpm ds-agent connectors status` and
-  `pnpm ds-agent connectors query "text"`.
+- An offline query surface: `pnpm lofibot connectors status` and
+  `pnpm lofibot connectors query "text"`.
 
 ## Enable
 
 Create `connectors.json` in the agent home (for the default CLI home,
-`.ds-agent/connectors.json`):
+`.lofibot/connectors.json`):
 
 ```json
 {
@@ -82,11 +82,11 @@ does not read the credential source at all.
 ## Query the index
 
 ```bash
-pnpm ds-agent connectors status
-pnpm ds-agent connectors status --json
-pnpm ds-agent connectors query "invoice"
-pnpm ds-agent connectors query "design review" --service calendar --limit 5
-pnpm ds-agent connectors query --wake-only --json
+pnpm lofibot connectors status
+pnpm lofibot connectors status --json
+pnpm lofibot connectors query "invoice"
+pnpm lofibot connectors query "design review" --service calendar --limit 5
+pnpm lofibot connectors query --wake-only --json
 ```
 
 Queries are lexical and deterministic. They do not call a model or the network.
@@ -105,8 +105,8 @@ Later rounds may turn at most one record into a normal Trigger when:
 3. the existing `proactive.json` quiet-hours window is not active;
 4. `minIntervalMinutes` and `maxPerDay` allow it;
 5. an already-admitted private target thread exists;
-6. `DS_AGENT_DROP_SELF`, `DS_AGENT_ACTOR_ALLOWLIST`, and
-   `DS_AGENT_GROUP_ALLOWLIST` do not deny the trigger.
+6. `LOFIBOT_DROP_SELF`, `LOFIBOT_ACTOR_ALLOWLIST`, and
+   `LOFIBOT_GROUP_ALLOWLIST` do not deny the trigger.
 
 The Trigger text contains one concrete fact and an explicit instruction to stay
 silent if it is not useful. The Router prompt and reply path also suppress the

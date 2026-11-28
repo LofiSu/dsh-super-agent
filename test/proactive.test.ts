@@ -33,7 +33,7 @@ const MIN = 60_000
 const THREAD = 'feishu:oc_owner'
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-proactive-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-proactive-'))
   homes.push(dir)
   return dir
 }

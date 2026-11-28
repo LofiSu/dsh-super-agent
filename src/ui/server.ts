@@ -336,7 +336,7 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
   if (token.length < MIN_TOKEN_LENGTH) {
     throw new Error(
       `ui requires a token of at least ${MIN_TOKEN_LENGTH} characters `
-      + '(DS_AGENT_UI_TOKEN or --token); refusing to start',
+      + '(LOFIBOT_UI_TOKEN or --token); refusing to start',
     )
   }
   const port = options.port ?? DEFAULT_UI_PORT

@@ -15,7 +15,7 @@ afterEach(async () => {
 function start(model?: ScriptedModel, extraEnv: NodeJS.ProcessEnv = {}): Runtime {
   const runtime = freshRuntime({
     model: model ?? silentModel(),
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
     jobDelayMs: 5,
     watchdogIntervalMs: 60_000,
   })
@@ -693,7 +693,7 @@ describe('worker mandate scope', () => {
     let scope = scopeA
     const redispatch = { value: false }
     const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch, undefined, true, false), {
-      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+      LOFIBOT_REMOTE_MESH: JSON.stringify([{
         id: 'remote-test-node',
         url: 'http://127.0.0.1:9',
         peerId: 'peer-test',
@@ -733,7 +733,7 @@ describe('worker mandate scope', () => {
     let releaseWorker!: () => void
     const gate = new Promise<void>(resolve => { releaseWorker = resolve })
     const runtime = start(dispatchModel(prompts, gate, () => scopeA, undefined, undefined, true, false), {
-      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+      LOFIBOT_REMOTE_MESH: JSON.stringify([{
         id: 'remote-test-node',
         url: 'http://127.0.0.1:9',
         peerId: 'peer-test',
@@ -775,7 +775,7 @@ describe('worker mandate scope', () => {
     let scope = scopeA
     const redispatch = { value: false }
     const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch), {
-      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+      LOFIBOT_REMOTE_MESH: JSON.stringify([{
         id: 'remote-test-node',
         url: 'http://127.0.0.1:9',
         peerId: 'peer-test',

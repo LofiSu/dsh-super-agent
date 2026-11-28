@@ -39,6 +39,7 @@ import {
   type FillTarget,
   type FillVaultLoad,
 } from './env/fill-vault.ts'
+import { rejectLegacyConfig } from './env/legacy-config.ts'
 import { LocalEnv } from './env/local-env.ts'
 import { strictReadIsolationIncludesPath } from './env/seccomp.ts'
 import type { SandboxPolicy, SandboxSystem } from './env/seccomp.ts'
@@ -64,7 +65,7 @@ import { McpToolSource } from './harness/mcp.ts'
 import { parseMcpServers, type McpServerConfig } from './harness/mcp-config.ts'
 import { TeamRegistry } from './harness/team.ts'
 import { createModelFromEnv, HttpOpenAI, roleModelsFromEnv, type Model } from './harness/model.ts'
-import { directChatRouterShard, directChatThread, SessionJournal, sharesDirectChatThread, workerSessionId } from './harness/session.ts'
+import { directChatRouterShard, SessionJournal, workerSessionId } from './harness/session.ts'
 import { loadPromptFiles, type PromptFiles } from './harness/prompts.ts'
 import { LocalAgentRegistry, loadLocalAgents, type LocalAgentSpec } from './env/local-agents.ts'
 import { SkillRegistry } from './env/skills.ts'
@@ -92,6 +93,7 @@ import { RouterShardRegistry, type RouterShard } from './ingress/shards.ts'
 import { inlineOrSpill } from './memory/recall.ts'
 import { DEFAULT_EMBEDDING_FLOOR, HashedEmbedding, type EmbeddingPort } from './memory/embedding.ts'
 import { refsForTrigger, triggerRef } from './memory/graph.ts'
+import { AutoDream } from './memory/auto-dream.ts'
 import { SessionMemory } from './memory/tools.ts'
 import { SpillBackedLongTermMemory } from './memory/long-term.ts'
 import { Metrics } from './metrics/metrics.ts'
@@ -107,7 +109,7 @@ import { recordRemoteResult, remoteResultSeen } from './harness/remote-results.t
 import type { RemoteEligibleReason, RemoteMeshAssignmentResultEvent } from './harness/remote-node.ts'
 import type { WorkerReport } from './shared/ports.ts'
 import { Logger } from './shared/log.ts'
-import { threadKey, type Assignment, type Disposition, type ObjectRef, type ReceiveResult, type Thread, type Ticket, type Trigger, type TriggerTrust } from './shared/types.ts'
+import { threadKey, type Assignment, type Disposition, type ObjectRef, type ReceiveResult, type Role, type Thread, type Ticket, type Trigger, type TriggerTrust } from './shared/types.ts'
 import { Store } from './store/sqlite.ts'
 import { Watchdog } from './watchdog/watchdog.ts'
 import { settleSpeculation } from './speculate/silent.ts'
@@ -115,7 +117,7 @@ import { settleSpeculation } from './speculate/silent.ts'
 export interface RuntimeOptions {
   home: string
   model?: Model
-  /** Per-role overrides (T07/T10). Live mode also reads DS_AGENT_ROUTER_MODEL etc. */
+  /** Per-role overrides (T07/T10). Live mode also reads LOFIBOT_ROUTER_MODEL etc. */
   models?: Partial<Record<'router' | 'worker' | 'watchdog', Model>>
   jobDelayMs?: number
   watchdogIntervalMs?: number
@@ -131,45 +133,45 @@ export interface RuntimeOptions {
   env?: NodeJS.ProcessEnv
   /**
    * Fill-only credential/payment vault. Defaults to `vault.json` in `home`
-   * (or `DS_AGENT_VAULT_FILE`). Absent, malformed, or non-private means fill is
+   * (or `LOFIBOT_VAULT_FILE`). Absent, malformed, or non-private means fill is
    * unavailable. `false` disables it explicitly.
    */
   fillVault?: FillVault | false
   /**
    * Form adapter the vault types into. Defaults to a local helper configured
-   * by `DS_AGENT_FILL_COMMAND`; no browser adapter is built in. `false`
+   * by `LOFIBOT_FILL_COMMAND`; no browser adapter is built in. `false`
    * disables fill even when a vault exists.
    */
   fillTarget?: FillTarget | false
   /**
    * External MCP servers (array or JSON array string). Overrides
-   * `DS_AGENT_MCP_SERVERS`. Their tools are exposed to Workers only.
+   * `LOFIBOT_MCP_SERVERS`. Their tools are exposed to Workers only.
    */
   mcpServers?: unknown
   /**
    * Owner-editable runtime files. Defaults to SOUL.md, IDENTITY.md, USER.md,
    * INSTRUCTIONS.md, AGENTS.md, MEMORY.md, TOOLS.md, HEARTBEAT.md, and
-   * PROACTIVE_PREFERENCES.md in `home`, then DS_AGENT_* seeds. PERSONA.md and
-   * DS_AGENT_PERSONA are still read as deprecated soul fallbacks.
+   * PROACTIVE_PREFERENCES.md in `home`, then LOFIBOT_* seeds. PERSONA.md and
+   * LOFIBOT_PERSONA are still read as deprecated soul fallbacks.
    */
   prompts?: PromptFiles
   /**
    * Local specialist agents Workers may delegate to. Defaults to
-   * `local-agents.json` in `home`, then `DS_AGENT_LOCAL_AGENTS`.
+   * `local-agents.json` in `home`, then `LOFIBOT_LOCAL_AGENTS`.
    */
   localAgents?: LocalAgentSpec[]
   /** Owner-authored playbooks. Defaults to `skills/<id>/SKILL.md` in `home`. */
   skills?: SkillRegistry
   /**
    * Owner-configured browser errands. Defaults to `browser-errands.json` in
-   * `home`, then `DS_AGENT_BROWSER_ERRANDS`. Missing config leaves the browser
+   * `home`, then `LOFIBOT_BROWSER_ERRANDS`. Missing config leaves the browser
    * tools off; `false` disables them explicitly. Malformed config or a missing
    * driver executable throws at startup.
    */
   browserErrands?: BrowserErrandConfig | false
   /**
    * Owner-defined recurring routines. Defaults to `routines.json` in `home`,
-   * then `DS_AGENT_ROUTINES`.
+   * then `LOFIBOT_ROUTINES`.
    */
   routines?: RoutineSpec[]
   /**
@@ -189,27 +191,27 @@ export interface RuntimeOptions {
    * call by itself.
    */
   connectorApi?: GoogleWorkspaceApi
-  /** Local A2A address and mesh node id. Defaults to `DS_AGENT_INSTANCE_ID` or `local`. */
+  /** Local A2A address and mesh node id. Defaults to `LOFIBOT_INSTANCE_ID` or `local`. */
   instanceId?: string
-  /** Worker slots this process advertises. Defaults to `DS_AGENT_MESH_CAPACITY` or 4. */
+  /** Worker slots this process advertises. Defaults to `LOFIBOT_MESH_CAPACITY` or 4. */
   meshCapacity?: number
   /**
-   * Workers allowed to wait for a mesh slot. Defaults to `DS_AGENT_MESH_QUEUE`
+   * Workers allowed to wait for a mesh slot. Defaults to `LOFIBOT_MESH_QUEUE`
    * or 100. `0` rejects instead of queueing.
    */
   meshQueue?: number
   /**
    * Max wait for remote `assignment_result` after dispatch is delivered.
-   * Overrides `DS_AGENT_REMOTE_RESULT_TIMEOUT_MS`.
+   * Overrides `LOFIBOT_REMOTE_RESULT_TIMEOUT_MS`.
    */
   remoteResultTimeoutMs?: number
-  /** Extra Router shards. `DS_AGENT_SHARDS` JSON is merged in as well. */
+  /** Extra Router shards. `LOFIBOT_SHARDS` JSON is merged in as well. */
   routerShards?: RouterShard[]
   /** T45 bake-off baseline: run one Worker chain with no Router turn. */
   singleSession?: boolean
   /**
-   * T16 deterministic admission rules. Overrides `DS_AGENT_ACTOR_ALLOWLIST`,
-   * `DS_AGENT_GROUP_ALLOWLIST`, and `DS_AGENT_DROP_SELF`.
+   * T16 deterministic admission rules. Overrides `LOFIBOT_ACTOR_ALLOWLIST`,
+   * `LOFIBOT_GROUP_ALLOWLIST`, and `LOFIBOT_DROP_SELF`.
    */
   admission?: AdmissionRules
   /**
@@ -219,19 +221,19 @@ export interface RuntimeOptions {
    */
   slowPath?: SlowPathOptions
   /**
-   * Long-term memory retention. Overrides `DS_AGENT_MEMORY_MAX_ENTRIES` /
-   * `DS_AGENT_MEMORY_MAX_AGE_DAYS`; 0 disables that dimension.
+   * Long-term memory retention. Overrides `LOFIBOT_MEMORY_MAX_ENTRIES` /
+   * `LOFIBOT_MEMORY_MAX_AGE_DAYS`; 0 disables that dimension.
    */
   memoryRetention?: MemoryRetention
   /**
    * Optional semantic recall port. Defaults to the offline `HashedEmbedding`;
-   * `false` (or `DS_AGENT_SEMANTIC_RECALL=0`) keeps recall lexical-only.
+   * `false` (or `LOFIBOT_SEMANTIC_RECALL=0`) keeps recall lexical-only.
    * A configured port never makes a network or model call by itself.
    */
   embeddings?: EmbeddingPort | false
   /**
    * Cosine floor for a semantic-only hit. Overrides
-   * `DS_AGENT_EMBEDDING_FLOOR`; defaults to 0.35 and is clamped to 0..1.
+   * `LOFIBOT_EMBEDDING_FLOOR`; defaults to 0.35 and is clamped to 0..1.
    */
   embeddingFloor?: number
   /**
@@ -267,7 +269,7 @@ export interface SlowPathOptions {
 
 export type SlowPathMode = 'rules' | 'model'
 
-/** Lower/upper bound for `DS_AGENT_SLOW_PATH_TIMEOUT_MS`; outside is invalid. */
+/** Lower/upper bound for `LOFIBOT_SLOW_PATH_TIMEOUT_MS`; outside is invalid. */
 export const MIN_SLOW_PATH_TIMEOUT_MS = 100
 export const MAX_SLOW_PATH_TIMEOUT_MS = 30_000
 
@@ -288,7 +290,7 @@ function resolveSlowPath(
   model: Model,
   log: Logger,
 ): ResolvedSlowPath {
-  const configuredMode = override?.mode ?? env.DS_AGENT_SLOW_PATH?.trim()
+  const configuredMode = override?.mode ?? env.LOFIBOT_SLOW_PATH?.trim()
   let mode: SlowPathMode = 'rules'
   if (configuredMode === 'rules') {
     mode = 'rules'
@@ -301,7 +303,7 @@ function resolveSlowPath(
     return { mode, timeoutMs: DEFAULT_POLICY_TIMEOUT_MS }
   }
 
-  const rawTimeout = override?.timeoutMs ?? env.DS_AGENT_SLOW_PATH_TIMEOUT_MS?.trim()
+  const rawTimeout = override?.timeoutMs ?? env.LOFIBOT_SLOW_PATH_TIMEOUT_MS?.trim()
   let timeoutMs = DEFAULT_POLICY_TIMEOUT_MS
   if (rawTimeout !== undefined && rawTimeout !== '') {
     const parsed = typeof rawTimeout === 'number' ? rawTimeout : Number(rawTimeout)
@@ -343,7 +345,7 @@ export const DEFAULT_MESH_QUEUE = 100
 const REMOTE_ENDING_REPORT_KINDS = new Set(['ready', 'failed', 'dropped', 'blocked', 'waiting'])
 
 /**
- * Parse `DS_AGENT_MEMORY_MAX_ENTRIES` / `DS_AGENT_MEMORY_MAX_AGE_DAYS` as
+ * Parse `LOFIBOT_MEMORY_MAX_ENTRIES` / `LOFIBOT_MEMORY_MAX_AGE_DAYS` as
  * non-negative integers. Empty, non-numeric, negative, or non-integer values
  * fall back to the documented defaults (1000 entries, 90 days). `0` disables
  * that dimension. Programmatic `memoryRetention` overrides win.
@@ -354,13 +356,13 @@ export function memoryRetentionFromEnv(
 ): Required<MemoryRetention> {
   return {
     maxEntries: override.maxEntries
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_MAX_ENTRIES),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_MAX_ENTRIES),
     maxAgeDays: override.maxAgeDays
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_MAX_AGE_DAYS, DEFAULT_MEMORY_MAX_AGE_DAYS),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_MAX_AGE_DAYS, DEFAULT_MEMORY_MAX_AGE_DAYS),
     coldMaxEntries: override.coldMaxEntries
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_COLD_MAX_ENTRIES, DEFAULT_MEMORY_COLD_MAX_ENTRIES),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_COLD_MAX_ENTRIES, DEFAULT_MEMORY_COLD_MAX_ENTRIES),
     coldMaxAgeDays: override.coldMaxAgeDays
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_COLD_MAX_AGE_DAYS, DEFAULT_MEMORY_COLD_MAX_AGE_DAYS),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_COLD_MAX_AGE_DAYS, DEFAULT_MEMORY_COLD_MAX_AGE_DAYS),
   }
 }
 
@@ -380,16 +382,16 @@ export function semanticRecallEnabled(
   override?: EmbeddingPort | false,
 ): boolean {
   if (override !== undefined) return override !== false
-  const value = env.DS_AGENT_SEMANTIC_RECALL?.trim().toLowerCase()
+  const value = env.LOFIBOT_SEMANTIC_RECALL?.trim().toLowerCase()
   return !(value === '' || value === '0' || value === 'false' || value === 'off' || value === 'no')
 }
 
-/** `DS_AGENT_EMBEDDING_FLOOR` in [0,1]; invalid values use the default. */
+/** `LOFIBOT_EMBEDDING_FLOOR` in [0,1]; invalid values use the default. */
 export function embeddingFloorFromEnv(
   env: NodeJS.ProcessEnv,
   override?: number,
 ): number {
-  const raw = override ?? (env.DS_AGENT_EMBEDDING_FLOOR?.trim() || undefined)
+  const raw = override ?? (env.LOFIBOT_EMBEDDING_FLOOR?.trim() || undefined)
   const value = raw === undefined ? NaN : Number(raw)
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_EMBEDDING_FLOOR
 }
@@ -426,13 +428,13 @@ export function admissionRulesFromEnv(
   return {
     actors: override.actors !== undefined
       ? normalizeIdList(override.actors)
-      : parseIdList(env.DS_AGENT_ACTOR_ALLOWLIST),
+      : parseIdList(env.LOFIBOT_ACTOR_ALLOWLIST),
     groups: override.groups !== undefined
       ? normalizeIdList(override.groups)
-      : parseIdList(env.DS_AGENT_GROUP_ALLOWLIST),
+      : parseIdList(env.LOFIBOT_GROUP_ALLOWLIST),
     dropSelf: override.dropSelf !== undefined
       ? normalizeIdList(override.dropSelf)
-      : parseIdList(env.DS_AGENT_DROP_SELF),
+      : parseIdList(env.LOFIBOT_DROP_SELF),
   }
 }
 
@@ -530,6 +532,9 @@ export class Runtime {
   private readonly batchWindowMs: number
   private readonly admission: AdmissionRules
   /** Kept so finish() can close external MCP server processes. */
+  private readonly memory: SessionMemory
+  private readonly autoDream?: AutoDream
+  private memoryOnExit = false
   private readonly tools: ToolRegistry
   private readonly remoteResultWait?: RemoteMeshResultWait
   /** Shared slot-release/cancel path, bound in the factory closure. */
@@ -580,6 +585,8 @@ export class Runtime {
     connectorConfig: ConnectorConfig
     connectorIndex: ConnectorIndex
     connectorWake: ConnectorWakeScheduler
+    memory: SessionMemory
+    autoDream?: AutoDream
     instanceId: string
     routerShards: RouterShardRegistry
     workerMesh: WorkerMeshRegistry
@@ -616,6 +623,8 @@ export class Runtime {
     this.connectorConfig = parts.connectorConfig
     this.connectorIndex = parts.connectorIndex
     this.connectorWake = parts.connectorWake
+    this.memory = parts.memory
+    this.autoDream = parts.autoDream
     this.instanceId = parts.instanceId
     this.routerShards = parts.routerShards
     this.workerMesh = parts.workerMesh
@@ -637,6 +646,7 @@ export class Runtime {
 
   static create(opts: RuntimeOptions): Runtime {
     const baseEnv = opts.env ?? process.env
+    rejectLegacyConfig(baseEnv)
     // Owner-gated and off when `connectors.json` is absent. A malformed file
     // fails here, before SQLite or a network client is opened. Credentials are
     // read only after an explicit enable.
@@ -694,7 +704,7 @@ export class Runtime {
       explicit: [...browserSecrets, ...connectorSecrets, ...vaultSecrets],
     })
     const log = new RedactingLogger(redact)
-    if (mcpConfig.error) log.info(`[mcp] DS_AGENT_MCP_SERVERS ignored: ${mcpConfig.error}`)
+    if (mcpConfig.error) log.info(`[mcp] LOFIBOT_MCP_SERVERS ignored: ${mcpConfig.error}`)
     const model = opts.model ?? createModelFromEnv(baseEnv)
     const models = { ...roleModelsFromEnv(baseEnv, model), ...(opts.models ?? {}) }
     // Validate and build the owner-gated adapter before opening SQLite so a
@@ -714,7 +724,7 @@ export class Runtime {
     }
     const store = new Store(opts.home)
     const metrics = new Metrics(opts.home)
-    const configuredSource = baseEnv.DS_AGENT_WORKSPACE_SOURCE_REPO?.trim()
+    const configuredSource = baseEnv.LOFIBOT_WORKSPACE_SOURCE_REPO?.trim()
     // An explicitly configured source is kept verbatim so a bad value remains
     // an actionable clone error. The implicit cwd default is only usable when
     // it is actually a git repository; otherwise leave the workspace empty.
@@ -805,17 +815,17 @@ export class Runtime {
     const proactiveConfig = opts.proactive === undefined
       ? loadProactiveConfig(opts.home)
       : normalizeProactiveConfig(opts.proactive)
-    const instanceId = opts.instanceId?.trim() || baseEnv.DS_AGENT_INSTANCE_ID?.trim() || 'local'
-    const rawCapacity = opts.meshCapacity ?? Number(baseEnv.DS_AGENT_MESH_CAPACITY)
+    const instanceId = opts.instanceId?.trim() || baseEnv.LOFIBOT_INSTANCE_ID?.trim() || 'local'
+    const rawCapacity = opts.meshCapacity ?? Number(baseEnv.LOFIBOT_MESH_CAPACITY)
     const meshCapacity = Number.isSafeInteger(rawCapacity) && rawCapacity > 0 ? rawCapacity : 4
     const meshQueue = opts.meshQueue !== undefined
       ? normalizeQueueLimit(opts.meshQueue)
-      : parseNonNegativeInt(baseEnv.DS_AGENT_MESH_QUEUE, DEFAULT_MESH_QUEUE)
+      : parseNonNegativeInt(baseEnv.LOFIBOT_MESH_QUEUE, DEFAULT_MESH_QUEUE)
     const routerShards = new RouterShardRegistry()
     routerShards.register({ id: 'default' })
     // Optional JSON config so CLI/demo users can shard without writing code:
-    // DS_AGENT_SHARDS='[{"id":"github","filter":"source:github"}]'
-    const configured = baseEnv.DS_AGENT_SHARDS
+    // LOFIBOT_SHARDS='[{"id":"github","filter":"source:github"}]'
+    const configured = baseEnv.LOFIBOT_SHARDS
     if (configured?.trim()) {
       try {
         const shards = JSON.parse(configured) as unknown
@@ -823,7 +833,7 @@ export class Runtime {
         for (const shard of shards) routerShards.register(shard as RouterShard)
         log.info(`[routing] shards configured count=${shards.length}`)
       } catch (error) {
-        log.info(`[routing] DS_AGENT_SHARDS ignored: ${error instanceof Error ? error.message : String(error)}`)
+        log.info(`[routing] LOFIBOT_SHARDS ignored: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
     for (const shard of opts.routerShards ?? []) routerShards.register(shard)
@@ -831,6 +841,7 @@ export class Runtime {
     const placement = WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
     // Retention keeps the durable index bounded: 1000 entries / 90 days by
     // default, with 0 disabling either dimension.
+    const memory = new SessionMemory(store, redact)
     const retention = memoryRetentionFromEnv(baseEnv, opts.memoryRetention)
     const embeddings = semanticRecallEnabled(baseEnv, opts.embeddings)
       ? opts.embeddings || new HashedEmbedding()
@@ -849,9 +860,10 @@ export class Runtime {
       store,
       config: proactiveConfig,
       env: baseEnv,
-      memoryFor: ticket => longTermMemory
-        .forThreads(ticket.threadKeys, 2, ticket.id)
-        .map(entry => entry.text),
+      memoryFor: (ticket, channel) => {
+        const context = memory.recallForDestination(ticket, channel)
+        return context ? [context] : []
+      },
       fire: trigger => fireRoutine(trigger),
       log: line => log.info(line),
     })
@@ -1845,8 +1857,6 @@ export class Runtime {
         }
       },
       onTicketEnded: ticket => {
-        // One durable memory entry per finished ticket; the next ticket recalls it.
-        const entry = longTermMemory.remember(ticket)
         // Capacity first, then let the scheduler start a queued Worker, but
         // only after the Engine transaction has committed the terminal state.
         releaseMesh(ticket.id)
@@ -1856,7 +1866,6 @@ export class Runtime {
             ticketId: ticket.id,
             outcome: ticket.ended?.outcome ?? 'unknown',
             by: ticket.ended?.by ?? 'unknown',
-            memoryId: entry.id,
           },
         })
         const shards = store.getDoc<Disposition>('disposition', ticket.originTriggerId)?.shards ?? ['default']
@@ -1866,19 +1875,10 @@ export class Runtime {
             ticketId: ticket.id,
             outcome: ticket.ended?.outcome ?? 'unknown',
             by: ticket.ended?.by ?? 'unknown',
-            memoryId: entry.id,
           })
         }
-        metrics.increment('memory.remembered')
-        log.info(`[memory] ticket.ended ticketId=${ticket.id} memory=${entry.id}`)
       },
       onDecision: decision => {
-        // Router global memory (§2.1): decisions survive Tickets and channels.
-        const entry = longTermMemory.rememberDecision(decision)
-        lifecycle.publish({
-          kind: 'decision.remembered',
-          payload: { decisionId: decision.id, kind: decision.kind, memoryId: entry.id },
-        })
         late.harness?.routerObserve('default', {
           kind: 'decision',
           decisionId: decision.id,
@@ -1887,8 +1887,6 @@ export class Runtime {
           ticketId: decision.ticketId,
           triggerIds: decision.triggerIds,
         })
-        metrics.increment('memory.decision')
-        log.info(`[memory] decision.remembered decisionId=${decision.id} memory=${entry.id}`)
       },
       onAssignmentEnded: ticketId => {
         // blocked/failed/waiting end the Assignment but leave the Ticket open.
@@ -1912,9 +1910,17 @@ export class Runtime {
         workspaceDir: path.join(opts.home, 'mcp'),
         baseEnv,
       })
+    const memoryModelFor = (role: Role): Model | undefined => {
+      const effective = models[role] ?? model
+      return effective instanceof HttpOpenAI ? effective : undefined
+    }
+    const autoDream = baseEnv.LOFIBOT_AUTO_DREAM !== '0'
+      && (memoryModelFor('router') || memoryModelFor('worker'))
+      ? new AutoDream(store, memory, memoryModelFor, redact, line => log.info(line))
+      : undefined
     const tools = new ToolRegistry({
       store,
-      memory: new SessionMemory(store, redact),
+      memory,
       ports: bindRolePorts(engine),
       env,
       metrics,
@@ -2244,57 +2250,6 @@ export class Runtime {
         // A missing disposition is not fatal: ingest always writes one.
         engine.decide(ticket.originTriggerId, { kind: 'stop', ticketId: ticket.id, reason })
       },
-      memory: ticket => {
-        // Direct chats are private threads: recall only memories that belong to
-        // the same conversation. Cross-ticket recall stays for repository work.
-        const thread = directChatThread(ticket)
-        const lexical = longTermMemory.query({
-          ticketId: ticket.id,
-          text: ticket.title,
-          limit: thread ? 50 : 3,
-        })
-        const scoped = thread
-          ? lexical.filter(entry => {
-            const source = store.getDoc<Ticket>('ticket', entry.ticketId)
-            return source ? sharesDirectChatThread(source, thread) : false
-          }).slice(0, 3)
-          : lexical
-        // Same-Thread decisions and cold digests are injected even when the
-        // new title shares no lexical token.
-        const threaded = longTermMemory.forThreads(ticket.threadKeys, 3, ticket.id)
-        const seen = new Set<string>()
-        const entries = [...threaded, ...scoped].filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).slice(0, 5)
-        if (entries.length) metrics.increment('memory.recalled', entries.length)
-        return entries.map(entry => ({
-          id: entry.id,
-          spillId: entry.spillId,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
-      },
-      routerMemory: ticket => {
-        // A direct chat must never inherit another conversation's decisions:
-        // global decision recall is for repository work, not a private thread.
-        const direct = directChatThread(ticket) !== undefined
-        const seen = new Set<string>()
-        return [
-          ...(direct ? [] : [longTermMemory.recentDecisions(3, ticket.id)]),
-          ...longTermMemory.forThreads(ticket.threadKeys, 3, ticket.id),
-        ].flat().filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).slice(0, 5).map(entry => ({
-          id: entry.id,
-          spillId: entry.spillId,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
-      },
     })
     late.harness = harness
     const watchdog = new Watchdog({
@@ -2316,6 +2271,7 @@ export class Runtime {
       routines,
       proactive,
       connectorWake,
+      autoDream,
     )
     const runtime = new Runtime({
       home: opts.home,
@@ -2336,6 +2292,8 @@ export class Runtime {
       connectorConfig,
       connectorIndex,
       connectorWake,
+      memory,
+      autoDream,
       instanceId,
       routerShards,
       workerMesh,
@@ -2624,19 +2582,8 @@ export class Runtime {
           .filter((trigger): trigger is Trigger => trigger != null)
         const live = arbitrateSubscribers(this.store.listDocs<Ticket>('ticket').filter(ticket =>
           current!.subscriptions.includes(ticket.id) && !ticket.ended))
-        const seen = new Set<string>()
-        const memory = [
-          ...this.longTermMemory.recentDecisions(3, live?.id),
-          ...this.longTermMemory.forThreads([thread.key], 3, live?.id),
-        ].filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).map(entry => ({
-          id: entry.id,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
+        const context = this.memory.recallForThread(thread.key)
+        const memory = context ? [{ id: 'curated-thread-memory', text: context, refs: [] }] : []
         const history = this.harness.routerHistory(shard, 12)
         const outcome = await assessWithMainAgent(this.model, triggers, live, 'policy-v1', memory, history)
         if (!this.store.isOpen) return
@@ -2682,8 +2629,9 @@ export class Runtime {
    * is still disabled unless `proactive.json` enables it, and connector polling
    * stays off unless `connectors.json` enables it.
    */
-  start(options: { assessPending?: boolean; routines?: boolean; proactive?: boolean; connectors?: boolean } = {}): void {
+  start(options: { assessPending?: boolean; routines?: boolean; proactive?: boolean; connectors?: boolean; memoryOnExit?: boolean } = {}): void {
     this.assessmentsEnabled = options.assessPending !== false
+    this.memoryOnExit = options.memoryOnExit === true
     // The Router layer is resident: every configured shard gets its Session
     // before recovery, assessment, or the first Trigger.
     this.armResidentRouters()
@@ -2693,6 +2641,7 @@ export class Runtime {
       routines: options.routines === true,
       proactive: options.proactive === true,
       connectors: options.connectors === true,
+      memory: !this.memoryOnExit,
     })
     if (this.assessmentsEnabled) {
       // Resume Gate-deferred work left in SQLite by a previous process.
@@ -3507,6 +3456,7 @@ export class Runtime {
     try {
       // Stop pulse admissions and fence connector polling before any final drain.
       this.daemon.stop()
+      if (!this.memoryOnExit) this.autoDream?.stop()
       await this.connectorWake.stop()
       // Local specialists and browser drivers run detached in their own
       // process group, so they would outlive this process. Kill them before
@@ -3517,12 +3467,14 @@ export class Runtime {
       await this.assessmentsSettled()
       this.flushEvals()
       await this.harness.jobsSettled()
+      if (this.memoryOnExit) await this.autoDream?.finishPass()
     } catch (error) {
       remember(error)
     } finally {
       // The daemon timer, MCP child processes, and SQLite handle must all be
       // released even when a drain step rejects.
       this.daemon.stop()
+      this.autoDream?.stop()
       this.remoteResultWait?.clearAll()
       try {
         await this.tools.close()
@@ -3549,7 +3501,7 @@ export class Runtime {
 }
 
 /**
- * `DS_AGENT_MCP_SERVERS` (or `RuntimeOptions.mcpServers`) is configuration, not
+ * `LOFIBOT_MCP_SERVERS` (or `RuntimeOptions.mcpServers`) is configuration, not
  * code: malformed config is reported and ignored so a bad file cannot stop the
  * runtime from starting. The caller logs `error` once a logger exists.
  */
@@ -3559,7 +3511,7 @@ function mcpServersFromConfig(
 ): { configs: McpServerConfig[]; error?: string } {
   let value = raw
   if (value === undefined) {
-    const configured = env.DS_AGENT_MCP_SERVERS?.trim()
+    const configured = env.LOFIBOT_MCP_SERVERS?.trim()
     if (!configured) return { configs: [] }
     value = configured
   }

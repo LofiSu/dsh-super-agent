@@ -9,7 +9,7 @@ import { ENV_ALLOWLIST, redactKnownSecrets, secretValues } from './sanitize.ts'
 /**
  * Owner-gated browser errands.
  *
- * This is ds-agent's own adapter, not Instinct's leased cloud browser. It calls
+ * This is lofibot's own adapter, not Instinct's leased cloud browser. It calls
  * a driver the owner configured: a local executable or a remote HTTP endpoint.
  * Missing configuration means the tools are not registered at all; a malformed
  * configuration or a missing executable fails at startup instead of degrading
@@ -23,7 +23,8 @@ import { ENV_ALLOWLIST, redactKnownSecrets, secretValues } from './sanitize.ts'
  */
 
 export const BROWSER_ERRANDS_FILE = 'browser-errands.json'
-export const BROWSER_ERRANDS_ENV = 'DS_AGENT_BROWSER_ERRANDS'
+export const BROWSER_ERRANDS_ENV = 'LOFIBOT_BROWSER_ERRANDS'
+// This wire identifier is part of the installed drivers' v1 contract.
 export const BROWSER_PROTOCOL = 'ds-agent-browser-errand/v1'
 
 export const BROWSER_ERRAND_ACTIONS = ['navigate', 'read', 'fill', 'extract'] as const

@@ -6,7 +6,7 @@ if (mode === 'slow') {
 } else if (mode === 'noisy') {
   process.stdout.write('x'.repeat(10_000))
 } else if (mode === 'env') {
-  process.stdout.write(process.env.DS_AGENT_FIXTURE_TOKEN ?? 'missing')
+  process.stdout.write(process.env.LOFIBOT_FIXTURE_TOKEN ?? 'missing')
 } else {
   process.stdout.write(JSON.stringify({
     args: process.argv.slice(2),

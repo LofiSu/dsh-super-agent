@@ -7,19 +7,19 @@ export const BASH_TIMEOUT_MIN_MS = 1_000
 export const BASH_TIMEOUT_MAX_MS = 30 * 60 * 1_000
 
 /**
- * Resolve bash timeout from `DS_AGENT_BASH_TIMEOUT_MS` with serve default and clamps.
+ * Resolve bash timeout from `LOFIBOT_BASH_TIMEOUT_MS` with serve default and clamps.
  * Garbage values fail closed.
  */
 export function parseBashTimeoutMs(
   env: NodeJS.ProcessEnv,
   fallbackMs: number = BASH_TIMEOUT_SERVE_DEFAULT_MS,
 ): number {
-  const raw = env.DS_AGENT_BASH_TIMEOUT_MS
+  const raw = env.LOFIBOT_BASH_TIMEOUT_MS
   let ms = fallbackMs
   if (raw !== undefined && raw.trim() !== '') {
     const parsed = Number(raw.trim())
     if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-      throw new UserError(`invalid DS_AGENT_BASH_TIMEOUT_MS: "${raw}" (expected integer milliseconds)`)
+      throw new UserError(`invalid LOFIBOT_BASH_TIMEOUT_MS: "${raw}" (expected integer milliseconds)`)
     }
     ms = parsed
   }

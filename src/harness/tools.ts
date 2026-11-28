@@ -703,14 +703,14 @@ function executorTools(ports: RolePortFor<'worker'>, deps: WorkerToolDeps): Tool
           `action=${action}`,
           ...(reason ? [`reason=${reason}`] : []),
           `answers=${APPROVAL_ANSWERS.join(',')}`,
-          'The Worker stopped. Tell the owner the exact action and action id in one short message and wait. The card is bound to that exact action text; if it changes, a new approval is required. You cannot answer the card yourself; the owner runs ds-agent approve, deny, or dismiss.',
+          'The Worker stopped. Tell the owner the exact action and action id in one short message and wait. The card is bound to that exact action text; if it changes, a new approval is required. You cannot answer the card yourself; the owner runs lofibot approve, deny, or dismiss.',
         ].join('\n')
         try {
           await deps.routerTurn(prompt)
         } catch (error) {
           // The approval is already persisted, and the Worker stops on it. A
           // failed question must not turn the tool result into an error; the
-          // owner can still find the request with `ds-agent approvals`.
+          // owner can still find the request with `lofibot approvals`.
           deps.log(
             `[approval] owner question not delivered approvalId=${result.approvalId}:`
             + ` ${error instanceof Error ? error.message : String(error)}`,

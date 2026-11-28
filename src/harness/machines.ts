@@ -15,8 +15,8 @@ export interface MachineRecord {
 export class MachineRegistry {
   private readonly machines = new Map<string, MachineRecord>()
 
-  constructor(private readonly staleMs: number = Number(process.env.DS_AGENT_MACHINE_STALE_MS) > 0
-    ? Number(process.env.DS_AGENT_MACHINE_STALE_MS)
+  constructor(private readonly staleMs: number = Number(process.env.LOFIBOT_MACHINE_STALE_MS) > 0
+    ? Number(process.env.LOFIBOT_MACHINE_STALE_MS)
     : Infinity) {}
 
   markStaleOffline(now = Date.now()): MachineRecord[] {

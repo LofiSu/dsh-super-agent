@@ -40,15 +40,15 @@ const TASKS: DemoTasks[] = [
 
 async function createRealIssue(ctx: DemoContext, label: string): Promise<GithubIssue> {
   const issue = await ctx.github.createIssue({
-    title: `[ds-agent demo ${ctx.runId}] ${label} parallel task`,
+    title: `[lofibot demo ${ctx.runId}] ${label} parallel task`,
     body: [
-      `@ds-agent ${label} parallel demo task (independent from the other demo issues).`,
+      `@lofibot ${label} parallel demo task (independent from the other demo issues).`,
       `Use bash once to print ${label.toLowerCase()}.`,
       `Then call report_to_router with the ticketId from this task, kind=ready, deliver=true, text "${label} done".`,
       `Reply on this issue with exactly "${label} done".`,
       'Do not call start_job and do not ask questions.',
     ].join('\n'),
-    labels: ['ds-agent-demo'],
+    labels: ['lofibot-demo'],
   })
   ctx.runtime.log.info(`[github] created real issue #${issue.number} ${issue.html_url ?? ''}`)
   return issue

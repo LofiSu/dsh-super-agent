@@ -25,7 +25,7 @@ describe('async job', () => {
     runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await settleWithDeadline(runtime, 90_000)
     const jobs = runtime.store.listJobs()
@@ -46,7 +46,7 @@ describe('async job', () => {
     runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     runtime.daemon.stop()
     runtime.store.close()

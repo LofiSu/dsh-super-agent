@@ -3,14 +3,14 @@
  *
  * `resolveLiveApi` never calls the network. HttpOpenAI appends `/chat/completions`
  * and sends `Authorization: Bearer`. Scan order is the priority when several keys
- * are set and `DS_AGENT_PROVIDER` is unset.
+ * are set and `LOFIBOT_PROVIDER` is unset.
  *
- * `DS_AGENT_API_BASE` + `DS_AGENT_API_KEY` together win over every preset. With
+ * `LOFIBOT_API_BASE` + `LOFIBOT_API_KEY` together win over every preset. With
  * that pair and no model name, the model stays `deepseek-chat`.
  * Provider-specific overrides (`OPENAI_BASE_URL`, `DEEPSEEK_API_BASE`,
  * `OPENROUTER_MODEL`, ...) are honored for both selected and auto-detected
- * presets, below the generic `DS_AGENT_*` variables.
- * A Base without a Key, or a Key without a Base (and without `DS_AGENT_PROVIDER`),
+ * presets, below the generic `LOFIBOT_*` variables.
+ * A Base without a Key, or a Key without a Base (and without `LOFIBOT_PROVIDER`),
  * throws. Callers must not turn that into MockModel.
  */
 
@@ -22,7 +22,7 @@ export interface ProviderPreset {
   keyEnv: readonly string[]
   /** Provider-specific base overrides, checked before `base`. */
   baseEnv: readonly string[]
-  /** Provider-specific model overrides, below DS_AGENT_API_MODEL / DS_AGENT_MODEL. */
+  /** Provider-specific model overrides, below LOFIBOT_API_MODEL / LOFIBOT_MODEL. */
   modelEnv: readonly string[]
   aliases: readonly string[]
 }
@@ -35,7 +35,7 @@ export interface LiveApi {
   model: string
 }
 
-/** Documented chat models. `DS_AGENT_API_MODEL` or `DS_AGENT_MODEL` overrides them. */
+/** Documented chat models. `LOFIBOT_API_MODEL` or `LOFIBOT_MODEL` overrides them. */
 export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
   {
     id: 'deepseek',
@@ -131,7 +131,7 @@ function readEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
 }
 
 function modelName(env: NodeJS.ProcessEnv, fallback: string, overrides: readonly string[] = []): string {
-  for (const name of ['DS_AGENT_API_MODEL', 'DS_AGENT_MODEL', ...overrides]) {
+  for (const name of ['LOFIBOT_API_MODEL', 'LOFIBOT_MODEL', ...overrides]) {
     const value = readEnv(env, name)
     if (value) return value
   }
@@ -176,9 +176,9 @@ function knownProviders(): string {
  * Throws on a partial explicit config so callers cannot fall through to MockModel.
  */
 export function resolveLiveApi(env: NodeJS.ProcessEnv = process.env): LiveApi | null {
-  const base = readEnv(env, 'DS_AGENT_API_BASE')
-  const key = readEnv(env, 'DS_AGENT_API_KEY')
-  const providerName = readEnv(env, 'DS_AGENT_PROVIDER')?.toLowerCase()
+  const base = readEnv(env, 'LOFIBOT_API_BASE')
+  const key = readEnv(env, 'LOFIBOT_API_KEY')
+  const providerName = readEnv(env, 'LOFIBOT_PROVIDER')?.toLowerCase()
 
   if (base && key) {
     return {
@@ -189,23 +189,23 @@ export function resolveLiveApi(env: NodeJS.ProcessEnv = process.env): LiveApi | 
     }
   }
   if (base && !key) {
-    throw new Error('DS_AGENT_API_BASE is set but DS_AGENT_API_KEY is missing; refusing MockModel.')
+    throw new Error('LOFIBOT_API_BASE is set but LOFIBOT_API_KEY is missing; refusing MockModel.')
   }
   if (key && !base && !providerName) {
-    throw new Error('DS_AGENT_API_KEY is set but DS_AGENT_API_BASE is missing; refusing MockModel.')
+    throw new Error('LOFIBOT_API_KEY is set but LOFIBOT_API_BASE is missing; refusing MockModel.')
   }
   if (providerName) {
     if (providerName === 'custom') {
-      throw new Error('DS_AGENT_PROVIDER=custom needs DS_AGENT_API_BASE and DS_AGENT_API_KEY; refusing MockModel.')
+      throw new Error('LOFIBOT_PROVIDER=custom needs LOFIBOT_API_BASE and LOFIBOT_API_KEY; refusing MockModel.')
     }
     const preset = findPreset(providerName)
     if (!preset) {
-      throw new Error(`Unknown DS_AGENT_PROVIDER "${providerName.slice(0, 64)}". Known: ${knownProviders()}.`)
+      throw new Error(`Unknown LOFIBOT_PROVIDER "${providerName.slice(0, 64)}". Known: ${knownProviders()}.`)
     }
     const apiKey = presetKey(env, preset) || key
     if (!apiKey) {
       throw new Error(
-        `DS_AGENT_PROVIDER=${preset.id} has no API key (${preset.keyEnv.join(', ')}, or DS_AGENT_API_KEY); refusing MockModel.`,
+        `LOFIBOT_PROVIDER=${preset.id} has no API key (${preset.keyEnv.join(', ')}, or LOFIBOT_API_KEY); refusing MockModel.`,
       )
     }
     return {

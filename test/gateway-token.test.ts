@@ -27,7 +27,7 @@ function errno(code: string, message: string): NodeJS.ErrnoException {
 }
 
 function gatewayEnv(home: string): NodeJS.ProcessEnv {
-  return { DS_AGENT_GATEWAY_URL: 'http://127.0.0.1:9', DS_AGENT_HOME: home } as NodeJS.ProcessEnv
+  return { LOFIBOT_GATEWAY_URL: 'http://127.0.0.1:9', LOFIBOT_HOME: home } as NodeJS.ProcessEnv
 }
 
 function captureThrow(run: () => unknown): unknown {
@@ -110,7 +110,7 @@ describe('stale empty gateway token file', () => {
     fs.writeFileSync(file, '\n', { mode: 0o600 })
     fs.chmodSync(file, 0o600)
 
-    const env = { ...gatewayEnv(home), DS_AGENT_GATEWAY_TOKEN: ' gw_explicit ' } as NodeJS.ProcessEnv
+    const env = { ...gatewayEnv(home), LOFIBOT_GATEWAY_TOKEN: ' gw_explicit ' } as NodeJS.ProcessEnv
     expect(createModelFromEnv(env)).toBeInstanceOf(HttpOpenAI)
     expect(fs.readFileSync(file, 'utf8')).toBe('\n')
   })

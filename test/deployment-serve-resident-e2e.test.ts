@@ -19,7 +19,7 @@ function feishuTrigger(id: string, ms: number): Trigger {
     human: true,
     addressed: 'mention',
     at: new Date(ms).toISOString(),
-    text: '@ds-agent burst',
+    text: '@lofibot burst',
     channel: {
       source: 'im',
       thread: 'feishu:oc_burst',
@@ -54,7 +54,7 @@ describe('deployment serve resident e2e (loopback mocks)', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_GROUP_ALLOWLIST: 'oc_burst' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_GROUP_ALLOWLIST: 'oc_burst' },
     })
     rt.start()
     const ingested: string[] = []
@@ -93,7 +93,7 @@ describe('deployment serve resident e2e (loopback mocks)', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_GROUP_ALLOWLIST: 'oc_x' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_GROUP_ALLOWLIST: 'oc_x' },
     })
     rt.start()
     const client = new FeishuClient(

@@ -38,7 +38,7 @@ const scriptedModel: Model = {
 }
 
 function workspace(): string {
-  const dir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'ds-agent-local-'))
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'lofibot-local-'))
   cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }))
   return dir
 }
@@ -109,12 +109,12 @@ describe('local agent configuration', () => {
       agents: [{ id: 'file-agent', command: process.execPath, args: ['-e', ''] }],
     }))
     const fromFile = loadLocalAgents(home, {
-      DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]),
+      LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]),
     })
     expect(fromFile.map(agent => agent.id)).toEqual(['file-agent'])
 
     const fromEnv = loadLocalAgents(tempHome(), {
-      DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]),
+      LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]),
     })
     expect(fromEnv.map(agent => agent.id)).toEqual(['env-agent'])
   })
@@ -131,11 +131,11 @@ describe('local agent configuration', () => {
     expect(() => loadLocalAgents(home, {})).toThrow(/duplicate/)
 
     expect(() => loadLocalAgents(tempHome(), {
-      DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'bad', command: 'claude; rm -rf /' }]),
+      LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'bad', command: 'claude; rm -rf /' }]),
     })).toThrow(/command/)
 
     expect(() => loadLocalAgents(tempHome(), {
-      DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'bad', command: process.execPath, shell: true }]),
+      LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'bad', command: process.execPath, shell: true }]),
     })).toThrow(/unknown/)
   })
 
@@ -143,7 +143,7 @@ describe('local agent configuration', () => {
     const home = tempHome()
     cleanups.push(() => fs.rmSync(home, { recursive: true, force: true }))
     fs.writeFileSync(path.join(home, 'local-agents.json'), '  \n')
-    const env = { DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]) }
+    const env = { LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'env-agent', command: process.execPath }]) }
     // The file wins, so a deliberately blank file also disables env agents.
     expect(loadLocalAgents(home, env)).toEqual([])
   })
@@ -157,7 +157,7 @@ describe('local agent configuration', () => {
     expect(loadLocalAgents(home, {})[0]?.command).toBe(path.join(os.homedir(), 'bin', 'agent'))
 
     expect(() => loadLocalAgents(tempHome(), {
-      DS_AGENT_LOCAL_AGENTS: JSON.stringify([{ id: 'opt', command: '-rf' }]),
+      LOFIBOT_LOCAL_AGENTS: JSON.stringify([{ id: 'opt', command: '-rf' }]),
     })).toThrow(/command/)
   })
 })
@@ -198,11 +198,11 @@ describe('local agent execution', () => {
     const env = {
       PATH: process.env.PATH ?? '',
       HOME: process.env.HOME ?? '',
-      DS_AGENT_FIXTURE_TOKEN: 'token-value',
+      LOFIBOT_FIXTURE_TOKEN: 'token-value',
       UNRELATED_SECRET: 'do-not-pass',
     }
     const result = await registry([
-      echoAgent({ args: [fixture, 'env'], env: ['DS_AGENT_FIXTURE_TOKEN'] }),
+      echoAgent({ args: [fixture, 'env'], env: ['LOFIBOT_FIXTURE_TOKEN'] }),
     ], { env }).run('echo', 'show', 'worker_1')
     expect(result.stdout).toBe('token-value')
 

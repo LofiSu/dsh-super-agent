@@ -14,7 +14,7 @@ const homes: string[] = []
 const runtimes: Runtime[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-skills-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-skills-'))
   homes.push(dir)
   return dir
 }

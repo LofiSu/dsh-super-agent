@@ -26,7 +26,7 @@ afterEach(() => {
 })
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-freeze-lock-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-freeze-lock-'))
   homes.push(home)
   return home
 }

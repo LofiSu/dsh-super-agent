@@ -34,14 +34,14 @@ function tempDir(prefix: string): string {
 }
 
 function makeRuntime(env: NodeJS.ProcessEnv = {}): Runtime {
-  const home = tempDir('ds-agent-serve-imessage-home-')
+  const home = tempDir('lofibot-serve-imessage-home-')
   homes.push(home)
   const runtime = Runtime.create({
     home,
     model: new MockModel(),
     jobDelayMs: 0,
     watchdogIntervalMs: 60_000,
-    env: { ...process.env, DS_AGENT_ACTOR_ALLOWLIST: '+15550000000', ...env },
+    env: { ...process.env, LOFIBOT_ACTOR_ALLOWLIST: '+15550000000', ...env },
   })
   runtime.start()
   runtimes.push(runtime)
@@ -52,7 +52,7 @@ function sample(over: Partial<ImessageInbound> = {}): ImessageInbound {
   return {
     rowId: 10,
     guid: 'GUID-1',
-    text: 'hello ds-agent',
+    text: 'hello lofibot',
     handle: '+15550000000',
     service: 'iMessage',
     chatGuid: 'iMessage;-;+15550000000',
@@ -210,18 +210,18 @@ describe('serve --imessage loop', () => {
   })
 
   it('refuses serve --imessage before opening chat.db or SQLite', async () => {
-    const dir = tempDir('ds-agent-serve-imessage-deny-')
+    const dir = tempDir('lofibot-serve-imessage-deny-')
     const stateHome = path.join(dir, 'state')
     const dbPath = path.join(dir, 'missing-chat.db')
-    const env: NodeJS.ProcessEnv = { ...process.env, DS_AGENT_HOME: stateHome, NODE_NO_WARNINGS: '1' }
+    const env: NodeJS.ProcessEnv = { ...process.env, LOFIBOT_HOME: stateHome, NODE_NO_WARNINGS: '1' }
     for (const key of [
-      'DS_AGENT_IMESSAGE_HANDLE',
-      'DS_AGENT_ACTOR_ALLOWLIST',
-      'DS_AGENT_IMESSAGE_ALLOW_ANY',
-      'DS_AGENT_IMESSAGE_ALLOW_GROUPS',
-      'DS_AGENT_IMESSAGE_DB',
-      'DS_AGENT_IMESSAGE_SINCE',
-      'DS_AGENT_IMESSAGE_INTERVAL_MS',
+      'LOFIBOT_IMESSAGE_HANDLE',
+      'LOFIBOT_ACTOR_ALLOWLIST',
+      'LOFIBOT_IMESSAGE_ALLOW_ANY',
+      'LOFIBOT_IMESSAGE_ALLOW_GROUPS',
+      'LOFIBOT_IMESSAGE_DB',
+      'LOFIBOT_IMESSAGE_SINCE',
+      'LOFIBOT_IMESSAGE_INTERVAL_MS',
     ]) {
       delete env[key]
     }
@@ -245,21 +245,21 @@ describe('serve --imessage loop', () => {
     // Neither the permissioned chat.db nor the state directory was created.
     expect(fs.existsSync(dbPath)).toBe(false)
     expect(fs.existsSync(stateHome)).toBe(false)
-    expect(fs.existsSync(path.join(dir, 'ds-agent'))).toBe(false)
+    expect(fs.existsSync(path.join(dir, 'lofibot'))).toBe(false)
   }, 30_000)
 })
 
 describe('resolveImessageCliConfig', () => {
   it('shares chat admission and flags with serve', () => {
     const denied = resolveImessageCliConfig(
-      ['node', 'ds-agent', 'serve', '--imessage'],
+      ['node', 'lofibot', 'serve', '--imessage'],
       {},
     )
     expect(denied.admission.allowed).toBe(false)
-    expect(denied.admission.error).toContain('DS_AGENT_ACTOR_ALLOWLIST')
+    expect(denied.admission.error).toContain('LOFIBOT_ACTOR_ALLOWLIST')
 
     const allowed = resolveImessageCliConfig(
-      ['node', 'ds-agent', 'serve', '--imessage', '--handle', ' +15550000000 ', '--allow-groups'],
+      ['node', 'lofibot', 'serve', '--imessage', '--handle', ' +15550000000 ', '--allow-groups'],
       {},
     )
     expect(allowed.handle).toBe('+15550000000')
