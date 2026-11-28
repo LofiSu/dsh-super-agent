@@ -244,8 +244,14 @@ function view(files: Note[], path: string, range: unknown, redact: (text: string
     sizes.set(path, sizes.get(path)! + bytes)
   }
   const rows = [...sizes.entries()].sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, size]) => `${size} bytes\t${redact(name)}`)
-  return viewRows(`Memory directory ${path} (up to two levels deep)`, rows, range)
+    .map(([name, size]) => `${sizeLabel(size)}\t${redact(name)}`)
+  return boundedRows(`Memory directory ${path} (up to two levels deep)`, rows, () =>
+    'Listing truncated. View a subdirectory for more entries.')
+}
+
+function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  return `${Math.round(bytes / 102.4) / 10}K`
 }
 
 function viewText(file: Note, range: unknown, label = 'Memory file'): string {

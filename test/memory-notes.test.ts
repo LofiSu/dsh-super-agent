@@ -42,6 +42,17 @@ describe('memory notes', () => {
     expect(execute('view', { path: '/memories/work/偏好.md' })).not.toContain('test-secret')
   })
 
+  it('lists directory sizes and caps the listing at two levels without line numbers', () => {
+    const path = '/memories'
+    expect(execute('view', { path })).toContain('\n0B\t/memories')
+    execute('create', { path: '/memories/project/topic/deep.md', file_text: 'x'.repeat(1536) })
+    const listing = execute('view', { path })
+    expect(listing).toContain('\n1.5K\t/memories/project/topic')
+    expect(listing).not.toContain('deep.md')
+    expect(execute('view', { path, view_range: [2, 2] })).toBe(listing)
+    expect(execute('view', { path: '/memories/project' })).toContain('\n1.5K\t/memories/project/topic/deep.md')
+  })
+
   it('reads a bounded, redacted index from the current scope only', () => {
     expect(memory.readIndex('owner-a')).toBeUndefined()
     execute('create', { path: '/memories/MEMORY.md', file_text: 'test-secret ' + 'a'.repeat(2500) })
