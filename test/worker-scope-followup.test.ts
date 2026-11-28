@@ -728,6 +728,46 @@ describe('worker mandate scope', () => {
     expect(latestAssignment?.id).toBe(assignment.id)
   })
 
+  it('does not relaunch a settled remote-running assignment through direct harness.launch', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    const runtime = start(dispatchModel(prompts, gate, () => scopeA, undefined, undefined, true, false), {
+      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+        id: 'remote-test-node',
+        url: 'http://127.0.0.1:9',
+        peerId: 'peer-test',
+        secret: 'x'.repeat(32),
+      }]),
+    })
+    runtime.ingest(directTrigger('trg_direct_remote_launch'))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    const work = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!
+    const assignment = work.assignments.at(-1)!
+    assignment.node = 'remote-test-node'
+    assignment.state = 'running'
+    runtime.store.putDoc('ticket', work.id, work)
+
+    releaseWorker()
+    await runtime.jobsSettled()
+    await vi.waitFor(() => expect(runtime.harness.workerActive(work.id)).toBe(false))
+    expect(runtime.harness.launchInFlight(work.id)).toBe(false)
+    expect(runtime.store.getDoc<Ticket>('ticket', work.id)?.ended).toBeUndefined()
+
+    await runtime.harness.launch(runtime.store.getDoc<Ticket>('ticket', work.id)!)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', work.id)!
+    expect(latest.ended).toBeUndefined()
+    expect(latest.assignments.at(-1)).toMatchObject({ id: assignment.id, node: 'remote-test-node', state: 'running' })
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
+    expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(0)
+    expect(runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []).toHaveLength(1)
+    expect(runtime.log.text().match(new RegExp(`Assignments\\.start ticketId=${work.id}`, 'g')) ?? []).toHaveLength(1)
+    expect(runtime.log.text().match(new RegExp(`Assignments\\.placed ticketId=${work.id}`, 'g')) ?? []).toHaveLength(1)
+    expect(runtime.log.text().match(new RegExp(`\\[mesh\\] remote dispatch ticketId=${work.id}`, 'g')) ?? []).toHaveLength(0)
+  })
+
   it('a revised remote-owned assignment does not start a local FOLLOWUP', async () => {
     const prompts: string[] = []
     let releaseWorker!: () => void

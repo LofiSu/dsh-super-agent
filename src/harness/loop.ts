@@ -385,6 +385,10 @@ export class Harness {
       this.opts.log(`[harness] worker skipped ticketId=${ticketId} assignment-ended assignmentId=${assignment.id}`)
       return
     }
+    if (this.remoteAssignmentInProgress(assignment)) {
+      this.opts.log(`[harness] worker skipped ticketId=${ticketId} remote-assignment-running assignmentId=${assignment.id} node=${assignment.node}`)
+      return
+    }
     // No mesh configured: keep the original no-placement behavior.
     if (!this.opts.pickNode) return this.startNow(latest)
     const node = this.opts.pickNode(latest.id, latest)
@@ -476,6 +480,15 @@ export class Harness {
     }
   }
 
+  private remoteAssignmentInProgress(assignment: Assignment | undefined): boolean {
+    return Boolean(this.opts.pickNode)
+      && assignment !== undefined
+      && assignment.state === 'running'
+      && assignment.node !== undefined
+      && this.opts.isRemoteNode?.(assignment.node) === true
+      && !(assignment.report && TERMINAL_REPORT_KINDS.has(assignment.report.kind))
+  }
+
   /**
    * Read the committed snapshot for a queued launch. A terminal Assignment
    * (`ended`) is as fatal as an ended or paused Ticket: a report may have ended
@@ -491,6 +504,7 @@ export class Harness {
     const assignment = ticket.assignments.at(-1)
     if (!assignment) return { skip: 'no-assignment' }
     if (assignment.state === 'ended') return { skip: 'assignment-ended' }
+    if (this.remoteAssignmentInProgress(assignment)) return { skip: 'remote-assignment-running' }
     if (assignment.report?.kind === 'failed' || assignment.report?.kind === 'blocked') {
       return { skip: `assignment-${assignment.report.kind}` }
     }
@@ -580,6 +594,11 @@ export class Harness {
     }
     if (assignment.state === 'ended') {
       this.opts.log(`[harness] worker skipped ticketId=${ticket.id} assignment-ended assignmentId=${assignment.id}`)
+      return Promise.resolve()
+    }
+    if (this.remoteAssignmentInProgress(assignment)) {
+      this.opts.log(`[harness] worker skipped ticketId=${ticket.id} remote-assignment-running assignmentId=${assignment.id} node=${assignment.node}`)
+      if (node) this.opts.releaseNode?.(ticket.id)
       return Promise.resolve()
     }
     this.bookWorkerTurn(ticket.id)
