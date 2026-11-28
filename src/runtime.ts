@@ -1533,7 +1533,9 @@ export class Runtime {
       predecessor: Assignment | undefined,
     ): boolean => latest?.state === 'pending'
       && predecessor?.state === 'ended'
-      && (predecessor.report?.kind === 'ready' || predecessor.report?.kind === 'failed')
+      && (predecessor.report?.kind === 'ready'
+        || predecessor.report?.kind === 'dropped'
+        || predecessor.report?.kind === 'failed')
       && predecessor.mandateScopeAtStart !== undefined
       && predecessor.mandateScopeAtStart !== current?.mandate.scope
       && predecessor.node !== undefined
@@ -2492,22 +2494,22 @@ export class Runtime {
     // terminal transition.
     const settled = this.store.getDoc<Ticket>('ticket', event.ticketId)
     const settledAssignment = settled?.assignments.at(-1)
-    const supersededReady = report.kind === 'ready'
+    const supersededTerminal = (report.kind === 'ready' || report.kind === 'dropped')
       && settled !== undefined
       && settledAssignment?.id === event.assignmentId
       && settledAssignment.state === 'running'
-      && settledAssignment.report?.kind === 'ready'
+      && settledAssignment.report?.kind === report.kind
       && settledAssignment.mandateScopeAtStart !== undefined
       && settledAssignment.mandateScopeAtStart !== settled.mandate.scope
-    if (supersededReady && this.engine.replaceSupersededReady(event.ticketId, event.assignmentId)) {
+    if (supersededTerminal && this.engine.replaceSupersededTerminal(event.ticketId, event.assignmentId)) {
       // This remote worker has completed the old mandate. End its Assignment
-      // without changing its held ready report, then launch the revised scope
+      // without changing its held terminal report, then launch the revised scope
       // through the existing sticky placement and remote wait path.
       this.remoteResultWait?.clear(event.ticketId)
       const replacement = this.store.getDoc<Ticket>('ticket', event.ticketId)
       if (replacement && !replacement.ended) void this.harness.launch(replacement)
       this.log.info(
-        `[mesh] superseded ready replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
+        `[mesh] superseded ${report.kind} replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
       )
       return
     }

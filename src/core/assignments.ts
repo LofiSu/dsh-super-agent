@@ -179,10 +179,11 @@ export class Assignments {
       this.host.log(`deliver=true ticketId=${ticket.id}`)
     }
 
-    const readyForSupersededMandate = report.kind === 'ready'
+    const terminalForSupersededMandate = (report.kind === 'ready' || report.kind === 'dropped')
       && assignment.mandateScopeAtStart !== undefined
       && assignment.mandateScopeAtStart !== ticket.mandate.scope
-    if (readyForSupersededMandate) {
+    if (terminalForSupersededMandate) {
+      if (report.kind === 'dropped') assignment.report.verdict = 'hold'
       this.host.repo.putDoc('ticket', ticket.id, ticket)
       this.host.log(`[engine] Assignments.report kept ticket open for revised mandate ticketId=${ticket.id} assignmentId=${assignment.id}`)
       return { surfaced: false, verdict: 'hold' }
@@ -209,22 +210,22 @@ export class Assignments {
   }
 
   /**
-   * End a remote turn that reported ready under a superseded mandate and queue
-   * a fresh Assignment for the current scope. The held `ready` remains on the
-   * predecessor as an audit record and cannot be overwritten by its old timer.
+   * End a remote turn that reported ready or dropped under a superseded mandate
+   * and queue a fresh Assignment for the current scope. The held report remains
+   * on the predecessor as an audit record and cannot be overwritten by its old timer.
    */
-  replaceSupersededReady(ticketId: string, assignmentId: string): Assignment | undefined {
+  replaceSupersededTerminal(ticketId: string, assignmentId: string): Assignment | undefined {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.at(-1)
     if (ticket.ended
       || assignment?.id !== assignmentId
       || assignment.state !== 'running'
-      || assignment.report?.kind !== 'ready'
+      || (assignment.report?.kind !== 'ready' && assignment.report?.kind !== 'dropped')
       || assignment.mandateScopeAtStart === undefined
       || assignment.mandateScopeAtStart === ticket.mandate.scope) {
       return undefined
     }
-    this.endAssignment(ticket, assignment, 'superseded-ready')
+    this.endAssignment(ticket, assignment, `superseded-${assignment.report.kind}`)
     this.host.repo.putDoc('ticket', ticket.id, ticket)
     const replacement = this.retry(ticketId, 'revised-mandate')
     this.notifyEnded(ticket, true, false)

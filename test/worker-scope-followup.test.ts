@@ -60,6 +60,7 @@ function dispatchModel(
   reportTasks = true,
   gateResume?: Promise<void>,
   reportResumes = true,
+  taskReportKind: 'ready' | 'dropped' = 'ready',
 ): ScriptedModel {
   const reportedWorkerPrompts = new Set<string>()
   return new ScriptedModel(async request => {
@@ -82,7 +83,7 @@ function dispatchModel(
               ticketId: field(prompt, 'ticketId'),
               text: 'done under the active mandate',
               deliver: true,
-              kind: 'ready',
+              kind: prompt.startsWith('TASK') ? taskReportKind : 'ready',
             },
           }],
         }
@@ -480,6 +481,36 @@ describe('worker mandate scope', () => {
 
     const workerTurns = prompts.filter(p => p.startsWith('TASK') || p.startsWith('FOLLOWUP'))
     expect(workerTurns.some(p => p.startsWith('FOLLOWUP') && p.includes(`scope=${scopeB}`))).toBe(true)
+    expect(runtime.store.getDoc<Ticket>('ticket', workId)?.ended?.outcome).toBe('ready')
+    expect(runtime.log.text()).toContain('kept ticket open for revised mandate')
+  })
+
+  it('dropped from the superseded turn leaves the revised ticket open for FOLLOWUP', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const taskGate = new Promise<void>(resolve => { releaseWorker = resolve })
+    let releaseFollowup!: () => void
+    const followupGate = new Promise<void>(resolve => { releaseFollowup = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(
+      prompts, taskGate, () => scope, redispatch, followupGate,
+      true, true, undefined, true, 'dropped',
+    ))
+    runtime.ingest(directTrigger('trg_dropped_race'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const workId = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!.id
+
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_dropped_race', envelope.id, redispatch)
+    releaseWorker()
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('FOLLOWUP'))).toBe(true))
+    expect(runtime.store.getDoc<Ticket>('ticket', workId)?.ended).toBeUndefined()
+    expect(prompts.some(p => p.startsWith('FOLLOWUP') && p.includes(`scope=${scopeB}`))).toBe(true)
+
+    releaseFollowup()
+    await runtime.jobsSettled()
     expect(runtime.store.getDoc<Ticket>('ticket', workId)?.ended?.outcome).toBe('ready')
     expect(runtime.log.text()).toContain('kept ticket open for revised mandate')
   })

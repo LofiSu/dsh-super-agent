@@ -90,10 +90,10 @@ export class Engine {
     return this.host.repo.atomic(() => this.assignments.report(ticketId, report))
   }
 
-  /** Replace a remote ready held open by a revised mandate. */
-  replaceSupersededReady(ticketId: string, assignmentId: string): boolean {
+  /** Replace a remote terminal report held open by a revised mandate. */
+  replaceSupersededTerminal(ticketId: string, assignmentId: string): boolean {
     return this.host.repo.atomic(() =>
-      this.assignments.replaceSupersededReady(ticketId, assignmentId) !== undefined,
+      this.assignments.replaceSupersededTerminal(ticketId, assignmentId) !== undefined,
     )
   }
 
