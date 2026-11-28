@@ -1362,6 +1362,39 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
+  it('reuses persisted text fallback acceptance before retrying a rejected card', async () => {
+    await withFormat(undefined, async () => {
+      const requests: { url: string; body: Record<string, unknown> }[] = []
+      const { fn } = fakeFetch((url, init) => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        requests.push({ url, body })
+        if (requests.length === 1) return { status: 400, body: { code: 230099, msg: 'card content rejected' } }
+        return { body: { code: 0, data: { message_id: requests.length === 2 ? 'text_accepted' : 'card_2' } } }
+      })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const row = makeRow('## Structured\n- body')
+      let durableTarget = row.target
+      const firstResult = await adapter.sendWithProgress(row, target => { durableTarget = target })
+      const savedTextProgress = JSON.parse(durableTarget.__ds_feishu_text_progress ?? '{}') as Record<string, unknown>
+
+      expect(firstResult.externalId).toBe('text_accepted')
+      expect(savedTextProgress).toMatchObject({
+        textHash: expect.any(String),
+        nextChunk: 1,
+        total: 1,
+        firstExternalId: 'text_accepted',
+      })
+      expect(requests).toHaveLength(2)
+      expect(requests.map(request => request.body.msg_type)).toEqual(['interactive', 'text'])
+
+      const retryResult = await adapter.sendWithProgress({ ...row, target: durableTarget }, target => { durableTarget = target })
+
+      expect(retryResult.externalId).toBe('text_accepted')
+      expect(requests).toHaveLength(2)
+    })
+  })
+
   it('falls back once to text only for documented card rejection codes', async () => {
     await withFormat(undefined, async () => {
       const { fn, calls } = fakeFetch(url => {

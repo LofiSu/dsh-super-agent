@@ -787,11 +787,24 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
       return firstResult
     }
+    const hasCompletedTextAcceptance = (text: string): boolean => {
+      const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
+        ? [text]
+        : splitFeishuText(text)
+      const textHash = crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+      return metadata.textHash === textHash
+        && metadata.total === chunks.length
+        && metadata.nextChunk === chunks.length
+        && typeof metadata.firstExternalId === 'string'
+        && metadata.firstExternalId.length > 0
+    }
     const format = process.env.FEISHU_REPLY_FORMAT?.trim().toLowerCase()
     let result: { message_id: string }
     if (format !== 'text' && hasFeishuMarkdownStructure(row.text)) {
       const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
       if (rendered.truncated || Buffer.byteLength(rendered.content, 'utf8') > FEISHU_CARD_CONTENT_LIMIT_BYTES) {
+        result = await sendTextDelivery(row.text)
+      } else if (hasCompletedTextAcceptance(row.text)) {
         result = await sendTextDelivery(row.text)
       } else {
         const interactiveHash = crypto.createHash('sha256').update(rendered.content, 'utf8').digest('hex')
