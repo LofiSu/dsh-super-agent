@@ -22,6 +22,8 @@ pnpm lofibot tasks
 
 See [installation](docs/install.md) for other providers or to migrate an existing checkout. For Feishu and iMessage, run `pnpm lofibot channels check` before `pnpm lofibot serve --imessage --feishu`. See [channel setup](docs/REAL_CHANNELS.md) for details and GitHub.
 
+For a native chat window, see the [Rune desktop client](desktop/README.md). It connects to the same Agent runtime and can render an offline preview without opening a window.
+
 ## Architecture
 
 ```mermaid

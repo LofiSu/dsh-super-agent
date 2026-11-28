@@ -2442,11 +2442,15 @@ export class Runtime {
    * an invalid assessment commits `unavailable` and clears the thread queue.
    */
   private assessmentsEnabled = true
+  private foregroundThreadKey: string | undefined
 
   private assessPending(): void {
     if (!this.assessmentsEnabled || !this.store.isOpen) return
-    for (const thread of this.store.listDocs<Thread>('thread')) {
-      if (!thread.deferred || !thread.pending.length || this.assessingThreads.has(thread.key)) continue
+    const threads = this.foregroundThreadKey === undefined
+      ? this.store.listDocs<Thread>('thread')
+      : [this.store.getDoc<Thread>('thread', this.foregroundThreadKey)]
+    for (const thread of threads) {
+      if (!thread?.deferred || !thread.pending.length || this.assessingThreads.has(thread.key)) continue
       this.assessingThreads.add(thread.key)
       // A deferred assessment belongs to the shard that routed its triggers.
       // Running it on `default` would read the wrong resident history and
@@ -2538,6 +2542,12 @@ export class Runtime {
       // Resume Gate-deferred work left in SQLite by a previous process.
       this.assessPending()
     }
+  }
+
+  /** Start an interactive session beside a serving process without claiming its work. */
+  startForegroundChat(threadKey: string): void {
+    this.foregroundThreadKey = threadKey
+    this.armResidentRouters()
   }
 
   private armResidentRouters(): void {
@@ -3207,7 +3217,7 @@ export class Runtime {
       this.evalTimer = undefined
     }
     if (!this.store.isOpen) return
-    for (const decision of this.engine.evaluateDue()) {
+    for (const decision of this.engine.evaluateDue(this.foregroundThreadKey)) {
       // Gate runs before any worker. ignore, stop, and unavailable do not launch.
       if (decision.kind === 'accept' && decision.ticketId) {
         const ticket = this.store.getDoc<Ticket>('ticket', decision.ticketId)

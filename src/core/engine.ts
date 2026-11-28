@@ -63,8 +63,8 @@ export class Engine {
     this.host.repo.atomic(() => this.tickets.stop(ticketId, reason, 'router'))
   }
 
-  evaluateDue(): Decision[] {
-    return this.host.repo.atomic(() => this.evals.evaluateDue())
+  evaluateDue(threadKey?: string): Decision[] {
+    return this.host.repo.atomic(() => this.evals.evaluateDue(threadKey))
   }
 
   /** Commit a Router assessment against precisely the queued trigger snapshot. */

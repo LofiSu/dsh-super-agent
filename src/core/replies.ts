@@ -87,7 +87,9 @@ export class Replies {
         if (latestMessageId) target.message_id = latestMessageId
       }
     }
-    const rendered = renderOutbound(channel, text, ticket.id)
+    // The desktop renders complete rich-text replies from the local Store.
+    const desktop = channel === 'cli' && ref?.address?.desktop === '1'
+    const rendered = desktop ? text : renderOutbound(channel, text, ticket.id)
     // A direct chat reads like texting: one long block feels like a letter.
     // Split at paragraph/sentence boundaries into at most three bubbles.
     const directChat = (channel === 'imessage' || channel === 'im') && target.group == null
