@@ -726,6 +726,7 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       firstExternalId?: string
       interactiveHash?: string
       interactiveExternalId?: string
+      textFallbackHash?: string
       sendUuids?: Record<string, string>
     }
     let metadata: ProgressMetadata = {}
@@ -787,6 +788,8 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       if (!firstResult) throw new Error(`Feishu send produced no text chunks for outbox row ${row.id}`)
       return firstResult
     }
+    const textHashFor = (text: string): string => crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+    const hasMatchingTextFallback = (text: string): boolean => metadata.textFallbackHash === textHashFor(text)
     const hasCompletedTextAcceptance = (text: string): boolean => {
       const chunks = textRequestBodyBytes(text) <= FEISHU_TEXT_REQUEST_LIMIT_BYTES
         ? [text]
@@ -804,7 +807,7 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
       const rendered = renderFeishuMarkdownCard(row.text, row.ticketId)
       if (rendered.truncated || Buffer.byteLength(rendered.content, 'utf8') > FEISHU_CARD_CONTENT_LIMIT_BYTES) {
         result = await sendTextDelivery(row.text)
-      } else if (hasCompletedTextAcceptance(row.text)) {
+      } else if (hasCompletedTextAcceptance(row.text) || hasMatchingTextFallback(row.text)) {
         result = await sendTextDelivery(row.text)
       } else {
         const interactiveHash = crypto.createHash('sha256').update(rendered.content, 'utf8').digest('hex')
@@ -823,6 +826,10 @@ export class FeishuOutboxAdapter implements OutboundAdapter {
             // Only documented format/size rejection codes guarantee that the
             // card was rejected before acceptance and permit a text fallback.
             if (!(error instanceof FeishuApiError) || ![230025, 230099].includes(error.code)) throw error
+            if (onProgress) {
+              metadata = { ...metadata, textFallbackHash: textHashFor(row.text) }
+              onProgress({ ...row.target, [FEISHU_TEXT_PROGRESS_KEY]: JSON.stringify(metadata) })
+            }
             result = await sendTextDelivery(row.text)
           }
           if (acceptedAsCard && onProgress && result.message_id) {
