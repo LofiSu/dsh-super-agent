@@ -401,6 +401,47 @@ describe('worker mandate scope', () => {
     expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
   })
 
+  it('unchanged re-dispatch skips launch while a FOLLOWUP remains active after TASK settles', async () => {
+    const prompts: string[] = []
+    let releaseTask!: () => void
+    const taskGate = new Promise<void>(resolve => { releaseTask = resolve })
+    let releaseFollowup!: () => void
+    const followupGate = new Promise<void>(resolve => { releaseFollowup = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(
+      prompts, taskGate, () => scope, redispatch, followupGate,
+    ))
+    const triggerId = 'trg_unchanged_during_followup'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+
+    scope = scopeB
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    releaseTask()
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('FOLLOWUP'))).toBe(true))
+    await vi.waitFor(() => expect(runtime.harness.launchInFlight(ticketId)).toBe(false))
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
+    expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(1)
+
+    const launch = vi.spyOn(runtime.harness, 'launch')
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    expect(launch).not.toHaveBeenCalled()
+    expect(runtime.harness.workerActive(ticketId)).toBe(true)
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
+    expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(1)
+    expect(runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []).toHaveLength(1)
+
+    releaseFollowup()
+    await runtime.jobsSettled()
+    expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
+    expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(1)
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended?.outcome).toBe('ready')
+  })
+
   it('unchanged scope re-dispatch does not enqueue an extra worker turn', async () => {
     const prompts: string[] = []
     let releaseWorker!: () => void

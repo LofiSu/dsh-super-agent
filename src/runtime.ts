@@ -1893,6 +1893,7 @@ export class Runtime {
           if (trigger) void late.harness.deliver(ticketId, trigger)
           return
         }
+        if (!remoteOwned && localWorkerActive) return
         if (late.harness.launchInFlight(ticketId)) return
         late.harness.launch(ticket)
       },
