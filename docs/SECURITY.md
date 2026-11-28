@@ -10,7 +10,7 @@
   `d9ded0b`), and the read-only local UI is implemented (PR #129, merge
   `123ee40`). Model-backed slow-path admission is implemented behind
   `Runtime.ingestAsync` (PR #128, merge `788be60`) and used by the iMessage and
-  Feishu loops (PR #135, merge `268809d`); `ds-agent ui`, `backup`, and
+  Feishu loops (PR #135, merge `268809d`); `lofibot ui`, `backup`, and
   `restore` are wired in `src/cli/main.ts` (PR #136, merge `1e01862`, plus
   usage fix `58c410a`).
 
@@ -19,7 +19,7 @@ the merged files at `7a1d732` (PR #123 final head `9130d4c`). The A2A HTTP
 adapter opens no listener by itself; exposing it remains an operator decision.
 The remote mesh (`src/harness/remote-node.ts`) uses that authenticated transport
 but also opens no Runtime listener. The local UI binds loopback only and
-requires a token; `ds-agent ui` is wired in `src/cli/main.ts` (PR #136).
+requires a token; `lofibot ui` is wired in `src/cli/main.ts` (PR #136).
 
 ## 1. Assets and trust boundaries
 
@@ -158,7 +158,7 @@ replay tests and the deployment checks.
 ## 4. Local UI (implemented; loopback + required token)
 
 `src/ui/server.ts` and `src/cli/ui.ts` implement a read-only dashboard over
-persisted state (PR #129, merge `123ee40`), wired as `ds-agent ui` in
+persisted state (PR #129, merge `123ee40`), wired as `lofibot ui` in
 `src/cli/main.ts` (PR #136). It is covered by `test/cli-ui.test.ts` and
 `test/cli-command-wiring.test.ts`, loads no remote code, and constructs no model
 or daemon.
@@ -168,7 +168,7 @@ or daemon.
   `[::1]` with an optional numeric port; anything else is 403 before routing.
   This blocks DNS-rebinding probes; it is not authentication.
 - **Required token.** Startup fails closed without a token of at least 16
-  characters (`DS_AGENT_UI_TOKEN`, `--token`, or the explicit API value). The
+  characters (`LOFIBOT_UI_TOKEN`, `--token`, or the explicit API value). The
   token is compared as fixed-length SHA-256 digests with `timingSafeEqual`.
   There is no token-less mode and no remote bind.
 - **Bootstrap cookie.** `GET /?token=...` validates the token, then 303-redirects
@@ -210,7 +210,7 @@ The UI is not a substitute for OS file permissions or full-disk encryption.
   and temp roots; network is denied unless the policy allows it, and speculative
   commands always pass `allowNetwork: false` (`seccomp.ts:86-110,112-131,174-187`;
   `src/env/local-env.ts:107-122`).
-- **Read isolation is opt-in.** `DS_AGENT_SANDBOX_READ_ISOLATION` accepts only
+- **Read isolation is opt-in.** `LOFIBOT_SANDBOX_READ_ISOLATION` accepts only
   `0/1/false/true/strict` and fails closed on any other value; the default keeps
   host-wide reads (`seccomp.ts:102-105,133-144,176-184`; `local-env.ts:22-27,62-68`).
   The project documents read confinement as an external/container boundary
@@ -223,7 +223,7 @@ The UI is not a substitute for OS file permissions or full-disk encryption.
   known credential shapes are replaced before tool results, journal entries, or
   model requests (`sanitize.ts:4,27-35,43-76`; `local-env.ts:181-185,195-198`;
   `runtime.ts:252-255,659`). The credential-sentinel test is the offline evidence
-  that a `DS_AGENT_API_KEY` value does not reach messages, tool results, spills,
+  that a `LOFIBOT_API_KEY` value does not reach messages, tool results, spills,
   events, replies, outbox, logs, or model requests
   (`test/credential-sentinel.test.ts:97-152`). This is best-effort: an unknown
   secret shape, a value shorter than 8 characters, or a secret never present in
@@ -258,7 +258,7 @@ decision to make read isolation the default (`docs/safety.md:32`;
 - **Placement only.** `WorkerMeshRegistry` tracks node id, capacity, online
   state, and ticket assignment. It has no transport, identity proof, or
   authorization (`src/harness/mesh.ts:1-12,21-27,42-59`).
-- **Identity and capacity.** The local node id is `DS_AGENT_INSTANCE_ID` or
+- **Identity and capacity.** The local node id is `LOFIBOT_INSTANCE_ID` or
   `local`; capacity defaults to 4; a duplicate node id is rejected
   (`src/runtime.ts:261-266`; `src/harness/mesh.ts:21-27`).
 - **Fail-closed placement.** Unknown, offline, or full nodes yield no
@@ -296,7 +296,7 @@ is enabled.
 |---|---|---|---|---|---|
 | High | A2A HTTP | Cross-node replay when a peer secret is shared by verifier nodes | HMAC + ±60 s + per-process nonce cache; documented requirement to use unique per-node secrets or a shared cache (`a2a-auth.ts:15-25`) | Unique secret per verifier node and/or a shared durable replay store; never share one peer secret across nodes | Code + deployment |
 | Medium | A2A HTTP | Unsigned response status/body; the peer is authenticated but the response is not bound to the request | Client requires TLS off-loopback, checks status, strict delivery shape, and envelope `from`/`to` (`a2a-http.ts:123-142,411-433,588-605`) | Keep TLS; sign responses or bind them to the request nonce if delivery status drives side effects | Code + deployment |
-| High | Ingress/model | Prompt injection; deterministic fast-path rules do not model malice, and a model-backed slow path can be steered by trigger text | Deterministic fast path (`src/ingress/filter.ts:27-89`), rule fallback on policy timeout/error/invalid output, sanitized one-line policy reasons, redaction before the policy call, non-human A2A identity, sandbox, executor tool scope (`src/ingress/policy.ts`; `src/runtime.ts` `ingestAsync`) | Treat all trigger text as untrusted; keep the slow path opt-in (`DS_AGENT_SLOW_PATH=model`); review prompt/response handling before enabling it on a hostile channel | Code + operator |
+| High | Ingress/model | Prompt injection; deterministic fast-path rules do not model malice, and a model-backed slow path can be steered by trigger text | Deterministic fast path (`src/ingress/filter.ts:27-89`), rule fallback on policy timeout/error/invalid output, sanitized one-line policy reasons, redaction before the policy call, non-human A2A identity, sandbox, executor tool scope (`src/ingress/policy.ts`; `src/runtime.ts` `ingestAsync`) | Treat all trigger text as untrusted; keep the slow path opt-in (`LOFIBOT_SLOW_PATH=model`); review prompt/response handling before enabling it on a hostile channel | Code + operator |
 | High | Model provider | Prompts and tool results leave the host; the provider may inspect or retain them | Best-effort redaction; optional gateway masking plugin (`src/gateway/server.ts:8,256-257`) | Choose a trusted provider and terms, minimize context, keep secrets out of prompts | Operator |
 | Medium | Local state at rest | Same-uid/disk reader can read SQLite, journals, spills, outbox text, and durable lifecycle payloads; no DB encryption | `gateway.token`/vault `0600`; ACLs are in-process only (`src/gateway/token.ts:44-46`; `src/env/vault.ts:63-72`; `src/memory/acl.ts:22-41`) | `0700` state directory, full-disk encryption, separate OS user | Operator |
 | Medium | A2A HTTP | Cache eviction or restart forgets a nonce inside the window | Bounded 10,000-entry cache with pruning | Shared/durable replay store; rate-limit unauthenticated traffic | Code |
@@ -304,7 +304,7 @@ is enabled.
 | Medium | Gateway | `/health` and dashboard are unauthenticated; non-loopback binding only warns | Loopback default and explicit warning (`src/cli/gateway.ts:13-27,39-40`; `src/gateway/server.ts:550-560`) | Bind loopback, firewall the port, never expose it directly | Operator |
 | Medium | Gateway (plain HTTP loopback) | Bearer token and payloads cross plain HTTP if bound beyond loopback | Loopback default; no TLS in the server (`src/gateway/server.ts:616-627`) | TLS reverse proxy for any non-loopback bind | Operator |
 | Medium | Worker | Read isolation is off by default, so a worker can read host files and the state DB | Write/network sandbox; opt-in strict reads (`src/env/seccomp.ts:133-144`; `docs/safety.md:30`) | Enable strict reads or a container profile; make the default flip a separate reviewed change | Operator + code |
-| Medium | Local UI | Same-uid processes can read `DS_AGENT_UI_TOKEN`/the cookie, connect to loopback, and see read-only ticket/thread/outbox metadata; the token appears once in browser history during bootstrap | Loopback-only bind, required ≥16-char token (constant-time digest compare), Host guard, auth-before-routing, GET-only, sanitized read model, CSP/no-store/nosniff/no-referrer (`src/ui/server.ts`; `src/cli/ui.ts`) | Keep the state directory at `0700`, run the UI as the same trusted user only, rotate the token after exposure, never expose the port through a proxy | Code + operator |
+| Medium | Local UI | Same-uid processes can read `LOFIBOT_UI_TOKEN`/the cookie, connect to loopback, and see read-only ticket/thread/outbox metadata; the token appears once in browser history during bootstrap | Loopback-only bind, required ≥16-char token (constant-time digest compare), Host guard, auth-before-routing, GET-only, sanitized read model, CSP/no-store/nosniff/no-referrer (`src/ui/server.ts`; `src/cli/ui.ts`) | Keep the state directory at `0700`, run the UI as the same trusted user only, rotate the token after exposure, never expose the port through a proxy | Code + operator |
 | Low | Redaction | Unknown secret shapes or values under 8 characters reach tool text/model context | Exact env values ≥8 chars plus known credential patterns (`src/env/sanitize.ts:4,43-76`) | Prefer vault injection, avoid pasting secrets, rotate on suspected exposure | Operator |
 | Low | A2A HTTP | Secret lookup runs before signature verification, so arbitrary peer ids can trigger resolver calls | Shape/skew checked first; absolute deadline bounds a hanging lookup (`a2a-http.ts:256-263,293-321`) | Rate-limit at the reverse proxy | Operator |
 | Low | A2A rotation | No key id means no dual-secret grace period | Small v1 protocol | Add `kid`/key version before fleet use | Code |
@@ -337,8 +337,8 @@ the gateway and clients, inspect the file and metadata, deliberately remove it
 verify the old token gets 401 (`src/gateway/server.ts:561-563`). Never script an
 unconditional "if empty, delete" recovery.
 
-**Rotate the UI token.** Stop `ds-agent ui`, generate a new value of at least 16
-characters, set `DS_AGENT_UI_TOKEN` (preferred) or pass `--token`, and restart.
+**Rotate the UI token.** Stop `lofibot ui`, generate a new value of at least 16
+characters, set `LOFIBOT_UI_TOKEN` (preferred) or pass `--token`, and restart.
 Rotate independently of the gateway token. Re-issue rather than reuse a token
 copied into shell history or logs; the bootstrap URL remains in browser history
 for the prior value. Keep the bind on loopback and never proxy the port.

@@ -39,6 +39,7 @@ import {
   type FillTarget,
   type FillVaultLoad,
 } from './env/fill-vault.ts'
+import { rejectLegacyConfig } from './env/legacy-config.ts'
 import { LocalEnv } from './env/local-env.ts'
 import { strictReadIsolationIncludesPath } from './env/seccomp.ts'
 import type { SandboxPolicy, SandboxSystem } from './env/seccomp.ts'
@@ -115,7 +116,7 @@ import { settleSpeculation } from './speculate/silent.ts'
 export interface RuntimeOptions {
   home: string
   model?: Model
-  /** Per-role overrides (T07/T10). Live mode also reads DS_AGENT_ROUTER_MODEL etc. */
+  /** Per-role overrides (T07/T10). Live mode also reads LOFIBOT_ROUTER_MODEL etc. */
   models?: Partial<Record<'router' | 'worker' | 'watchdog', Model>>
   jobDelayMs?: number
   watchdogIntervalMs?: number
@@ -131,45 +132,45 @@ export interface RuntimeOptions {
   env?: NodeJS.ProcessEnv
   /**
    * Fill-only credential/payment vault. Defaults to `vault.json` in `home`
-   * (or `DS_AGENT_VAULT_FILE`). Absent, malformed, or non-private means fill is
+   * (or `LOFIBOT_VAULT_FILE`). Absent, malformed, or non-private means fill is
    * unavailable. `false` disables it explicitly.
    */
   fillVault?: FillVault | false
   /**
    * Form adapter the vault types into. Defaults to a local helper configured
-   * by `DS_AGENT_FILL_COMMAND`; no browser adapter is built in. `false`
+   * by `LOFIBOT_FILL_COMMAND`; no browser adapter is built in. `false`
    * disables fill even when a vault exists.
    */
   fillTarget?: FillTarget | false
   /**
    * External MCP servers (array or JSON array string). Overrides
-   * `DS_AGENT_MCP_SERVERS`. Their tools are exposed to Workers only.
+   * `LOFIBOT_MCP_SERVERS`. Their tools are exposed to Workers only.
    */
   mcpServers?: unknown
   /**
    * Owner-editable runtime files. Defaults to SOUL.md, IDENTITY.md, USER.md,
    * INSTRUCTIONS.md, AGENTS.md, MEMORY.md, TOOLS.md, HEARTBEAT.md, and
-   * PROACTIVE_PREFERENCES.md in `home`, then DS_AGENT_* seeds. PERSONA.md and
-   * DS_AGENT_PERSONA are still read as deprecated soul fallbacks.
+   * PROACTIVE_PREFERENCES.md in `home`, then LOFIBOT_* seeds. PERSONA.md and
+   * LOFIBOT_PERSONA are still read as deprecated soul fallbacks.
    */
   prompts?: PromptFiles
   /**
    * Local specialist agents Workers may delegate to. Defaults to
-   * `local-agents.json` in `home`, then `DS_AGENT_LOCAL_AGENTS`.
+   * `local-agents.json` in `home`, then `LOFIBOT_LOCAL_AGENTS`.
    */
   localAgents?: LocalAgentSpec[]
   /** Owner-authored playbooks. Defaults to `skills/<id>/SKILL.md` in `home`. */
   skills?: SkillRegistry
   /**
    * Owner-configured browser errands. Defaults to `browser-errands.json` in
-   * `home`, then `DS_AGENT_BROWSER_ERRANDS`. Missing config leaves the browser
+   * `home`, then `LOFIBOT_BROWSER_ERRANDS`. Missing config leaves the browser
    * tools off; `false` disables them explicitly. Malformed config or a missing
    * driver executable throws at startup.
    */
   browserErrands?: BrowserErrandConfig | false
   /**
    * Owner-defined recurring routines. Defaults to `routines.json` in `home`,
-   * then `DS_AGENT_ROUTINES`.
+   * then `LOFIBOT_ROUTINES`.
    */
   routines?: RoutineSpec[]
   /**
@@ -189,27 +190,27 @@ export interface RuntimeOptions {
    * call by itself.
    */
   connectorApi?: GoogleWorkspaceApi
-  /** Local A2A address and mesh node id. Defaults to `DS_AGENT_INSTANCE_ID` or `local`. */
+  /** Local A2A address and mesh node id. Defaults to `LOFIBOT_INSTANCE_ID` or `local`. */
   instanceId?: string
-  /** Worker slots this process advertises. Defaults to `DS_AGENT_MESH_CAPACITY` or 4. */
+  /** Worker slots this process advertises. Defaults to `LOFIBOT_MESH_CAPACITY` or 4. */
   meshCapacity?: number
   /**
-   * Workers allowed to wait for a mesh slot. Defaults to `DS_AGENT_MESH_QUEUE`
+   * Workers allowed to wait for a mesh slot. Defaults to `LOFIBOT_MESH_QUEUE`
    * or 100. `0` rejects instead of queueing.
    */
   meshQueue?: number
   /**
    * Max wait for remote `assignment_result` after dispatch is delivered.
-   * Overrides `DS_AGENT_REMOTE_RESULT_TIMEOUT_MS`.
+   * Overrides `LOFIBOT_REMOTE_RESULT_TIMEOUT_MS`.
    */
   remoteResultTimeoutMs?: number
-  /** Extra Router shards. `DS_AGENT_SHARDS` JSON is merged in as well. */
+  /** Extra Router shards. `LOFIBOT_SHARDS` JSON is merged in as well. */
   routerShards?: RouterShard[]
   /** T45 bake-off baseline: run one Worker chain with no Router turn. */
   singleSession?: boolean
   /**
-   * T16 deterministic admission rules. Overrides `DS_AGENT_ACTOR_ALLOWLIST`,
-   * `DS_AGENT_GROUP_ALLOWLIST`, and `DS_AGENT_DROP_SELF`.
+   * T16 deterministic admission rules. Overrides `LOFIBOT_ACTOR_ALLOWLIST`,
+   * `LOFIBOT_GROUP_ALLOWLIST`, and `LOFIBOT_DROP_SELF`.
    */
   admission?: AdmissionRules
   /**
@@ -219,19 +220,19 @@ export interface RuntimeOptions {
    */
   slowPath?: SlowPathOptions
   /**
-   * Long-term memory retention. Overrides `DS_AGENT_MEMORY_MAX_ENTRIES` /
-   * `DS_AGENT_MEMORY_MAX_AGE_DAYS`; 0 disables that dimension.
+   * Long-term memory retention. Overrides `LOFIBOT_MEMORY_MAX_ENTRIES` /
+   * `LOFIBOT_MEMORY_MAX_AGE_DAYS`; 0 disables that dimension.
    */
   memoryRetention?: MemoryRetention
   /**
    * Optional semantic recall port. Defaults to the offline `HashedEmbedding`;
-   * `false` (or `DS_AGENT_SEMANTIC_RECALL=0`) keeps recall lexical-only.
+   * `false` (or `LOFIBOT_SEMANTIC_RECALL=0`) keeps recall lexical-only.
    * A configured port never makes a network or model call by itself.
    */
   embeddings?: EmbeddingPort | false
   /**
    * Cosine floor for a semantic-only hit. Overrides
-   * `DS_AGENT_EMBEDDING_FLOOR`; defaults to 0.35 and is clamped to 0..1.
+   * `LOFIBOT_EMBEDDING_FLOOR`; defaults to 0.35 and is clamped to 0..1.
    */
   embeddingFloor?: number
   /**
@@ -267,7 +268,7 @@ export interface SlowPathOptions {
 
 export type SlowPathMode = 'rules' | 'model'
 
-/** Lower/upper bound for `DS_AGENT_SLOW_PATH_TIMEOUT_MS`; outside is invalid. */
+/** Lower/upper bound for `LOFIBOT_SLOW_PATH_TIMEOUT_MS`; outside is invalid. */
 export const MIN_SLOW_PATH_TIMEOUT_MS = 100
 export const MAX_SLOW_PATH_TIMEOUT_MS = 30_000
 
@@ -288,7 +289,7 @@ function resolveSlowPath(
   model: Model,
   log: Logger,
 ): ResolvedSlowPath {
-  const configuredMode = override?.mode ?? env.DS_AGENT_SLOW_PATH?.trim()
+  const configuredMode = override?.mode ?? env.LOFIBOT_SLOW_PATH?.trim()
   let mode: SlowPathMode = 'rules'
   if (configuredMode === 'rules') {
     mode = 'rules'
@@ -301,7 +302,7 @@ function resolveSlowPath(
     return { mode, timeoutMs: DEFAULT_POLICY_TIMEOUT_MS }
   }
 
-  const rawTimeout = override?.timeoutMs ?? env.DS_AGENT_SLOW_PATH_TIMEOUT_MS?.trim()
+  const rawTimeout = override?.timeoutMs ?? env.LOFIBOT_SLOW_PATH_TIMEOUT_MS?.trim()
   let timeoutMs = DEFAULT_POLICY_TIMEOUT_MS
   if (rawTimeout !== undefined && rawTimeout !== '') {
     const parsed = typeof rawTimeout === 'number' ? rawTimeout : Number(rawTimeout)
@@ -343,7 +344,7 @@ export const DEFAULT_MESH_QUEUE = 100
 const REMOTE_ENDING_REPORT_KINDS = new Set(['ready', 'failed', 'dropped', 'blocked', 'waiting'])
 
 /**
- * Parse `DS_AGENT_MEMORY_MAX_ENTRIES` / `DS_AGENT_MEMORY_MAX_AGE_DAYS` as
+ * Parse `LOFIBOT_MEMORY_MAX_ENTRIES` / `LOFIBOT_MEMORY_MAX_AGE_DAYS` as
  * non-negative integers. Empty, non-numeric, negative, or non-integer values
  * fall back to the documented defaults (1000 entries, 90 days). `0` disables
  * that dimension. Programmatic `memoryRetention` overrides win.
@@ -354,13 +355,13 @@ export function memoryRetentionFromEnv(
 ): Required<MemoryRetention> {
   return {
     maxEntries: override.maxEntries
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_MAX_ENTRIES),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_MAX_ENTRIES),
     maxAgeDays: override.maxAgeDays
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_MAX_AGE_DAYS, DEFAULT_MEMORY_MAX_AGE_DAYS),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_MAX_AGE_DAYS, DEFAULT_MEMORY_MAX_AGE_DAYS),
     coldMaxEntries: override.coldMaxEntries
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_COLD_MAX_ENTRIES, DEFAULT_MEMORY_COLD_MAX_ENTRIES),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_COLD_MAX_ENTRIES, DEFAULT_MEMORY_COLD_MAX_ENTRIES),
     coldMaxAgeDays: override.coldMaxAgeDays
-      ?? parseNonNegativeInt(env.DS_AGENT_MEMORY_COLD_MAX_AGE_DAYS, DEFAULT_MEMORY_COLD_MAX_AGE_DAYS),
+      ?? parseNonNegativeInt(env.LOFIBOT_MEMORY_COLD_MAX_AGE_DAYS, DEFAULT_MEMORY_COLD_MAX_AGE_DAYS),
   }
 }
 
@@ -380,16 +381,16 @@ export function semanticRecallEnabled(
   override?: EmbeddingPort | false,
 ): boolean {
   if (override !== undefined) return override !== false
-  const value = env.DS_AGENT_SEMANTIC_RECALL?.trim().toLowerCase()
+  const value = env.LOFIBOT_SEMANTIC_RECALL?.trim().toLowerCase()
   return !(value === '' || value === '0' || value === 'false' || value === 'off' || value === 'no')
 }
 
-/** `DS_AGENT_EMBEDDING_FLOOR` in [0,1]; invalid values use the default. */
+/** `LOFIBOT_EMBEDDING_FLOOR` in [0,1]; invalid values use the default. */
 export function embeddingFloorFromEnv(
   env: NodeJS.ProcessEnv,
   override?: number,
 ): number {
-  const raw = override ?? (env.DS_AGENT_EMBEDDING_FLOOR?.trim() || undefined)
+  const raw = override ?? (env.LOFIBOT_EMBEDDING_FLOOR?.trim() || undefined)
   const value = raw === undefined ? NaN : Number(raw)
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_EMBEDDING_FLOOR
 }
@@ -426,13 +427,13 @@ export function admissionRulesFromEnv(
   return {
     actors: override.actors !== undefined
       ? normalizeIdList(override.actors)
-      : parseIdList(env.DS_AGENT_ACTOR_ALLOWLIST),
+      : parseIdList(env.LOFIBOT_ACTOR_ALLOWLIST),
     groups: override.groups !== undefined
       ? normalizeIdList(override.groups)
-      : parseIdList(env.DS_AGENT_GROUP_ALLOWLIST),
+      : parseIdList(env.LOFIBOT_GROUP_ALLOWLIST),
     dropSelf: override.dropSelf !== undefined
       ? normalizeIdList(override.dropSelf)
-      : parseIdList(env.DS_AGENT_DROP_SELF),
+      : parseIdList(env.LOFIBOT_DROP_SELF),
   }
 }
 
@@ -637,6 +638,7 @@ export class Runtime {
 
   static create(opts: RuntimeOptions): Runtime {
     const baseEnv = opts.env ?? process.env
+    rejectLegacyConfig(baseEnv)
     // Owner-gated and off when `connectors.json` is absent. A malformed file
     // fails here, before SQLite or a network client is opened. Credentials are
     // read only after an explicit enable.
@@ -694,7 +696,7 @@ export class Runtime {
       explicit: [...browserSecrets, ...connectorSecrets, ...vaultSecrets],
     })
     const log = new RedactingLogger(redact)
-    if (mcpConfig.error) log.info(`[mcp] DS_AGENT_MCP_SERVERS ignored: ${mcpConfig.error}`)
+    if (mcpConfig.error) log.info(`[mcp] LOFIBOT_MCP_SERVERS ignored: ${mcpConfig.error}`)
     const model = opts.model ?? createModelFromEnv(baseEnv)
     const models = { ...roleModelsFromEnv(baseEnv, model), ...(opts.models ?? {}) }
     // Validate and build the owner-gated adapter before opening SQLite so a
@@ -714,7 +716,7 @@ export class Runtime {
     }
     const store = new Store(opts.home)
     const metrics = new Metrics(opts.home)
-    const configuredSource = baseEnv.DS_AGENT_WORKSPACE_SOURCE_REPO?.trim()
+    const configuredSource = baseEnv.LOFIBOT_WORKSPACE_SOURCE_REPO?.trim()
     // An explicitly configured source is kept verbatim so a bad value remains
     // an actionable clone error. The implicit cwd default is only usable when
     // it is actually a git repository; otherwise leave the workspace empty.
@@ -805,17 +807,17 @@ export class Runtime {
     const proactiveConfig = opts.proactive === undefined
       ? loadProactiveConfig(opts.home)
       : normalizeProactiveConfig(opts.proactive)
-    const instanceId = opts.instanceId?.trim() || baseEnv.DS_AGENT_INSTANCE_ID?.trim() || 'local'
-    const rawCapacity = opts.meshCapacity ?? Number(baseEnv.DS_AGENT_MESH_CAPACITY)
+    const instanceId = opts.instanceId?.trim() || baseEnv.LOFIBOT_INSTANCE_ID?.trim() || 'local'
+    const rawCapacity = opts.meshCapacity ?? Number(baseEnv.LOFIBOT_MESH_CAPACITY)
     const meshCapacity = Number.isSafeInteger(rawCapacity) && rawCapacity > 0 ? rawCapacity : 4
     const meshQueue = opts.meshQueue !== undefined
       ? normalizeQueueLimit(opts.meshQueue)
-      : parseNonNegativeInt(baseEnv.DS_AGENT_MESH_QUEUE, DEFAULT_MESH_QUEUE)
+      : parseNonNegativeInt(baseEnv.LOFIBOT_MESH_QUEUE, DEFAULT_MESH_QUEUE)
     const routerShards = new RouterShardRegistry()
     routerShards.register({ id: 'default' })
     // Optional JSON config so CLI/demo users can shard without writing code:
-    // DS_AGENT_SHARDS='[{"id":"github","filter":"source:github"}]'
-    const configured = baseEnv.DS_AGENT_SHARDS
+    // LOFIBOT_SHARDS='[{"id":"github","filter":"source:github"}]'
+    const configured = baseEnv.LOFIBOT_SHARDS
     if (configured?.trim()) {
       try {
         const shards = JSON.parse(configured) as unknown
@@ -823,7 +825,7 @@ export class Runtime {
         for (const shard of shards) routerShards.register(shard as RouterShard)
         log.info(`[routing] shards configured count=${shards.length}`)
       } catch (error) {
-        log.info(`[routing] DS_AGENT_SHARDS ignored: ${error instanceof Error ? error.message : String(error)}`)
+        log.info(`[routing] LOFIBOT_SHARDS ignored: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
     for (const shard of opts.routerShards ?? []) routerShards.register(shard)
@@ -3450,7 +3452,7 @@ export class Runtime {
 }
 
 /**
- * `DS_AGENT_MCP_SERVERS` (or `RuntimeOptions.mcpServers`) is configuration, not
+ * `LOFIBOT_MCP_SERVERS` (or `RuntimeOptions.mcpServers`) is configuration, not
  * code: malformed config is reported and ignored so a bad file cannot stop the
  * runtime from starting. The caller logs `error` once a logger exists.
  */
@@ -3460,7 +3462,7 @@ function mcpServersFromConfig(
 ): { configs: McpServerConfig[]; error?: string } {
   let value = raw
   if (value === undefined) {
-    const configured = env.DS_AGENT_MCP_SERVERS?.trim()
+    const configured = env.LOFIBOT_MCP_SERVERS?.trim()
     if (!configured) return { configs: [] }
     value = configured
   }

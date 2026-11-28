@@ -14,7 +14,7 @@ describe('memory notes', () => {
     memory.execute('owner-a', { command, ...args })
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'ds-agent-memory-notes-'))
+    home = mkdtempSync(join(tmpdir(), 'lofibot-memory-notes-'))
     store = new Store(home)
     memory = new MemoryNotes(store, text => text.replaceAll('test-secret', '[redacted]'))
   })

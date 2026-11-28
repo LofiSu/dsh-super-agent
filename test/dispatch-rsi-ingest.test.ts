@@ -21,7 +21,7 @@ import { Store } from '../src/store/sqlite.ts'
 import { trustedFetch } from '../src/dispatch/trusted-fetch.ts'
 import { tempHome } from './fixtures.ts'
 
-const REPO = 'LofiSu/deepseek-super-agent'
+const REPO = 'LofiSu/LofiBot'
 
 function dispatchConfig(home: string, extra: Record<string, unknown> = {}): void {
   fs.writeFileSync(path.join(home, 'github-dispatch.json'), JSON.stringify({
@@ -257,7 +257,7 @@ describe('RSI gap pool', () => {
     const cfg = loadDispatchOwnerConfigSync(home)!
     const dir = docsDir(home)
     fs.writeFileSync(path.join(dir, 'INSTINCT_CAPABILITIES.md'), [
-      '| # | 能力项 | Instinct 公开证据 | 等级 | ds-agent 状态 | 本仓库路径 / 验收依据 |',
+      '| # | 能力项 | Instinct 公开证据 | 等级 | lofibot 状态 | 本仓库路径 / 验收依据 |',
       '|---|---|---|---|---|---|',
       '| A2 | WhatsApp 入口 | evidence | teardown | `missing` | path notes |',
     ].join('\n'))
@@ -281,7 +281,7 @@ describe('RSI gap pool', () => {
     const cfg = loadDispatchOwnerConfigSync(home)!
     const dir = docsDir(home)
     fs.writeFileSync(path.join(dir, 'INSTINCT_CAPABILITIES.md'), [
-      '| # | 能力项 | Instinct 公开证据 | 等级 | ds-agent 状态 | 本仓库路径 / 验收依据 |',
+      '| # | 能力项 | Instinct 公开证据 | 等级 | lofibot 状态 | 本仓库路径 / 验收依据 |',
       '|---|---|---|---|---|---|',
       `| C2 | 工具/动作总量口径 | evidence | teardown | \`missing\` | ${evidence} |`,
     ].join('\n'))
@@ -305,7 +305,7 @@ describe('RSI gap pool', () => {
     const cfg = loadDispatchOwnerConfigSync(home)!
     const dir = docsDir(home)
     fs.writeFileSync(path.join(dir, 'COMPETITIVE_GAP.md'), [
-      '| Dimension | Instinct / Open Instinct | Muse | Grok Bot | ds-agent now | Verdict |',
+      '| Dimension | Instinct / Open Instinct | Muse | Grok Bot | lofibot now | Verdict |',
       '|---|---|---|---|---|---|',
       '| **Owner model** | tiers | single | one | single owner | **Behind** on tiers; ahead on ingress |',
     ].join('\n'))
@@ -399,7 +399,7 @@ describe('RSI gap pool', () => {
     const dir = docsDir(home)
     const file = path.join(dir, 'COMPETITIVE_GAP.md')
     fs.writeFileSync(file, [
-      '| Dimension | Instinct | Muse | Grok | ds-agent now | Verdict |',
+      '| Dimension | Instinct | Muse | Grok | lofibot now | Verdict |',
       '|---|---|---|---|---|---|',
       '| **Memory** | x | x | x | current | **Partial** |',
     ].join('\n'))

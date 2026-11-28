@@ -39,7 +39,7 @@ function probeScripts(home: string, python: string): string {
   const injector = path.join(home, 'inject.py')
   fs.writeFileSync(injector, String.raw`
 import errno, os, runpy, signal, sys
-stage = os.environ.get('DS_AGENT_TEST_CAPABILITY_FAILURE', '')
+stage = os.environ.get('LOFIBOT_TEST_CAPABILITY_FAILURE', '')
 target = sys.argv[1]
 args = sys.argv[2:]
 if target.endswith('delegate-os-supervisor.py') or target.endswith('delegate-os-wrapper-timeout-guard.py'):
@@ -72,7 +72,7 @@ if target.endswith('delegate-os-supervisor.py') or target.endswith('delegate-os-
 with open(os.path.join(os.environ['HOME'], 'probe-env.json'), 'w', encoding='utf8') as audit:
     import json
     json.dump({'home': os.environ.get('HOME'), 'node_options': os.environ.get('NODE_OPTIONS'),
-               'api_key': os.environ.get('DS_AGENT_API_KEY')}, audit)
+               'api_key': os.environ.get('LOFIBOT_API_KEY')}, audit)
 sys.argv = [target, *args]
 runpy.run_path(target, run_name='__main__')
 `)
@@ -92,12 +92,12 @@ export async function runDelegateCapabilityProbe(
     throw new Error('delegate capability probes require Linux')
   }
   const python = resolvePython()
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-capability-test-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-capability-test-'))
   const shim = probeScripts(home, python)
   const fixture = path.join(repo, 'test/fixtures/delegate-ipc-hold.mjs')
   fs.writeFileSync(path.join(home, 'local-agents.json'), JSON.stringify({ agents: [{
     id: 'ipc-hold', command: process.execPath, args: [fixture, '{task}'],
-    env: ['DS_AGENT_TEST_DELEGATE_PID_FILE'], timeoutMs: 60_000,
+    env: ['LOFIBOT_TEST_DELEGATE_PID_FILE'], timeoutMs: 60_000,
   }] }))
   const reportFile = path.join(home, 'supervisor-report.json')
   const helperMarker = path.join(home, 'helper-launch-attempted')
@@ -106,14 +106,14 @@ export async function runDelegateCapabilityProbe(
     HOME: home,
     TMPDIR: os.tmpdir(),
     CI: 'true',
-    DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+    LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
     NODE_NO_WARNINGS: '1',
-    DS_AGENT_NODE: process.execPath,
+    LOFIBOT_NODE: process.execPath,
     COREPACK_HOME: '/usr/local/share/corepack',
     COREPACK_DEFAULT_TO_LATEST: '0',
-    DS_AGENT_TEST_CAPABILITY_FAILURE: stage,
-    DS_AGENT_TEST_SUPERVISOR_REPORT_FILE: reportFile,
-    DS_AGENT_TEST_HELPER_LAUNCH_MARKER: helperMarker,
+    LOFIBOT_TEST_CAPABILITY_FAILURE: stage,
+    LOFIBOT_TEST_SUPERVISOR_REPORT_FILE: reportFile,
+    LOFIBOT_TEST_HELPER_LAUNCH_MARKER: helperMarker,
   }
   const guard = path.resolve(repo, 'test/helpers/delegate-os-wrapper-timeout-guard.py')
   const command = target === 'outer-guard' ? path.join(shim, 'python3') : python

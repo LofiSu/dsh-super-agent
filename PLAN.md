@@ -1,10 +1,10 @@
-# ds-agent 完整可落地技术方案（M0–M11 + 常驻功能域）
+# lofibot 完整可落地技术方案（M0–M11 + 常驻功能域）
 
 > 独立 MIT 实现。自研最薄 Harness + 原型领域语义移植。**不依赖** DeepSeek Harness / Cordis。
 >
 > - 博客: https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg
 > - 原型语义参考: https://github.com/deepseek-ai/dsh-superagent-prototype
-> - 公开仓名: `deepseek-super-agent` · CLI: `ds-agent` · 包名: `ds-agent`
+> - 公开仓名: `LofiBot` · CLI: `lofibot` · 包名: `lofibot`
 > - 作者: LofiSu <163713803+LofiSu@users.noreply.github.com>
 > - **免责声明：非官方 DeepSeek 产品；研究原型，非生产就绪。凭据永不进入模型上下文。**
 
@@ -33,7 +33,7 @@
 
 ### 1.1 目标（四特质落地）
 
-| 特质 | 博客含义 | ds-agent 落地 |
+| 特质 | 博客含义 | lofibot 落地 |
 |------|----------|---------------|
 | **Continuous** 连续 | 不因一轮工具阻塞丢失入站 | Harness async ReAct：`start()`/`stop()`；长工具 `{status:'started',jobId}`；完成作新 Session 事件 |
 | **Efficient** 高效 | 吞吐与连续性折中；批处理；订阅旁路 | Ingress 两级过滤；Eval 同 Thread 批处理；Subscription fan-out bypass Router |
@@ -57,14 +57,14 @@
 | 自研 thinnest Harness（Session 日志、async ReAct、OpenAI 兼容、角色工具、daemon） | 生产 Feishu IM Source + GitHub Source（禁止 fake IM / fake GitHub 作为验收） |
 | 原型领域语义：Intake / Evals / Tickets / Assignments / Replies | Cordis 插件树、DSH Session API 兼容层 |
 | SQLite + Spill、Watchdog Session、Speculative gate | Web Panel |
-| BYOM `DS_AGENT_API_*`；`demo` / `test` 默认走 live 模型，Mock 仅限 fixture | 跨进程 A2A 传输 / 真多机 mesh（扩展 / 互操作；本进程内已常驻） |
+| BYOM `LOFIBOT_API_*`；`demo` / `test` 默认走 live 模型，Mock 仅限 fixture | 跨进程 A2A 传输 / 真多机 mesh（扩展 / 互操作；本进程内已常驻） |
 | MIT OSS，`pnpm demo` 验收博客能力 | §7 实验指标（可选 M12，不挡开源） |
 
 ### 1.4 技术栈冻结
 
 - Runtime: Node ≥ 22（`node:sqlite` 要求）· TypeScript · `pnpm`
-- DB: `node:sqlite` 单文件 `<stateDir>/ds-agent.db`
-- 测试: `vitest` · 默认 live 模型（`DS_AGENT_API_*`）；MockModel 仅用于 `DS_AGENT_ALLOW_MOCK_FIXTURE=1` 的离线 CI
+- DB: `node:sqlite` 单文件 `<stateDir>/lofibot.db`
+- 测试: `vitest` · 默认 live 模型（`LOFIBOT_API_*`）；MockModel 仅用于 `LOFIBOT_ALLOW_MOCK_FIXTURE=1` 的离线 CI
 - 无 `@deepseek-ai/dsh*`、无 `cordis`、无 `@cordisjs/*`
 
 ---
@@ -242,7 +242,7 @@ flowchart TB
 | T06 | Router = Sequence Point | §2 | M1 | Router tools 默认无 bash（`tools.ts` 的 `roles` 白名单）；批 Triggers 进一轮 |
 | T07 | Router 轻模型 | §2 | M1 | `models.router`（`roleModelsFromEnv`）默认小模型 / Mock |
 | T08 | Trigger batching during LLM round | §2 | M3+M1 | `Evals.evaluateDue` 合并同 Thread 积压；Router turn 开始时 drain inbox |
-| T09 | Future Router sharding / multi-filter | §2/§8 | 扩展 | `[x]` `RouterShardRegistry`（Runtime 常驻；`DS_AGENT_SHARDS` / `routerShards` 配置；每 shard 一轮 Router） |
+| T09 | Future Router sharding / multi-filter | §2/§8 | 扩展 | `[x]` `RouterShardRegistry`（Runtime 常驻；`LOFIBOT_SHARDS` / `routerShards` 配置；每 shard 一轮 Router） |
 | T10 | Worker 隔离 / 最强模型 | §2 | M1+M9 | Worker Session + LocalEnv；`models.worker` |
 | T11 | Worker 无直接用户 I/O | §2 | M8+M3 | Outbound 仅经 `RouterPorts.reply`；WorkerPorts 无 `reply`/`decide`/`receive`（类型 + 运行时） |
 | T12 | Worker 向 Router 报告 | §2 | M3 | `Assignments.report` → DomainEventName 事件 → Router inbox |
@@ -250,7 +250,7 @@ flowchart TB
 | T14 | Worker 内 Subagent/Team 对 Router 不透明 | §2 | M1 | Worker 可 spawn 子 job（Store `jobs` 表）；Router 只见 Assignment 报告 |
 | T15 | 个人助手多话题 → 多 Worker / 一 UI | §2 | M3+M11 | 同 chat Thread 多 Ticket；CLI 列 Tickets |
 | T16 | Fast Path 过滤（source/group/whitelist） | §3.1 | M4 | `ingress/filter.ts` `fastPath` 确定性规则 |
-| T17 | Slow Path policy classifier | §3.1 | M4 | `[x]` `ingress/filter.ts` 确定性 Fast Path；`ingress/policy.ts` 可选 `SemanticPolicy`（`DS_AGENT_SLOW_PATH=model`），`PolicyClassifier` 超时/异常/非法输出回退规则；`Runtime.ingestAsync` 供真实频道循环使用，同步 `ingest` 与 A2A 入站保持纯规则 |
+| T17 | Slow Path policy classifier | §3.1 | M4 | `[x]` `ingress/filter.ts` 确定性 Fast Path；`ingress/policy.ts` 可选 `SemanticPolicy`（`LOFIBOT_SLOW_PATH=model`），`PolicyClassifier` 超时/异常/非法输出回退规则；`Runtime.ingestAsync` 供真实频道循环使用，同步 `ingest` 与 A2A 入站保持纯规则 |
 | T18 | Thread = 事件流 | §3.2 | M0+M2 | `Thread` + `trigger_thread` 表 |
 | T19 | Subscribe Fast Path bypass Router | §3.2 | M5 | 人消息达 Ticket → `bypass=subscription`；日志含 ticketId |
 | T20 | 多对多 Worker↔Thread | §3.2 | M5 | Subscriptions on Thread；`followForContext` |
@@ -272,7 +272,7 @@ flowchart TB
 | T36 | Stateless compute + durable Session DB | §5.1 | M1+M2 | 计算进程可杀；Session/领域在 SQLite |
 | T37 | Env stays on machine | §5.2 | M9 | LocalEnv workdir 在 stateDir |
 | T38 | Lightweight daemon 无 session state | §5.2 | M1 | `daemon.ts` 只调度；状态在 Store |
-| T39 | BYOM | §5.2 | M1 | `HttpOpenAIModel` + `DS_AGENT_API_*` |
+| T39 | BYOM | §5.2 | M1 | `HttpOpenAIModel` + `LOFIBOT_API_*` |
 | T40 | Brain/hands；间歇设备 | §5.2 | M9+M1 | brain=Harness/Model；hands=Env；断线后 Store 续 |
 | T41 | Watchdog Session = 外部 Control Loop | §6 | M10 | 独立 `Role='watchdog'` Session |
 | T42 | Timer-driven | §6 | M10 | `setInterval` / due tick 表 |
@@ -282,7 +282,7 @@ flowchart TB
 | T46 | §8 Router sharding | §8 | 扩展 | 同 T09；registry 常驻 Runtime |
 | T47 | §8 Worker mesh | §8 | 扩展 | `[~]` 本地 `WorkerMeshRegistry`（容量/队列）+ `RemoteMeshRegistry`/`MeshInbox`（A2A HMAC 传输、心跳、上限、loopback 默认拒绝；`src/harness/remote-node.ts`）。无默认 Runtime 监听器，远程 dispatch 接线仍属 operator-gated |
 | T48 | §8 Long-term memory | §8 | 长期记忆 | `[~]` `SpillBackedLongTermMemory`（Runtime 常驻；终止 Ticket 写一条；保留期/同票去重/ADR-010 词法+标签一跳召回已实现；#152 落地 `EmbeddingPort` + 默认离线 `HashedEmbedding` 混合召回）。跨日历月实测仍未完成；测量协议见 `docs/T48_MONTH_SCALE_PROTOCOL.md` |
-| T49 | §8 Product UX without Session | §8 | 产品层 | `[x]` `LifecycleBus` 常驻读取模型 + 只读 loopback UI（`src/ui/server.ts`、`src/cli/ui.ts`、`ds-agent ui`；必需 token、GET-only、生命周期事件白名单、speculative 隐藏、SSE 背压）。远程多进程面板/多用户账号仍为外部边界 |
+| T49 | §8 Product UX without Session | §8 | 产品层 | `[x]` `LifecycleBus` 常驻读取模型 + 只读 loopback UI（`src/ui/server.ts`、`src/cli/ui.ts`、`lofibot ui`；必需 token、GET-only、生命周期事件白名单、speculative 隐藏、SSE 背压）。远程多进程面板/多用户账号仍为外部边界 |
 | T50 | §8 A2A | §8 | 互操作 | `[x]` `A2ARouter` + 本地 transport + HMAC-SHA256 HTTP transport（±60s、nonce 重放缓存、32B 密钥、64KiB/128KiB 上限、deadline），`runtime.sendA2A`；远程 mesh handler 已实现但默认不监听，暴露需 operator 决策 |
 | T51 | §8 Security/privacy；credential never in context | §8 | M0+M9 | Env 变量描述可进 prompt；**值永不**；vault 外置 |
 
@@ -676,7 +676,7 @@ export interface RawEvent {
 | Files | `session.ts`, `loop.ts`, `model.ts`, `providers.ts`, `tools.ts`, `daemon.ts`, `team.ts`, `machines.ts`, `mesh.ts`, `index.ts` |
 | Data | `JournalEntry` 追加日志；`jobs`/`sessions` 表由 Store 持久化 |
 | Interfaces | `Harness`/`HarnessOptions`, `runTurn`, `ToolRegistry`/`ToolContext`, `Model`；没有 `ToolResult`/`TurnResult` |
-| Models | `MockModel`（脚本化 tool_calls）；`HttpOpenAI`；`createModelFromEnv` / `roleModelsFromEnv`（`DS_AGENT_API_*`） |
+| Models | `MockModel`（脚本化 tool_calls）；`HttpOpenAI`；`createModelFromEnv` / `roleModelsFromEnv`（`LOFIBOT_API_*`） |
 | Roles | 无独立 roles 文件；`tools.ts` 用 `roles: Role[]` 声明：Router 无 bash，Worker 有 `bash`/`read_object`/`report_to_router`，Watchdog 仅 nudge/fail |
 | Async ReAct | `Harness.launch/resume` 入队 turn；`start_job` 工具返回 `{ status: 'started', jobId }` → `Harness.scheduleJob` → turn 结束；job 完成后以 `JOB_DONE` / `TEAM_MEMBER_DONE` prompt 触发下一 `runTurn` |
 | Daemon | `start()`/`stop()` 定时唤醒 Watchdog；不持有 Session 状态；机器离线时 brain 仍从 Store 继续（`tick`/`onMachineResume`） |
@@ -841,7 +841,7 @@ export interface RawEvent {
 | 项 | 内容 |
 |----|------|
 | Path | `src/cli/` · `src/runtime.ts` · `prompts/` · `README.md` |
-| Files | `src/cli/main.ts`（入口 `pnpm ds-agent`）、`src/runtime.ts` 装配、`src/cli/demo.ts`、`src/cli/demos/*`、`src/cli/bakeoff.ts` |
+| Files | `src/cli/main.ts`（入口 `pnpm lofibot`）、`src/runtime.ts` 装配、`src/cli/demo.ts`、`src/cli/demos/*`、`src/cli/bakeoff.ts` |
 | CLI | `init` · `chat` · `tasks` · `health` · `metrics` · `memory` · `a2a` · `status` · `team`/`teams` · `pause` · `intervene` · `resume` · `collab` · `emit im\|github` · `demo` |
 | Prompts | 只有 `prompts/watchdog.md`；Router/Worker 的 system prompt 由 `harness/model.ts` 的 `systemPrompt(role)` 内联生成 |
 | Accept | 见 §7 清单全绿；`pnpm test && pnpm demo` |
@@ -905,7 +905,7 @@ pnpm install && pnpm test && pnpm demo
 
 ## 8. 原型缺口补全（我们必须自研的）
 
-原型（Cordis/DSH）已有厚领域 Engine，但相对博客仍缺或薄。ds-agent **发明**如下落地设计：
+原型（Cordis/DSH）已有厚领域 Engine，但相对博客仍缺或薄。lofibot **发明**如下落地设计：
 
 | 缺口 | 博客 | 我们的设计 | 文件 |
 |------|------|------------|------|
@@ -925,15 +925,15 @@ pnpm install && pnpm test && pnpm demo
 
 ## 9. 功能域：评测与指标、扩展、长期记忆、产品层、互操作、安全与隐私（Runtime 常驻服务）
 
-以下功能域按所属 M 模块常驻装配：Runtime 每次启动都会构造这些服务，不再有 `DS_AGENT_PHASE2` / `RuntimeOptions.phase2` 总开关。编号沿用 §3 任务矩阵（T45–T51），不另设一套 ID。
+以下功能域按所属 M 模块常驻装配：Runtime 每次启动都会构造这些服务，不再有 `LOFIBOT_PHASE2` / `RuntimeOptions.phase2` 总开关。编号沿用 §3 任务矩阵（T45–T51），不另设一套 ID。
 
 | ID | 功能域 | 项 | 说明 | 实现 / 接口 |
 |----|--------|----|------|--------------|
-| T45 | 评测与指标 | §7 实验指标 | 计数 + optional latency curveSamples | `<stateDir>/metrics.json` · `ds-agent metrics` · `summarizeCurve` |
-| T46 | 扩展 | Router sharding / multi-filter | registry 常驻 Runtime；`DS_AGENT_SHARDS` / `RuntimeOptions.routerShards` 配置，默认 shard 始终存在 | `RouterShardRegistry` |
-| T47 | 扩展 | Worker mesh | capacity registry 常驻 Runtime；`DS_AGENT_MESH_CAPACITY` / `RuntimeOptions.meshCapacity` | `WorkerMeshRegistry` |
+| T45 | 评测与指标 | §7 实验指标 | 计数 + optional latency curveSamples | `<stateDir>/metrics.json` · `lofibot metrics` · `summarizeCurve` |
+| T46 | 扩展 | Router sharding / multi-filter | registry 常驻 Runtime；`LOFIBOT_SHARDS` / `RuntimeOptions.routerShards` 配置，默认 shard 始终存在 | `RouterShardRegistry` |
+| T47 | 扩展 | Worker mesh | capacity registry 常驻 Runtime；`LOFIBOT_MESH_CAPACITY` / `RuntimeOptions.meshCapacity` | `WorkerMeshRegistry` |
 | T48 | 长期记忆 | Long-term memory | Spill-backed LTM 常驻 Runtime；终态 Ticket + 每个 Decision 写一条；hot/cold 两层：hot 按标题/标签召回，cold 为 Thread digest 跨月保留 | `SpillBackedLongTermMemory` |
-| T49 | 产品层 | Product UX without Session | 无会话读取模型 `LifecycleBus` 常驻 Runtime；只读 loopback UI 在本仓（`src/ui/server.ts`、`ds-agent ui`）；远程面板/多用户外置 | `core/lifecycle.ts` |
+| T49 | 产品层 | Product UX without Session | 无会话读取模型 `LifecycleBus` 常驻 Runtime；只读 loopback UI 在本仓（`src/ui/server.ts`、`lofibot ui`）；远程面板/多用户外置 | `core/lifecycle.ts` |
 | T50 | 互操作 | A2A | envelope router 常驻 Runtime；`runtime.sendA2A`；HMAC-SHA256 HTTP transport 已实现（`a2a-auth.ts`/`a2a-http.ts`），默认不监听 | `A2ARouter` |
 | T51 | 安全与隐私 | Security/privacy 深化 | 凭据托管、沙箱 seccomp、审计 | allowlist + redact 已落地；vault / seccomp 仍外置 |
 
@@ -944,8 +944,8 @@ pnpm install && pnpm test && pnpm demo
 以下按 `git ls-files` 的实际模块归类；文件清单以仓库为准，模块边界说明见 [`docs/MODULES.md`](docs/MODULES.md)。
 
 ```
-deepseek-super-agent/
-  package.json                 # name: ds-agent; scripts 直接跑 tsx，没有 bin/dist 产物
+LofiBot/
+  package.json                 # name: lofibot; scripts 直接跑 tsx，没有 bin/dist 产物
   LICENSE                      # MIT
   README.md
   pnpm-lock.yaml
@@ -1098,7 +1098,7 @@ deepseek-super-agent/
 |--------|----------|-------------|----------|------|
 | §1 四特质 | T01–T04 | 有 | Harness/Engine/Store/Speculate | — |
 | §2 双层 + Router 批处理 + Worker | T05–T15 | 有 | harness + core | T09 sharding 已接线；T14/T15 部分（多话题 UX 由只读 UI 覆盖） |
-| §3.1 Fast/Slow | T16–T17 | 有 | ingress | Fast Path 确定性；Slow Path 可选模型策略（`DS_AGENT_SLOW_PATH=model`），超时/异常回退确定性规则 |
+| §3.1 Fast/Slow | T16–T17 | 有 | ingress | Fast Path 确定性；Slow Path 可选模型策略（`LOFIBOT_SLOW_PATH=model`），超时/异常回退确定性规则 |
 | §3.2 订阅直通 | T18–T22 | 有 | subscribe + demo | T21 handback 弱 |
 | §3.3 Inline/Spill/链式召回 | T23–T25 | 有 | memory + spill + read_object + graph refs | 多跳对象图已落地（Trigger/Thread/Ticket/Decision） |
 | §3.4 投机 | T26–T28 | 有 | speculate + deliver | — |
@@ -1109,4 +1109,4 @@ deepseek-super-agent/
 | §7 实验 | T45 | 计数已做；端到端曲线未做 | `metrics/` | 压测曲线仍可选 |
 | §8 未决 | T46–T51 + mid-task collab + T14 Team | T51 白名单+脱敏；中途 pause/intervene/resume（#31）；Team persist+CLI+e2e（#34） | `env/sanitize.ts` · `core/collab.ts` · `harness/team.ts` | vault/seccomp 仍外置 |
 
-**结论：** §2–§6 工程点均已进入 T 矩阵与 README 清单。§7 计数 + optional curveSamples、§8 vault/seccomp 与扩展域服务（T09/T46–T50）已落地；这些服务现在由 Runtime 默认路径常驻装配（`runtime.routerShards` / `workerMesh` / `longTermMemory` / `lifecycle` / `a2aRouter`），不再有 `DS_AGENT_PHASE2` 或 `RuntimeOptions.phase2` 总开关。
+**结论：** §2–§6 工程点均已进入 T 矩阵与 README 清单。§7 计数 + optional curveSamples、§8 vault/seccomp 与扩展域服务（T09/T46–T50）已落地；这些服务现在由 Runtime 默认路径常驻装配（`runtime.routerShards` / `workerMesh` / `longTermMemory` / `lifecycle` / `a2aRouter`），不再有 `LOFIBOT_PHASE2` 或 `RuntimeOptions.phase2` 总开关。

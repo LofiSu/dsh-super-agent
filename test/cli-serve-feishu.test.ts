@@ -17,7 +17,7 @@ import type { Trigger } from '../src/shared/types.ts'
 /**
  * Offline coverage for `serve --feishu`. No Feishu network call is possible:
  * the outbox client uses a fetch that throws, and the inbound source is a fake.
- * The Runtime is driven by MockModel over a temp DS_AGENT_HOME.
+ * The Runtime is driven by MockModel over a temp LOFIBOT_HOME.
  */
 
 const children: ChildProcess[] = []
@@ -31,7 +31,7 @@ function tempDir(prefix: string): string {
   return dir
 }
 
-function makeRuntime(home = tempDir('ds-agent-serve-feishu-home-')): Runtime {
+function makeRuntime(home = tempDir('lofibot-serve-feishu-home-')): Runtime {
   homes.push(home)
   const runtime = Runtime.create({
     home,
@@ -40,7 +40,7 @@ function makeRuntime(home = tempDir('ds-agent-serve-feishu-home-')): Runtime {
     watchdogIntervalMs: 60_000,
     // Admitting by chat id proves the Feishu trigger's address.group survives
     // into normal admission; the loop does not bypass the filter.
-    env: { ...process.env, DS_AGENT_GROUP_ALLOWLIST: 'oc_test' },
+    env: { ...process.env, LOFIBOT_GROUP_ALLOWLIST: 'oc_test' },
   })
   runtime.start()
   runtimes.push(runtime)
@@ -57,7 +57,7 @@ function noNetworkClient(): FeishuClient {
   )
 }
 
-function trigger(id: string, createTimeMs: number, text = '@ds-agent please fix the login timeout'): Trigger {
+function trigger(id: string, createTimeMs: number, text = '@lofibot please fix the login timeout'): Trigger {
   return {
     id: `feishu_${id}`,
     source: 'im',
@@ -156,7 +156,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 function cliEnv(stateHome: string, overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, DS_AGENT_HOME: stateHome, NODE_NO_WARNINGS: '1' }
+  const env: NodeJS.ProcessEnv = { ...process.env, LOFIBOT_HOME: stateHome, NODE_NO_WARNINGS: '1' }
   for (const key of [
     'FEISHU_APP_ID',
     'FEISHU_APP_SECRET',
@@ -164,9 +164,9 @@ function cliEnv(stateHome: string, overrides: NodeJS.ProcessEnv = {}): NodeJS.Pr
     'FEISHU_BASE_URL',
     'FEISHU_INTERVAL_MS',
     'FEISHU_SINCE',
-    'DS_AGENT_IMESSAGE_HANDLE',
-    'DS_AGENT_ACTOR_ALLOWLIST',
-    'DS_AGENT_GROUP_ALLOWLIST',
+    'LOFIBOT_IMESSAGE_HANDLE',
+    'LOFIBOT_ACTOR_ALLOWLIST',
+    'LOFIBOT_GROUP_ALLOWLIST',
   ]) {
     delete env[key]
   }
@@ -215,7 +215,7 @@ describe('serve --feishu loop', () => {
   })
 
   it('uses the source default on first run, then resumes from SQLite without replay', async () => {
-    const home = tempDir('ds-agent-serve-feishu-restart-')
+    const home = tempDir('lofibot-serve-feishu-restart-')
     const first = makeRuntime(home)
     const firstSeeds: (number | undefined)[] = []
     const firstIngest = spyIngest(first)
@@ -283,7 +283,7 @@ describe('serve --feishu loop', () => {
   })
 
   it('retries a failed message from the confirmed prefix in-process and after restart', async () => {
-    const home = tempDir('ds-agent-serve-feishu-ingest-retry-')
+    const home = tempDir('lofibot-serve-feishu-ingest-retry-')
     const first = makeRuntime(home)
     const messages = [
       trigger('om_prefix', 1_761_958_800_000),
@@ -348,7 +348,7 @@ describe('serve --feishu loop', () => {
   })
 
   it('resumes at a failed message after restarting from the confirmed prefix', async () => {
-    const home = tempDir('ds-agent-serve-feishu-crash-retry-')
+    const home = tempDir('lofibot-serve-feishu-crash-retry-')
     const first = makeRuntime(home)
     const messages = [
       trigger('om_durable_prefix', 1_761_958_800_000),
@@ -515,20 +515,20 @@ describe('serve --feishu loop', () => {
 
 describe('resolveFeishuCliConfig', () => {
   it('requires app credentials before any Runtime exists', () => {
-    expect(() => resolveFeishuCliConfig(['node', 'ds-agent', 'serve', '--feishu'], {}))
+    expect(() => resolveFeishuCliConfig(['node', 'lofibot', 'serve', '--feishu'], {}))
       .toThrow(/FEISHU_APP_ID and FEISHU_APP_SECRET/)
     expect(() => resolveFeishuCliConfig(
-      ['node', 'ds-agent', 'serve', '--feishu'],
+      ['node', 'lofibot', 'serve', '--feishu'],
       { FEISHU_APP_ID: 'app' },
     )).toThrow(/set together/)
   })
 
   it('requires a poll target from --chat or FEISHU_CHAT_ID', () => {
     const creds = { FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret' }
-    expect(() => resolveFeishuCliConfig(['node', 'ds-agent', 'serve', '--feishu'], creds))
+    expect(() => resolveFeishuCliConfig(['node', 'lofibot', 'serve', '--feishu'], creds))
       .toThrow(/poll target chat/)
     expect(() => resolveFeishuCliConfig(
-      ['node', 'ds-agent', 'serve', '--feishu', '--chat', '--once'],
+      ['node', 'lofibot', 'serve', '--feishu', '--chat', '--once'],
       creds,
     )).toThrow(/needs a non-empty chat id/)
   })
@@ -536,7 +536,7 @@ describe('resolveFeishuCliConfig', () => {
   it('parses --chat/--interval/--since/--once and clamps the interval', () => {
     const config = resolveFeishuCliConfig(
       [
-        'node', 'ds-agent', 'serve', '--feishu',
+        'node', 'lofibot', 'serve', '--feishu',
         '--chat', ' oc_cli ',
         '--interval', '50',
         '--since', '1761958000000',
@@ -557,7 +557,7 @@ describe('resolveFeishuCliConfig', () => {
 
   it('falls back to FEISHU_CHAT_ID and the default interval', () => {
     const config = resolveFeishuCliConfig(
-      ['node', 'ds-agent', 'serve', '--feishu'],
+      ['node', 'lofibot', 'serve', '--feishu'],
       { FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret', FEISHU_CHAT_ID: ' oc_env ' },
     )
     expect(config.chatId).toBe('oc_env')
@@ -569,7 +569,7 @@ describe('resolveFeishuCliConfig', () => {
 
 describe('serve --feishu refusal', () => {
   it('refuses before creating SQLite when app credentials are missing', async () => {
-    const dir = tempDir('ds-agent-serve-feishu-deny-')
+    const dir = tempDir('lofibot-serve-feishu-deny-')
     const stateHome = path.join(dir, 'state')
 
     const child = spawn(
@@ -588,11 +588,11 @@ describe('serve --feishu refusal', () => {
     expect(code).toBe(1)
     expect(stderr).toContain('serve --feishu needs FEISHU_APP_ID and FEISHU_APP_SECRET')
     expect(fs.existsSync(stateHome)).toBe(false)
-    expect(fs.existsSync(path.join(dir, 'ds-agent'))).toBe(false)
+    expect(fs.existsSync(path.join(dir, 'lofibot'))).toBe(false)
   }, 30_000)
 
   it('fails closed before creating SQLite when a combined serve channel is unconfigured', async () => {
-    const dir = tempDir('ds-agent-serve-both-')
+    const dir = tempDir('lofibot-serve-both-')
     const stateHome = path.join(dir, 'state')
 
     const child = spawn(
@@ -616,7 +616,7 @@ describe('serve --feishu refusal', () => {
   }, 30_000)
 
   it('reports missing Feishu config before SQLite even when iMessage is valid', async () => {
-    const dir = tempDir('ds-agent-serve-both-feishu-missing-')
+    const dir = tempDir('lofibot-serve-both-feishu-missing-')
     const stateHome = path.join(dir, 'state')
 
     const child = spawn(

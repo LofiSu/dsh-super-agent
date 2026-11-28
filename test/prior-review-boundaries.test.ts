@@ -25,7 +25,7 @@ const T0 = Date.parse('2026-11-05T10:00:00.000Z')
 const MIN = 60_000
 
 function setup(): { home: string; store: Store; index: ConnectorIndex } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-connectors-wake-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-connectors-wake-'))
   homes.push(home)
   const store = new Store(home)
   stores.push(store)

@@ -73,7 +73,7 @@ function waitForExit(child: ChildProcess, timeoutMs = 5_000): Promise<void> {
 }
 
 function tempStatePath(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-eval-timeout-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-eval-timeout-'))
   tempDirs.push(dir)
   return path.join(dir, 'worker.json')
 }

@@ -7,7 +7,7 @@ import path from 'node:path'
 const dirs: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-prompt-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-prompt-'))
   dirs.push(dir)
   return dir
 }
@@ -23,11 +23,11 @@ function runCli(
 ): { status: number | null; stdout: string; stderr: string } {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    DS_AGENT_HOME: home,
+    LOFIBOT_HOME: home,
     NODE_NO_WARNINGS: '1',
     ...extraEnv,
   }
-  for (const key of ['DS_AGENT_SOUL', 'DS_AGENT_PERSONA', 'DS_AGENT_IDENTITY', 'DS_AGENT_OWNER', 'DS_AGENT_INSTRUCTIONS']) {
+  for (const key of ['LOFIBOT_SOUL', 'LOFIBOT_PERSONA', 'LOFIBOT_IDENTITY', 'LOFIBOT_OWNER', 'LOFIBOT_INSTRUCTIONS']) {
     if (extraEnv[key] === undefined) delete env[key]
   }
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
@@ -38,7 +38,7 @@ function runCli(
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
-describe('ds-agent prompt', () => {
+describe('lofibot prompt', () => {
   it('prints one row per section with its source', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'SOUL.md'), 'Dry wit.\n')
@@ -52,7 +52,7 @@ describe('ds-agent prompt', () => {
   it('prints the full router prompt by default', () => {
     const result = runCli(tempHome(), ['prompt'])
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toContain('DeepSeek Super Agent')
+    expect(result.stdout).toContain('LofiBot')
     expect(result.stdout).toContain('MainSession')
   })
 
@@ -82,9 +82,9 @@ describe('ds-agent prompt', () => {
   })
 
   it('labels an environment seed', () => {
-    const result = runCli(tempHome(), ['prompt', '--layers'], { DS_AGENT_SOUL: 'Seeded voice.' })
+    const result = runCli(tempHome(), ['prompt', '--layers'], { LOFIBOT_SOUL: 'Seeded voice.' })
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toMatch(/soul\s+\d+ chars\s+env:DS_AGENT_SOUL/)
+    expect(result.stdout).toMatch(/soul\s+\d+ chars\s+env:LOFIBOT_SOUL/)
   })
 
   it('separates the longest section ids from their length', () => {
@@ -100,23 +100,23 @@ describe('ds-agent prompt', () => {
   it('redacts a secret from a prompt file', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'USER.md'), 'api key: supersecret123\n')
-    const result = runCli(home, ['prompt'], { DS_AGENT_API_KEY: 'supersecret123' })
+    const result = runCli(home, ['prompt'], { LOFIBOT_API_KEY: 'supersecret123' })
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).not.toContain('supersecret123')
     expect(result.stdout).toContain('[redacted]')
   })
 
   it('does not inherit a soul seed from the test runner environment', () => {
-    const previous = process.env.DS_AGENT_SOUL
-    process.env.DS_AGENT_SOUL = 'Inherited seed.'
+    const previous = process.env.LOFIBOT_SOUL
+    process.env.LOFIBOT_SOUL = 'Inherited seed.'
     try {
       const result = runCli(tempHome(), ['prompt', '--layers'])
       expect(result.status, result.stderr).toBe(0)
       expect(result.stdout).toMatch(/soul\s+\d+ chars\s+built-in default soul/)
       expect(result.stdout).not.toContain('Inherited seed.')
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_SOUL
-      else process.env.DS_AGENT_SOUL = previous
+      if (previous === undefined) delete process.env.LOFIBOT_SOUL
+      else process.env.LOFIBOT_SOUL = previous
     }
   })
 

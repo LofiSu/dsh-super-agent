@@ -6,14 +6,14 @@
 # Review notes in this folder stay in the repo. They are excluded below
 # so the public site is only the short pages.
 
-title: deepseek-super-agent
+title: LofiBot
 description: "Thin TypeScript harness. Router, Worker, triggers, Watchdog. Not an official DeepSeek product."
 tagline_en: "Thin harness. Not an official DeepSeek product."
 tagline_zh: "薄 Harness。不是 DeepSeek 官方产品。"
 lang: en
-repository_url: "https://github.com/LofiSu/deepseek-super-agent"
+repository_url: "https://github.com/LofiSu/LofiBot"
 url: "https://lofisu.github.io"
-baseurl: "/deepseek-super-agent"
+baseurl: "/LofiBot"
 timezone: "Etc/UTC"
 encoding: "utf-8"
 

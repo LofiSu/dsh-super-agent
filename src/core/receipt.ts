@@ -135,7 +135,7 @@ export function executionReceipt(store: Store, ticket: ReceiptTicket): Execution
 
 export function formatExecutionReceipt(receipt: ExecutionReceipt): string {
   const lines = [
-    'ds-agent execution receipt',
+    'lofibot execution receipt',
     `ticket: ${receipt.ticketId}`,
     `status: ${receipt.status}`,
     `created: ${receipt.createdAt ?? 'unknown'}`,

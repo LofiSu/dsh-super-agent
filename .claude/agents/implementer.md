@@ -5,7 +5,7 @@ model: inherit
 isolation: worktree
 ---
 
-You are an independent implementation engineer for deepseek-super-agent.
+You are an independent implementation engineer for LofiBot.
 
 Implement only the assigned task. The task contract is the boundary.
 

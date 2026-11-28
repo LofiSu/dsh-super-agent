@@ -3,14 +3,14 @@ import type { SnapshotEvent, SnapshotOutbox, SnapshotThread, SnapshotTicket, UiS
 const PAGE_STYLE = `
 :root {
   color-scheme: light dark;
-  --bg: #0f172a;
-  --panel: #16213a;
-  --line: #2b3a55;
-  --text: #e6edf7;
-  --muted: #94a3b8;
-  --accent: #7dd3fc;
-  --ok: #86efac;
-  --warn: #fde68a;
+  --bg: #101735;
+  --panel: #192750;
+  --line: #384b7d;
+  --text: #fbf4f8;
+  --muted: #b7c7e8;
+  --accent: #ffa6d2;
+  --ok: #d9ed75;
+  --warn: #ffd694;
 }
 * { box-sizing: border-box; }
 body {
@@ -273,12 +273,12 @@ export function renderHtml(snapshot: UiSnapshot): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ds-agent local ui</title>
+<title>LofiBot Dashboard</title>
 <style>${PAGE_STYLE}</style>
 </head>
 <body>
 <header>
-  <h1>ds-agent local ui</h1>
+  <h1>LofiBot Dashboard</h1>
   <span class="sub" id="generated">generated ${escapeHtml(snapshot.generatedAt)}</span>
   <span class="sub">stream <span class="live" id="live">connecting</span></span>
 </header>

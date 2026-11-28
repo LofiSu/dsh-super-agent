@@ -5,19 +5,19 @@ import { freshRuntime, shutdown } from './fixtures.ts'
 
 describe('T40 machines + watchdog idle', () => {
   it('uses the configured stale interval while leaving the default unbounded', () => {
-    const previous = process.env.DS_AGENT_MACHINE_STALE_MS
+    const previous = process.env.LOFIBOT_MACHINE_STALE_MS
     try {
-      delete process.env.DS_AGENT_MACHINE_STALE_MS
+      delete process.env.LOFIBOT_MACHINE_STALE_MS
       const defaultRegistry = new MachineRegistry()
       defaultRegistry.register('default')
       expect(defaultRegistry.markStaleOffline(Date.now() + 1_000_000)).toHaveLength(0)
-      process.env.DS_AGENT_MACHINE_STALE_MS = '1000'
+      process.env.LOFIBOT_MACHINE_STALE_MS = '1000'
       const configured = new MachineRegistry()
       configured.register('configured')
       expect(configured.markStaleOffline(Date.now() + 1001)).toHaveLength(1)
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_MACHINE_STALE_MS
-      else process.env.DS_AGENT_MACHINE_STALE_MS = previous
+      if (previous === undefined) delete process.env.LOFIBOT_MACHINE_STALE_MS
+      else process.env.LOFIBOT_MACHINE_STALE_MS = previous
     }
   })
   it('runs connector polling on the same daemon pulse and honors the start gate', () => {

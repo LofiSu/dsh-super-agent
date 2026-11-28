@@ -5,13 +5,13 @@ import { runWatchdogDemo } from '../src/cli/demos/watchdog.ts'
 
 /**
  * Opt-in integration suite. It creates real issues/comments on
- * DS_AGENT_GH_REPO and needs a live model + authenticated gh CLI:
+ * LOFIBOT_GH_REPO and needs a live model + authenticated gh CLI:
  *
  *   pnpm test:demo:real
  *
  * The default `pnpm test` suite does not touch the network or the repository.
  */
-const enabled = process.env.DS_AGENT_REAL_CHANNELS === '1'
+const enabled = process.env.LOFIBOT_REAL_CHANNELS === '1'
 
 describe.skipIf(!enabled)('real-channel demos (opt-in)', () => {
   it('parallel: three real GitHub issues run three live workers', async () => {

@@ -127,7 +127,7 @@ export async function runDesktopChat(home: string): Promise<void> {
   }
   process.stdout.on('error', disconnect)
   // Covers a window process exiting before its shutdown message reaches stdin.
-  const parent = Number(process.env.DS_AGENT_DESKTOP_PARENT_PID)
+  const parent = Number(process.env.LOFIBOT_DESKTOP_PARENT_PID)
   const monitor = Number.isSafeInteger(parent) && parent > 1
     ? setInterval(() => {
       try {

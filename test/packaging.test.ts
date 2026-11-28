@@ -7,11 +7,11 @@ import { describe, expect, it } from 'vitest'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 /** Run the CLI from source so the unit suite does not need a prior build. */
-function runCli(arg: string) {
+function runCli(arg: string, env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', arg], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, ...env, NODE_NO_WARNINGS: '1' },
   })
 }
 
@@ -34,8 +34,8 @@ const buildConfig = JSON.parse(readFileSync(path.join(root, 'tsconfig.build.json
 }
 
 describe('package manifest', () => {
-  it('keeps the package identity unchanged', () => {
-    expect(pkg.name).toBe('ds-agent')
+  it('uses the LofiBot package identity', () => {
+    expect(pkg.name).toBe('lofibot')
     expect(pkg.version).toBe('0.1.0')
     expect(pkg.license).toBe('MIT')
     expect(pkg.author).toBe('LofiSu <163713803+LofiSu@users.noreply.github.com>')
@@ -43,8 +43,8 @@ describe('package manifest', () => {
     expect(pkg.engines?.node).toBe('>=22')
   })
 
-  it('exposes the built CLI as the ds-agent bin', () => {
-    expect(pkg.bin).toEqual({ 'ds-agent': './dist/cli/main.js' })
+  it('exposes the built CLI as the lofibot bin', () => {
+    expect(pkg.bin).toEqual({ 'lofibot': './dist/cli/main.js' })
     expect(existsSync(path.join(root, 'src', 'cli', 'main.ts'))).toBe(true)
   })
 
@@ -64,6 +64,17 @@ describe('package manifest', () => {
     expect(result.stdout).toContain('-V')
   })
 
+  it('refuses stale policy configuration before opening local state', () => {
+    const result = runCli('tasks', {
+      DS_AGENT_ACTOR_ALLOWLIST: 'private-actor',
+      DS_AGENT_SANDBOX_READ_ISOLATION: 'strict',
+    })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('DS_AGENT_ACTOR_ALLOWLIST → LOFIBOT_ACTOR_ALLOWLIST')
+    expect(result.stderr).toContain('DS_AGENT_SANDBOX_READ_ISOLATION → LOFIBOT_SANDBOX_READ_ISOLATION')
+    expect(result.stderr).not.toContain('private-actor')
+  })
+
   it('builds dist through the build tsconfig and on prepack', () => {
     expect(pkg.scripts?.build).toBe('tsc -p tsconfig.build.json && tsx scripts/copy-assets.ts')
     expect(pkg.scripts?.prepack).toBe('pnpm build')
@@ -74,6 +85,7 @@ describe('package manifest', () => {
       'dist',
       'README.md',
       'README.zh-CN.md',
+      'docs/assets/lofibot-banner.png',
       'LICENSE',
       'docs/MODULES.md',
       'docs/ANTHROPIC_AGENT_MEMORY.md',

@@ -10,7 +10,7 @@ import {
 /**
  * A `gateway.config.json` lets end users describe local products (whatever they
  * already run: Magpie, Ollama, LM Studio, a vendor CLI's local port, a cloud
- * key, ...) once, and `ds-agent gateway` picks it up. No Magpie install needed;
+ * key, ...) once, and `lofibot gateway` picks it up. No Magpie install needed;
  * the gateway is this project's own reverse proxy.
  */
 export interface GatewayFile {
@@ -45,7 +45,7 @@ export function readGatewayConfigFile(home: string): GatewayFile | undefined {
 
 /**
  * Resolve providers/aliases from a config file first, then env. Priority:
- * `~/.ds-agent/gateway.config.json` > `DS_AGENT_GATEWAY_PROVIDERS` > BYOM env.
+ * `~/.lofibot/gateway.config.json` > `LOFIBOT_GATEWAY_PROVIDERS` > BYOM env.
  */
 export function gatewayFromSources(home: string, env: NodeJS.ProcessEnv = process.env): GatewaySource {
   const file = readGatewayConfigFile(home)
@@ -61,7 +61,7 @@ export function gatewayFromSources(home: string, env: NodeJS.ProcessEnv = proces
   }
   const providers = gatewayProvidersFromEnv(env)
   if (providers.length > 0) {
-    const defaultModel = env.DS_AGENT_GATEWAY_MODEL?.trim() || env.DS_AGENT_API_MODEL?.trim()
+    const defaultModel = env.LOFIBOT_GATEWAY_MODEL?.trim() || env.LOFIBOT_API_MODEL?.trim()
     return { providers, aliases: gatewayAliasesFromEnv(env), ...(defaultModel ? { defaultModel } : {}), source: 'env' }
   }
   return { providers: [], aliases: {}, source: 'none' }

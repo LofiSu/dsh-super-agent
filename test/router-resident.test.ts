@@ -12,11 +12,11 @@ afterEach(async () => {
 
 function isolatedEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
-  delete env.DS_AGENT_ALLOW_MOCK_FIXTURE
-  delete env.DS_AGENT_SHARDS
-  delete env.DS_AGENT_ROUTER_MODEL
-  delete env.DS_AGENT_WORKER_MODEL
-  delete env.DS_AGENT_WATCHDOG_MODEL
+  delete env.LOFIBOT_ALLOW_MOCK_FIXTURE
+  delete env.LOFIBOT_SHARDS
+  delete env.LOFIBOT_ROUTER_MODEL
+  delete env.LOFIBOT_WORKER_MODEL
+  delete env.LOFIBOT_WATCHDOG_MODEL
   return env
 }
 
@@ -99,7 +99,7 @@ describe('resident Router Session', () => {
     runtime.ingest(imTrigger({
       id: 'trg_resident',
       thread: 'topic/resident',
-      text: '@ds-agent please fix the checkout login timeout',
+      text: '@lofibot please fix the checkout login timeout',
     }))
     await runtime.jobsSettled()
 
@@ -199,7 +199,7 @@ describe('resident Router Session', () => {
     runtime.ingest(imTrigger({
       id: 'trg_report_history',
       thread: 'topic/report',
-      text: '@ds-agent please fix the checkout login timeout',
+      text: '@lofibot please fix the checkout login timeout',
     }))
     await runtime.jobsSettled()
 

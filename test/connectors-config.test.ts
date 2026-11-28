@@ -14,7 +14,7 @@ import { GOOGLE_SERVICES } from '../src/connectors/types.ts'
 const homes: string[] = []
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-connectors-config-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-connectors-config-'))
   homes.push(home)
   return home
 }

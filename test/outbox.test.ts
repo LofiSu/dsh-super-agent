@@ -18,7 +18,7 @@ import { Store } from '../src/store/sqlite.ts'
 const homes: string[] = []
 
 function tempStore(): Store {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-outbox-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-outbox-'))
   homes.push(home)
   return new Store(home)
 }
@@ -58,7 +58,7 @@ function row(overrides: Partial<OutboxRow> = {}): OutboxRow {
     channel: 'github',
     thread: 'issue:7',
     target: { provider: 'github', repo: 'LofiSu/x', issue: '7' },
-    text: 'ds-agent note',
+    text: 'lofibot note',
     status: 'pending',
     createdAt: new Date().toISOString(),
     ...overrides,
@@ -108,7 +108,7 @@ describe('durable outbox', () => {
     expect(queued[0]!.channel).toBe('github')
     expect(queued[0]!.thread).toBe('issue:7')
     expect(queued[0]!.target.issue).toBe('7')
-    expect(queued[0]!.text).toContain('ds-agent note')
+    expect(queued[0]!.text).toContain('LofiBot note')
     store.close()
   })
 
@@ -451,7 +451,7 @@ describe('durable outbox', () => {
       ticketId: 'ticket_1',
       channel: 'github',
       purpose: 'acknowledgement',
-      text: 'ds-agent note',
+      text: 'lofibot note',
       status: 'pending',
       createdAt: new Date().toISOString(),
     })
@@ -499,7 +499,7 @@ describe('durable outbox', () => {
       ticketId: 'ticket_1',
       channel: 'github',
       purpose: 'acknowledgement',
-      text: 'ds-agent note',
+      text: 'lofibot note',
       status: 'pending',
       createdAt: new Date().toISOString(),
     })

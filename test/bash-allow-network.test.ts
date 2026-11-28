@@ -8,14 +8,14 @@ describe('parseBashAllowNetwork', () => {
   })
 
   it.each(['0', 'false', ''])('treats %s as false', raw => {
-    expect(parseBashAllowNetwork({ DS_AGENT_BASH_ALLOW_NETWORK: raw })).toBe(false)
+    expect(parseBashAllowNetwork({ LOFIBOT_BASH_ALLOW_NETWORK: raw })).toBe(false)
   })
 
   it.each(['1', 'true'])('treats %s as true', raw => {
-    expect(parseBashAllowNetwork({ DS_AGENT_BASH_ALLOW_NETWORK: raw })).toBe(true)
+    expect(parseBashAllowNetwork({ LOFIBOT_BASH_ALLOW_NETWORK: raw })).toBe(true)
   })
 
   it('rejects garbage', () => {
-    expect(() => parseBashAllowNetwork({ DS_AGENT_BASH_ALLOW_NETWORK: 'maybe' })).toThrow(UserError)
+    expect(() => parseBashAllowNetwork({ LOFIBOT_BASH_ALLOW_NETWORK: 'maybe' })).toThrow(UserError)
   })
 })

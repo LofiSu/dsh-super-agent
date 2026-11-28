@@ -24,7 +24,7 @@ export const LIVE_DEMO_PROOFS = [
 export const DEMO_PROOFS = LIVE_DEMO_PROOFS
 
 export function defaultHome(): string {
-  return process.env.DS_AGENT_HOME ?? path.join(process.cwd(), '.ds-agent')
+  return process.env.LOFIBOT_HOME ?? path.join(process.cwd(), '.lofibot')
 }
 
 /**
@@ -34,7 +34,7 @@ export function demoModel(env: NodeJS.ProcessEnv = process.env): { model: Model;
   const live = resolveLiveApi(env)
   if (!live) {
     throw new Error(
-      'pnpm demo requires a live model (set DS_AGENT_API_BASE + DS_AGENT_API_KEY, or a provider key). MockModel is forbidden.',
+      'pnpm demo requires a live model (set LOFIBOT_API_BASE + LOFIBOT_API_KEY, or a provider key). MockModel is forbidden.',
     )
   }
   const model: Model = requireLiveModelFromEnv(env)
@@ -55,7 +55,7 @@ export async function runDemo(home = defaultHome()): Promise<void> {
     watchdogIntervalMs: 250,
     stuckMs: 60_000,
   })
-  runtime.log.info('ds-agent demo')
+  runtime.log.info('lofibot demo')
   runtime.log.info('not an official DeepSeek product')
   runtime.log.info(
     `demo model=${model.name} provider=${selected.provider} (live Magpie/DeepSeek; MockModel forbidden)`,
@@ -79,13 +79,13 @@ export async function runDemo(home = defaultHome()): Promise<void> {
     runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
       actor: 'alex',
     }))
     runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
       actor: 'alex',
     }))
     const trace = `CI failed on auth test. expected 200 got 500 at login. ${'frame at auth/session.ts '.repeat(12)}`

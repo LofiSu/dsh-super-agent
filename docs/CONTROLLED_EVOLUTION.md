@@ -27,7 +27,7 @@ strategy** for speculative **DeliverGate** (`deliver-gate-v1`). Runtime compiles
 - **Search exclusivity**: `search-run.lock` (OS `wx`) — at most one active `evolution run` search per home; fail closed if held.
 - **Experiment persistence**: counters (`totalOpportunities`, `totalCandidatesGenerated`, `klArms`) commit in the same `mutateExperiment` transaction as budget reserves (no reload clobber).
 - **Budget ledger**: `reservations[]` lists search vs `finaltest_*` pools; `childEvalLaunches` counts actual isolated eval children; baseline search splits scored in-process once and cached on `baselineSearchCache` (digest-bound).
-- **Final test claim**: OS `wx` lock file + consumed marker under trusted `DS_AGENT_HOME/evolution/` (same-local-user threat model).
+- **Final test claim**: OS `wx` lock file + consumed marker under trusted `LOFIBOT_HOME/evolution/` (same-local-user threat model).
 - **No LLM** policy memory: `policy-memory.json` stores parent→child token deltas tied to exact train case ids.
 - **Frozen model**: proposals are train-failure token additions (deterministic).
 - **Tiny fixture** (`test/fixtures/evolution/`): **LABEL** — no general quality guarantee.
@@ -40,18 +40,18 @@ strategy** for speculative **DeliverGate** (`deliver-gate-v1`). Runtime compiles
 3. **Freeze** — `evolution freeze <candidateId>`.
 4. **Final test (C)** — one-shot `evolution finalize`; sealed ledger; refuses repeat.
 5. **Promote** — digest binds artifact + dataset + evaluator **source hashes** + final test ledger.
-6. **Consume** — `DS_AGENT_USE_PROMOTED_DELIVER_GATE=1` → `resolveDeliverGate`.
+6. **Consume** — `LOFIBOT_USE_PROMOTED_DELIVER_GATE=1` → `resolveDeliverGate`.
 
 ## CLI
 
 ```bash
-export DS_AGENT_HOME=$(mktemp -d)
-pnpm ds-agent evolution run --home "$DS_AGENT_HOME"
-pnpm ds-agent evolution freeze <candidateId> --home "$DS_AGENT_HOME"
-pnpm ds-agent evolution finalize <candidateId> --home "$DS_AGENT_HOME"
-pnpm ds-agent evolution approve <runId> <candidateId> --home "$DS_AGENT_HOME"
-pnpm ds-agent evolution rollback --home "$DS_AGENT_HOME"
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 pnpm exec tsx scripts/evolution-two-cli-rounds.ts   # preferred: two OS CLI processes; LABEL synth 2/2; log under /tmp/
+export LOFIBOT_HOME=$(mktemp -d)
+pnpm lofibot evolution run --home "$LOFIBOT_HOME"
+pnpm lofibot evolution freeze <candidateId> --home "$LOFIBOT_HOME"
+pnpm lofibot evolution finalize <candidateId> --home "$LOFIBOT_HOME"
+pnpm lofibot evolution approve <runId> <candidateId> --home "$LOFIBOT_HOME"
+pnpm lofibot evolution rollback --home "$LOFIBOT_HOME"
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm exec tsx scripts/evolution-two-cli-rounds.ts   # preferred: two OS CLI processes; LABEL synth 2/2; log under /tmp/
 # legacy in-process fixture demo (deprecated): scripts/evolution-rounds-demo.ts
 ```
 

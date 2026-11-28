@@ -124,7 +124,7 @@ impl WaveFile {
             .unwrap_or_default()
             .as_nanos();
         let path =
-            std::env::temp_dir().join(format!("ds-agent-cue-{}-{stamp}.wav", std::process::id()));
+            std::env::temp_dir().join(format!("lofibot-cue-{}-{stamp}.wav", std::process::id()));
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -163,9 +163,9 @@ fn play_file(path: &Path) {
                     "-NoProfile",
                     "-NonInteractive",
                     "-Command",
-                    "(New-Object System.Media.SoundPlayer -ArgumentList $env:DS_AGENT_CUE_FILE).PlaySync()",
+                    "(New-Object System.Media.SoundPlayer -ArgumentList $env:LOFIBOT_CUE_FILE).PlaySync()",
                 ])
-                .env("DS_AGENT_CUE_FILE", path),
+                .env("LOFIBOT_CUE_FILE", path),
         );
     }
 }

@@ -64,7 +64,7 @@ was run on `f6e5972`.
 
 ```text
 pnpm lint                                              lint ok (232 tracked files)
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run   493 passed, 15 skipped (508)
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run   493 passed, 15 skipped (508)
                                                       61 files: 58 with passing tests,
                                                       3 fully skipped
 pnpm test:coverage                                     492 passed; statements/lines
@@ -154,7 +154,7 @@ Repository facts:
 | MESH-FAILURE-PUMP | P2 | After a failed non-queued Worker releases its node, the Harness does not `pump()`, so an already-queued Worker can stay parked with a free node until a later event. | `src/harness/loop.ts`; `test/worker-mesh.test.ts` | fixed by #99 (`6184a27`) |
 | P1-6 | P1 | An in-flight turn is not reconstructed after a restart; unfinished assignments are left `running` until the watchdog. | `src/core/assignments.ts`; `src/runtime.ts`; `test/restart-recovery.test.ts` | fixed by #85 (`10e9f3c`); APPROVE |
 | GATEWAY-HARDENING | P1 | Non-constant-time compare, empty token, unwarned non-loopback bind, no re-chmod, and symlink-following reads were fixed in #76/#82. #87 fixed the concurrent first-create race and ELOOP fallback; #96 covered the EEXIST winner-reuse and create-path ELOOP branches. Residual: POSIX-only mode caveat; a stale empty file still blocks startup by design. | `src/gateway/token.ts`; `docs/GATEWAY.md` | #76/#82/#87/#96 merged; APPROVE |
-| GATEWAY-TOKEN-SYMLINK | P1 | Token file reads/chmods followed symlinks; a writable `DS_AGENT_HOME` could redirect the credential. | Review of PR #76; `src/gateway/token.ts:25-63` | fixed by #82; APPROVE |
+| GATEWAY-TOKEN-SYMLINK | P1 | Token file reads/chmods followed symlinks; a writable `LOFIBOT_HOME` could redirect the credential. | Review of PR #76; `src/gateway/token.ts:25-63` | fixed by #82; APPROVE |
 | GATEWAY-REVIEW | P2 | `#64` gateway/iMessage code had no independent review record; coverage remains below the historical 82.40% line baseline. | `docs/ROADMAP.md`; coverage run above | #76/#81/#82/#84/#85/#87/#90/#95/#96/#97/#99/#100/#101/#103/#105/#106/#107/#109/#112 reviewed; #77 corrected |
 | AUDIT-REFRESH | P2 | `docs/final-audit` (#74) was stale against `34aef25`; the roadmap audit did not include `#64`, `#75`-`#84`. | PR #74 merged `299b908` | fixed; APPROVE |
 | SERVE-CHANNEL-LOOP | P1 | `serve` starts no inbound channel loop, so external triggers are not consumed by the long-running process. This is documented, but it limits the daemon's production usefulness. | `src/cli/main.ts:228-277`; `docs/ROADMAP.md` | fixed by #101 (`2ae9740`) |
@@ -267,7 +267,7 @@ merged. The ordering note is retained as history: #84 changed the same
 7. No direct pushes to `main`. Branch: `agent/<task-id>-<description>`. PR title:
    `[SUPER-AGENT][TASK-ID] ...`.
 8. Every PR runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and the
-   offline suite with `CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1`.
+   offline suite with `CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1`.
 9. Do not run live model tests or real-channel demos unless credentials and
    explicit authorization are present.
 10. Do not change `src/shared/types.ts` or `src/shared/ports.ts` without an
@@ -294,12 +294,12 @@ defaults to 1:1 through the `LEFT JOIN`. A group message must never be
 
 ### Required behavior
 
-1. **Default deny.** `ds-agent imessage` must refuse to start when neither a
+1. **Default deny.** `lofibot imessage` must refuse to start when neither a
    sender allowlist nor an explicit opt-out is configured. A sender allowlist is
-   `--handle <id>`, a non-empty `DS_AGENT_IMESSAGE_HANDLE`, or a non-empty
-   `DS_AGENT_ACTOR_ALLOWLIST`.
+   `--handle <id>`, a non-empty `LOFIBOT_IMESSAGE_HANDLE`, or a non-empty
+   `LOFIBOT_ACTOR_ALLOWLIST`.
 2. **Explicit opt-out.** Add `--allow-any` (and
-   `DS_AGENT_IMESSAGE_ALLOW_ANY=1`) for intentional open use. Log a prominent
+   `LOFIBOT_IMESSAGE_ALLOW_ANY=1`) for intentional open use. Log a prominent
    warning when active.
 3. **Group chats are closed by default.** Read the chat style/room metadata from
    `chat.db` (`chat.style`, `chat.room_name`) and mark/group messages. Aggregate
@@ -308,12 +308,12 @@ defaults to 1:1 through the `LEFT JOIN`. A group message must never be
    the group chat id is retained in `channel.address.group`. Missing or
    ambiguous chat metadata is treated as group/unknown and skipped, never as
    1:1. Do not turn group messages into `addressed: 'direct'` triggers. Skip
-   them by default; add `--allow-groups` / `DS_AGENT_IMESSAGE_ALLOW_GROUPS=1` as
+   them by default; add `--allow-groups` / `LOFIBOT_IMESSAGE_ALLOW_GROUPS=1` as
    an explicit opt-in. Do not rely on text content to detect a group.
 4. **Addressing.** Only a 1:1 message from the allowlisted sender is
    `addressed: 'direct'`. A group message that is explicitly allowed must not be
    `direct`; leave `addressed` unset so it still passes normal admission.
-5. **Handle normalization.** Trim `--handle` / `DS_AGENT_IMESSAGE_HANDLE` once
+5. **Handle normalization.** Trim `--handle` / `LOFIBOT_IMESSAGE_HANDLE` once
    and use the same value for the admission gate and the SQL filter. Reject a
    missing or flag-like value instead of silently idling.
 6. **Schema compatibility.** If `chat.style` / `chat.room_name` are absent, fail
@@ -339,8 +339,8 @@ defaults to 1:1 through the `LEFT JOIN`. A group message must never be
 
 ### Acceptance
 
-- Default invocation without `--handle`, `DS_AGENT_IMESSAGE_HANDLE`, or
-  `DS_AGENT_ACTOR_ALLOWLIST` exits with a clear error before opening the
+- Default invocation without `--handle`, `LOFIBOT_IMESSAGE_HANDLE`, or
+  `LOFIBOT_ACTOR_ALLOWLIST` exits with a clear error before opening the
   database.
 - Default invocation never ingests a group-chat message.
 - All new tests and the offline suite pass.
@@ -359,7 +359,7 @@ defaults to 1:1 through the `LEFT JOIN`. A group message must never be
 
 `Harness.launch` calls `pickNode`; when no node has capacity it logs
 `node=none capacity-full` and runs the Worker anyway. Capacity is therefore
-advisory, and parallel workers can exceed `DS_AGENT_MESH_CAPACITY`. The same
+advisory, and parallel workers can exceed `LOFIBOT_MESH_CAPACITY`. The same
 method also writes the ticket aggregate directly to persist `Assignment.node`.
 
 ### Required behavior
@@ -369,7 +369,7 @@ method also writes the ticket aggregate directly to persist `Assignment.node`.
 2. Pump the queue when a Worker is released (`Runtime.onTicketEnded` calls
    `harness.release(ticketId)` after `workerMesh.release`). A dequeued ticket
    must be re-read from the Store; skip it if missing, ended, or paused.
-3. Bound the queue. Add `DS_AGENT_MESH_QUEUE` (default 100). If the queue is
+3. Bound the queue. Add `LOFIBOT_MESH_QUEUE` (default 100). If the queue is
    full, do not run the Worker; log `mesh.queue-full`, increment
    `mesh.queue_rejected`, and resolve the launch promise without throwing
    (the ticket stays open for a later retry).
@@ -524,7 +524,7 @@ fix PR #81.
 
 The merged token hardening repairs mode 0600 and fails closed on chmod failure,
 but `statSync`/`chmodSync`/`readFileSync` follow symlinks. A writable
-`DS_AGENT_HOME` can redirect the bearer credential and chmod an arbitrary file.
+`LOFIBOT_HOME` can redirect the bearer credential and chmod an arbitrary file.
 
 ### Required behavior
 

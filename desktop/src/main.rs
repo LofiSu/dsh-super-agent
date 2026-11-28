@@ -269,7 +269,7 @@ fn view(chat: &Chat, cx: &mut Cx<Chat>) -> El {
                 .justify_between()
                 .center_y()
                 .child(
-                    text("DeepSeek Super Agent")
+                    text("LofiBot")
                         .font(type_::TITLE)
                         .color(theme.text),
                 )
@@ -325,7 +325,7 @@ fn main() {
             }
         }),
         poll: Some(Chat::poll),
-        ..AppSpec::new("DeepSeek Super Agent", (840.0, 640.0), Chat::default, view)
+        ..AppSpec::new("LofiBot", (840.0, 640.0), Chat::default, view)
     })
     .on_close(Chat::close)
     .on_quit(Chat::close)

@@ -62,10 +62,10 @@ describe('embedded gateway', () => {
     expect(embedded!.token).toMatch(/^gw_/)
   })
 
-  it('does nothing when DS_AGENT_GATEWAY_URL is already set', async () => {
+  it('does nothing when LOFIBOT_GATEWAY_URL is already set', async () => {
     const home = tempHome()
     fs.writeFileSync(gatewayConfigPath(home), JSON.stringify({ providers: [{ id: 'x', baseUrl: 'http://x', apiKey: '', models: ['m'] }] }))
-    const embedded = await startEmbeddedGateway(home, { DS_AGENT_GATEWAY_URL: 'http://127.0.0.1:9999' } as NodeJS.ProcessEnv)
+    const embedded = await startEmbeddedGateway(home, { LOFIBOT_GATEWAY_URL: 'http://127.0.0.1:9999' } as NodeJS.ProcessEnv)
     expect(embedded).toBeUndefined()
   })
 

@@ -1,7 +1,7 @@
 node_modules
 dist
 coverage
-.ds-agent
+.lofibot*
 .ds-agent*
 *.log
 uploads

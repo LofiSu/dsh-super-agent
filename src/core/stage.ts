@@ -34,7 +34,7 @@ export function executionState(ticket: Ticket): ExecutionState {
 }
 
 /**
- * Legacy compact label used by `ds-agent tasks` and the Watchdog. Keep the
+ * Legacy compact label used by `lofibot tasks` and the Watchdog. Keep the
  * `group/state` shape while sourcing it from `executionState`.
  */
 export function ticketStage(ticket: Ticket): string {

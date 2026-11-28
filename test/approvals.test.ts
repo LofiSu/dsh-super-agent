@@ -540,7 +540,7 @@ describe('approval CLI', () => {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        DS_AGENT_HOME: home,
+        LOFIBOT_HOME: home,
         NODE_NO_WARNINGS: '1',
       },
     })
@@ -548,7 +548,7 @@ describe('approval CLI', () => {
   }
 
   function databaseHash(home: string): string {
-    return createHash('sha256').update(fs.readFileSync(path.join(home, 'ds-agent.db'))).digest('hex')
+    return createHash('sha256').update(fs.readFileSync(path.join(home, 'lofibot.db'))).digest('hex')
   }
 
   function seed(home: string): string {
@@ -767,7 +767,7 @@ describe('approval hold end to end', () => {
     runtime.ingest(imTrigger({
       id: 'trg_approval',
       thread: 'topic/approval',
-      text: '@ds-agent please publish the release notes',
+      text: '@lofibot please publish the release notes',
     }))
     await runtime.jobsSettled()
 
@@ -803,7 +803,7 @@ describe('approval hold end to end', () => {
     runtime.ingest(imTrigger({
       id: 'trg_forge_one',
       thread: 'topic/forge',
-      text: '@ds-agent please publish the release notes',
+      text: '@lofibot please publish the release notes',
     }))
     await runtime.jobsSettled()
     const [ticket] = runtime.store.listDocs<Ticket>('ticket')
@@ -813,7 +813,7 @@ describe('approval hold end to end', () => {
     runtime.ingest(imTrigger({
       id: 'trg_forge_two',
       thread: 'topic/forge',
-      text: '@ds-agent approve appr_1 yes go ahead',
+      text: '@lofibot approve appr_1 yes go ahead',
     }))
     await runtime.jobsSettled()
 
@@ -857,7 +857,7 @@ describe('approval hold end to end', () => {
     runtime.ingest(imTrigger({
       id: 'trg_batch',
       thread: 'topic/batch',
-      text: '@ds-agent please publish the release notes',
+      text: '@lofibot please publish the release notes',
     }))
     await runtime.jobsSettled()
 

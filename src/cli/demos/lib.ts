@@ -27,18 +27,18 @@ import type { Store } from '../../store/sqlite.ts'
  * runs the live model, and drains replies through a real outbox adapter.
  */
 
-export const DEFAULT_LOG_DIR = '/tmp/ds-agent-live-e2e-logs/demos'
+export const DEFAULT_LOG_DIR = '/tmp/lofibot-live-e2e-logs/demos'
 
 export function demoLogDir(): string {
-  return process.env.DS_AGENT_DEMO_LOG_DIR ?? DEFAULT_LOG_DIR
+  return process.env.LOFIBOT_DEMO_LOG_DIR ?? DEFAULT_LOG_DIR
 }
 
 export function demoModel(): Model {
   const live = resolveLiveApi()
   if (!live) {
     throw new Error(
-      'These demos require a live OpenAI-compatible model. Set DS_AGENT_API_BASE and '
-      + 'DS_AGENT_API_KEY (Magpie: http://127.0.0.1:3425/v1 + magpie). MockModel is forbidden.',
+      'These demos require a live OpenAI-compatible model. Set LOFIBOT_API_BASE and '
+      + 'LOFIBOT_API_KEY (Magpie: http://127.0.0.1:3425/v1 + magpie). MockModel is forbidden.',
     )
   }
   const model = requireLiveModelFromEnv()
@@ -248,7 +248,7 @@ export async function closeGithubIssues(
   issues: { number: number }[],
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  if (env.DS_AGENT_GH_KEEP === '1') return
+  if (env.LOFIBOT_GH_KEEP === '1') return
   for (const issue of issues) {
     try {
       await github.updateIssue(issue.number, { state: 'closed' })

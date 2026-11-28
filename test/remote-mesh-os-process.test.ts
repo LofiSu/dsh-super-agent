@@ -32,14 +32,14 @@ function childEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    DS_AGENT_HOME: workerHome,
+    LOFIBOT_HOME: workerHome,
     NODE_NO_WARNINGS: '1',
-    DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-    DS_AGENT_MESH_WORKER_MARKER: marker,
-    DS_AGENT_MESH_HOST_RESULT_URL: hostResultUrl,
-    DS_AGENT_MESH_WORKER_PEER_ID: WORKER_PEER,
-    DS_AGENT_MESH_HOST_PEER_ID: HOST_PEER,
-    DS_AGENT_MESH_SECRET: SECRET,
+    LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+    LOFIBOT_MESH_WORKER_MARKER: marker,
+    LOFIBOT_MESH_HOST_RESULT_URL: hostResultUrl,
+    LOFIBOT_MESH_WORKER_PEER_ID: WORKER_PEER,
+    LOFIBOT_MESH_HOST_PEER_ID: HOST_PEER,
+    LOFIBOT_MESH_SECRET: SECRET,
     ...extra,
   }
 }
@@ -220,7 +220,7 @@ describe('remote mesh OS process boundary (loopback)', () => {
     const results: RemoteMeshAssignmentResultEvent[] = []
     const hostResultUrl = await listenHost(event => { results.push(event) })
 
-    spawnWorker(workerHome, hostResultUrl, { DS_AGENT_MESH_WORKER_MODE: 'slow-result' })
+    spawnWorker(workerHome, hostResultUrl, { LOFIBOT_MESH_WORKER_MODE: 'slow-result' })
     const { url: workerUrl } = await waitForMarker(workerHome)
 
     const registry = new RemoteMeshRegistry({ localPeerId: HOST_PEER })
@@ -258,7 +258,7 @@ describe('remote mesh OS process boundary (loopback)', () => {
     const workerHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-mesh-worker-kill-'))
     homes.push(workerHome)
     const hostResultUrl = await listenHost(() => undefined)
-    const child = spawnWorker(workerHome, hostResultUrl, { DS_AGENT_MESH_WORKER_MODE: 'hang' })
+    const child = spawnWorker(workerHome, hostResultUrl, { LOFIBOT_MESH_WORKER_MODE: 'hang' })
     const { url: workerUrl, pid } = await waitForMarker(workerHome)
 
     const registry = new RemoteMeshRegistry({ localPeerId: HOST_PEER })

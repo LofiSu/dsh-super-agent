@@ -61,7 +61,7 @@ jobs:
 
       - name: Format check
         env:
-          DS_AGENT_FORMAT_BASE: origin/main
+          LOFIBOT_FORMAT_BASE: origin/main
         run: pnpm format:check
 
       - name: Typecheck
@@ -70,10 +70,10 @@ jobs:
       - name: Offline test
         env:
           CI: "true"
-          DS_AGENT_ALLOW_MOCK_FIXTURE: "1"
-          DS_AGENT_API_BASE: ""
-          DS_AGENT_API_KEY: ""
-          DS_AGENT_PROVIDER: ""
+          LOFIBOT_ALLOW_MOCK_FIXTURE: "1"
+          LOFIBOT_API_BASE: ""
+          LOFIBOT_API_KEY: ""
+          LOFIBOT_PROVIDER: ""
           DEEPSEEK_API_KEY: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
@@ -101,8 +101,8 @@ jobs:
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ds-agent-package-${{ github.run_id }}
+          name: lofibot-package-${{ github.run_id }}
           if-no-files-found: error
           path: |
-            ds-agent-*.tgz
+            lofibot-*.tgz
             release-pack.json

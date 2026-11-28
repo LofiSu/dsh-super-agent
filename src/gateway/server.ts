@@ -248,7 +248,7 @@ interface ProtocolOptions {
  */
 export async function startGatewayServer(config: GatewayConfig): Promise<GatewayHandle> {
   if (!config.token || config.token.trim() === '') {
-    throw new Error('gateway token must not be empty; set --token or DS_AGENT_GATEWAY_TOKEN')
+    throw new Error('gateway token must not be empty; set --token or LOFIBOT_GATEWAY_TOKEN')
   }
   const router = new GatewayRouter(config.providers, config.defaultModel, () => Date.now(), config.aliases ?? {})
   const metrics = new GatewayMetrics()

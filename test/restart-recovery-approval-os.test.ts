@@ -10,7 +10,7 @@ const children: ChildProcess[] = []
 const homes: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-approval-os-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-approval-os-'))
   homes.push(dir)
   return dir
 }
@@ -27,9 +27,9 @@ function spawnChild(home: string): ChildProcess {
       cwd: process.cwd(),
       env: {
         ...process.env,
-        DS_AGENT_HOME: home,
+        LOFIBOT_HOME: home,
         NODE_NO_WARNINGS: '1',
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

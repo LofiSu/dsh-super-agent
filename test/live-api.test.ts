@@ -35,18 +35,18 @@ describe('resolveLiveApi', () => {
   it('treats blank values as unset', () => {
     expect(resolveLiveApi({
       OPENAI_API_KEY: '   ',
-      DS_AGENT_API_BASE: '',
-      DS_AGENT_API_KEY: '\n',
-      DS_AGENT_PROVIDER: '  ',
+      LOFIBOT_API_BASE: '',
+      LOFIBOT_API_KEY: '\n',
+      LOFIBOT_PROVIDER: '  ',
     })).toBeNull()
   })
 
   it('keeps the explicit base/key pair on HttpOpenAI with the deepseek-chat default', () => {
     const live = resolveLiveApi({
-      DS_AGENT_API_BASE: 'http://127.0.0.1:9/v1',
-      DS_AGENT_API_KEY: 'test-key',
+      LOFIBOT_API_BASE: 'http://127.0.0.1:9/v1',
+      LOFIBOT_API_KEY: 'test-key',
       OPENAI_API_KEY: 'other',
-      DS_AGENT_PROVIDER: 'openai',
+      LOFIBOT_PROVIDER: 'openai',
     })
     expect(live).toEqual({
       provider: 'custom',
@@ -55,12 +55,12 @@ describe('resolveLiveApi', () => {
       model: 'deepseek-chat',
     })
     expect(createModelFromEnv({
-      DS_AGENT_API_BASE: 'http://127.0.0.1:9/v1',
-      DS_AGENT_API_KEY: 'test-key',
+      LOFIBOT_API_BASE: 'http://127.0.0.1:9/v1',
+      LOFIBOT_API_KEY: 'test-key',
     })).toBeInstanceOf(HttpOpenAI)
     const required = requireLiveModelFromEnv({
-      DS_AGENT_API_BASE: 'https://api.openai.com/v1',
-      DS_AGENT_API_KEY: 'test-key',
+      LOFIBOT_API_BASE: 'https://api.openai.com/v1',
+      LOFIBOT_API_KEY: 'test-key',
     })
     expect(required.name).toBe('HttpOpenAI')
   })
@@ -81,9 +81,9 @@ describe('resolveLiveApi', () => {
       DEEPSEEK_API_BASE: 'https://deepseek.internal/v1',
       DEEPSEEK_MODEL: 'deepseek-internal',
     })).toMatchObject({ base: 'https://deepseek.internal/v1', model: 'deepseek-internal' })
-    // A DS_AGENT_PROVIDER preset keeps its overrides too.
+    // A LOFIBOT_PROVIDER preset keeps its overrides too.
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'openai',
+      LOFIBOT_PROVIDER: 'openai',
       OPENAI_API_KEY: 'k',
       OPENAI_API_BASE: 'https://gateway.example/v1',
     })).toMatchObject({ provider: 'openai', base: 'https://gateway.example/v1' })
@@ -91,7 +91,7 @@ describe('resolveLiveApi', () => {
     expect(resolveLiveApi({
       OPENAI_API_KEY: 'k',
       OPENAI_MODEL: 'provider-model',
-      DS_AGENT_MODEL: 'generic-model',
+      LOFIBOT_MODEL: 'generic-model',
     })?.model).toBe('generic-model')
     // ANTHROPIC_BASE_URL addresses the native Messages API; using it here would
     // drop the /v1 prefix and break /chat/completions. Only the OpenAI-compatible
@@ -106,31 +106,31 @@ describe('resolveLiveApi', () => {
     })).toMatchObject({ base: 'https://anthropic-proxy.example/v1' })
   })
 
-  it('prefers DS_AGENT_API_MODEL, then DS_AGENT_MODEL', () => {
+  it('prefers LOFIBOT_API_MODEL, then LOFIBOT_MODEL', () => {
     expect(resolveLiveApi({
-      DS_AGENT_API_BASE: 'https://api.deepseek.com',
-      DS_AGENT_API_KEY: 'k',
-      DS_AGENT_API_MODEL: 'deepseek-v4-pro',
-      DS_AGENT_MODEL: 'ignored',
+      LOFIBOT_API_BASE: 'https://api.deepseek.com',
+      LOFIBOT_API_KEY: 'k',
+      LOFIBOT_API_MODEL: 'deepseek-v4-pro',
+      LOFIBOT_MODEL: 'ignored',
     })?.model).toBe('deepseek-v4-pro')
     expect(resolveLiveApi({
-      DS_AGENT_API_BASE: 'https://api.deepseek.com',
-      DS_AGENT_API_KEY: 'k',
-      DS_AGENT_MODEL: 'deepseek-chat',
+      LOFIBOT_API_BASE: 'https://api.deepseek.com',
+      LOFIBOT_API_KEY: 'k',
+      LOFIBOT_MODEL: 'deepseek-chat',
     })?.model).toBe('deepseek-chat')
     expect(resolveLiveApi({
       MOONSHOT_API_KEY: 'k',
-      DS_AGENT_API_MODEL: 'kimi-k3.1-pro-highspeed',
+      LOFIBOT_API_MODEL: 'kimi-k3.1-pro-highspeed',
     })?.model).toBe('kimi-k3.1-pro-highspeed')
   })
 
   it('refuses MockModel when only one of base or key is set', () => {
-    expect(() => resolveLiveApi({ DS_AGENT_API_KEY: 'k', OPENAI_API_KEY: 'other' }))
-      .toThrow(/DS_AGENT_API_KEY is set but DS_AGENT_API_BASE is missing; refusing MockModel/)
-    expect(() => resolveLiveApi({ DS_AGENT_API_BASE: 'https://api.deepseek.com' }))
-      .toThrow(/DS_AGENT_API_BASE is set but DS_AGENT_API_KEY is missing; refusing MockModel/)
-    expect(() => createModelFromEnv({ DS_AGENT_API_KEY: 'k' })).toThrow(/refusing MockModel/)
-    expect(() => demoModel({ DS_AGENT_API_BASE: 'https://api.deepseek.com' })).toThrow(/refusing MockModel/)
+    expect(() => resolveLiveApi({ LOFIBOT_API_KEY: 'k', OPENAI_API_KEY: 'other' }))
+      .toThrow(/LOFIBOT_API_KEY is set but LOFIBOT_API_BASE is missing; refusing MockModel/)
+    expect(() => resolveLiveApi({ LOFIBOT_API_BASE: 'https://api.deepseek.com' }))
+      .toThrow(/LOFIBOT_API_BASE is set but LOFIBOT_API_KEY is missing; refusing MockModel/)
+    expect(() => createModelFromEnv({ LOFIBOT_API_KEY: 'k' })).toThrow(/refusing MockModel/)
+    expect(() => demoModel({ LOFIBOT_API_BASE: 'https://api.deepseek.com' })).toThrow(/refusing MockModel/)
   })
 
   it('maps each provider key to its OpenAI-compatible base without calling the network', () => {
@@ -182,9 +182,9 @@ describe('resolveLiveApi', () => {
     })?.provider).toBe('openai')
   })
 
-  it('lets DS_AGENT_PROVIDER select a preset, including aliases', () => {
+  it('lets LOFIBOT_PROVIDER select a preset, including aliases', () => {
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'kimi',
+      LOFIBOT_PROVIDER: 'kimi',
       OPENAI_API_KEY: 'oa',
       KIMI_API_KEY: 'kimi-key',
     })).toMatchObject({
@@ -194,27 +194,27 @@ describe('resolveLiveApi', () => {
       model: 'kimi-k3.1-pro',
     })
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'Grok',
+      LOFIBOT_PROVIDER: 'Grok',
       GROK_API_KEY: 'grok-key',
       OPENAI_API_KEY: 'oa',
     })?.provider).toBe('xai')
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'glm',
+      LOFIBOT_PROVIDER: 'glm',
       GLM_API_KEY: 'glm-key',
     })).toMatchObject({ provider: 'zhipu', base: 'https://open.bigmodel.cn/api/paas/v4' })
-    expect(resolveLiveApi({ DS_AGENT_PROVIDER: 'google', GOOGLE_API_KEY: 'g' })?.provider).toBe('gemini')
-    expect(resolveLiveApi({ DS_AGENT_PROVIDER: 'claude', ANTHROPIC_API_KEY: 'a' })?.provider).toBe('anthropic')
+    expect(resolveLiveApi({ LOFIBOT_PROVIDER: 'google', GOOGLE_API_KEY: 'g' })?.provider).toBe('gemini')
+    expect(resolveLiveApi({ LOFIBOT_PROVIDER: 'claude', ANTHROPIC_API_KEY: 'a' })?.provider).toBe('anthropic')
   })
 
-  it('uses the provider key before DS_AGENT_API_KEY when a preset is selected', () => {
+  it('uses the provider key before LOFIBOT_API_KEY when a preset is selected', () => {
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'moonshot',
+      LOFIBOT_PROVIDER: 'moonshot',
       MOONSHOT_API_KEY: 'moon',
-      DS_AGENT_API_KEY: 'generic',
+      LOFIBOT_API_KEY: 'generic',
     })?.apiKey).toBe('moon')
     expect(resolveLiveApi({
-      DS_AGENT_PROVIDER: 'moonshot',
-      DS_AGENT_API_KEY: 'generic',
+      LOFIBOT_PROVIDER: 'moonshot',
+      LOFIBOT_API_KEY: 'generic',
     })).toMatchObject({
       provider: 'moonshot',
       base: 'https://api.moonshot.cn/v1',
@@ -223,9 +223,9 @@ describe('resolveLiveApi', () => {
   })
 
   it('throws for an unknown provider, a provider with no key, and custom without a pair', () => {
-    expect(() => resolveLiveApi({ DS_AGENT_PROVIDER: 'nope', OPENAI_API_KEY: 'k' })).toThrow(/Unknown DS_AGENT_PROVIDER/)
-    expect(() => resolveLiveApi({ DS_AGENT_PROVIDER: 'zhipu' })).toThrow(/no API key/)
-    expect(() => resolveLiveApi({ DS_AGENT_PROVIDER: 'custom' })).toThrow(/DS_AGENT_PROVIDER=custom/)
+    expect(() => resolveLiveApi({ LOFIBOT_PROVIDER: 'nope', OPENAI_API_KEY: 'k' })).toThrow(/Unknown LOFIBOT_PROVIDER/)
+    expect(() => resolveLiveApi({ LOFIBOT_PROVIDER: 'zhipu' })).toThrow(/no API key/)
+    expect(() => resolveLiveApi({ LOFIBOT_PROVIDER: 'custom' })).toThrow(/LOFIBOT_PROVIDER=custom/)
     expect(() => requireLiveModelFromEnv({})).toThrow(/No live model configured; refusing MockModel/)
   })
 

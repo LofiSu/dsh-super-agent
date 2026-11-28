@@ -1,7 +1,7 @@
 # Upgrade and rollback
 
-This runbook covers an existing SQLite state directory (`DS_AGENT_HOME`, or
-`./.ds-agent` by default). The database is a single file, `ds-agent.db`, plus
+This runbook covers an existing SQLite state directory (`LOFIBOT_HOME`, or
+`./.lofibot` by default). The database is a single file, `lofibot.db`, plus
 SQLite's transient `-wal` and `-shm` sidecars while the process is running.
 
 The store migrates itself when it opens. There is no separate migrate command.
@@ -29,7 +29,7 @@ library version, is what this build checks.
 
 `new Store(home)`:
 
-1. Creates `home` if needed and opens `home/ds-agent.db`.
+1. Creates `home` if needed and opens `home/lofibot.db`.
 2. Calls `migrate()`:
    - reads `MAX(version)` from `schema_migrations` when the ledger exists;
    - refuses a version above `LATEST_SCHEMA_VERSION` before taking a write
@@ -58,25 +58,29 @@ whose recorded version is above this build's maximum. The error names the
 found and supported versions. Upgrade the binary, or restore an older backup,
 rather than editing `schema_migrations` by hand.
 
+## Migrate a pre-LofiBot installation
+
+Follow the [install guide](install.md#upgrading-an-existing-checkout) to use
+separate state directories for the old and new releases. Keep the old directory
+as a pre-cutover snapshot. The old executable expects `ds-agent.db` and the new
+one expects `lofibot.db`.
+
+To roll back once LofiBot has accepted traffic, stop it and take a LofiBot
+snapshot first. If the old executable supports that snapshot's schema, restore
+it with the old CLI into the old state directory and verify it before resuming.
+If the schema is newer than the old executable supports, use the pre-cutover
+snapshot and account for any changes made after cutover.
+
 ## Back up before upgrading
 
-Stop the ds-agent process first. A backup can snapshot a live WAL database,
+Stop the lofibot process first. A backup can snapshot a live WAL database,
 but the upgrade procedure is easier to verify and roll back with a stopped
 process.
 
-Once the CLI integration lands, the command is:
+Use the built CLI or prefix this command with `pnpm` in a source checkout.
 
 ```bash
-ds-agent backup --out "$HOME/ds-agent-backup-$(date +%Y%m%dT%H%M%SZ).db"
-```
-
-In this branch the command bodies and standalone entry ship before the
-`src/cli/main.ts` dispatch, so the equivalent is:
-
-```bash
-npx tsx src/cli/backup.ts \
-  --home "${DS_AGENT_HOME:-./.ds-agent}" \
-  --out "$HOME/ds-agent-backup-$(date +%Y%m%dT%H%M%SZ).db"
+lofibot backup --out "$HOME/lofibot-backup-$(date +%Y%m%dT%H%M%SZ).db"
 ```
 
 `backupStore` / `runBackupCommand` behavior:
@@ -101,27 +105,27 @@ npx tsx src/cli/backup.ts \
 Verify the snapshot before relying on it:
 
 ```bash
-sqlite3 "$HOME/ds-agent-backup-YYYYMMDDTHHMMSSZ.db" \
+sqlite3 "$HOME/lofibot-backup-YYYYMMDDTHHMMSSZ.db" \
   'PRAGMA integrity_check; SELECT MAX(version) FROM schema_migrations;'
 ```
 
 ## Upgrade procedure
 
-1. Stop every ds-agent process using the state directory. Check for a running
+1. Stop every lofibot process using the state directory. Check for a running
    `serve`, `gateway`, or channel loop.
 2. Back up as above and verify `integrity_check` returns `ok`.
 3. Install or build the new binary (`git checkout <release>`, `pnpm install
    --frozen-lockfile`, `pnpm build`, or install the release tarball).
-4. Start one short-lived command that opens the store, such as `ds-agent
-   status` or `ds-agent health`. This applies pending migrations.
+4. Start one short-lived command that opens the store, such as `lofibot
+   status` or `lofibot health`. This applies pending migrations.
 5. Confirm the schema version and data:
 
    ```bash
-   sqlite3 "${DS_AGENT_HOME:-./.ds-agent}/ds-agent.db" \
+   sqlite3 "${LOFIBOT_HOME:-./.lofibot}/lofibot.db" \
      'SELECT MAX(version) FROM schema_migrations;'
    ```
 
-6. Run `ds-agent health` and a normal command before restarting the daemon.
+6. Run `lofibot health` and a normal command before restarting the daemon.
 7. Keep the pre-upgrade backup until the new version has served traffic.
 
 ## Prompt files
@@ -136,12 +140,12 @@ After upgrading:
 - Move standing house rules from `AGENTS.md` to `INSTRUCTIONS.md`. `AGENTS.md`
   now holds durable operating notes about the workspace; `PERSONA.md` and
   `AGENTS.md` still load, but their roles changed.
-- `DS_AGENT_PERSONA` still seeds the soul; prefer `DS_AGENT_SOUL`.
-  `DS_AGENT_INSTRUCTIONS` now seeds `INSTRUCTIONS.md`.
+- `LOFIBOT_PERSONA` still seeds the soul; prefer `LOFIBOT_SOUL`.
+  `LOFIBOT_INSTRUCTIONS` now seeds `INSTRUCTIONS.md`.
 - Optional files (`IDENTITY.md`, `MEMORY.md`, `TOOLS.md`, `HEARTBEAT.md`,
   `PROACTIVE_PREFERENCES.md`) are new and can stay absent.
 - Prompt files are read once at startup. Restart the agent after editing them.
-  `ds-agent prompt --layers` shows which file supplied each section.
+  `lofibot prompt --layers` shows which file supplied each section.
 
 ## Restore
 
@@ -150,18 +154,11 @@ The restore path probes for an active write lock and fails with a clear message
 when one is held, but an idle process can hold no lock at the instant checked;
 the probe is not a substitute for stopping it.
 
-Replacing an existing `ds-agent.db` requires `--force`. Without it, restore
+Replacing an existing `lofibot.db` requires `--force`. Without it, restore
 refuses rather than silently overwriting state.
 
 ```bash
-# Once wired:
-ds-agent restore --input "$HOME/ds-agent-backup-YYYYMMDDTHHMMSSZ.db" --force
-
-# In this branch:
-npx tsx src/cli/backup.ts \
-  --home "${DS_AGENT_HOME:-./.ds-agent}" \
-  --input "$HOME/ds-agent-backup-YYYYMMDDTHHMMSSZ.db" \
-  --force
+lofibot restore "$HOME/lofibot-backup-YYYYMMDDTHHMMSSZ.db" --force
 ```
 
 `restoreStore` / `runRestoreCommand` behavior, in order:
@@ -177,11 +174,11 @@ npx tsx src/cli/backup.ts \
 4. Copies the backup to a temporary file in the state home, fsyncs it, and
    opens it read-only to verify `integrity_check` and the expected schema
    version. The candidate must pass before the old set moves.
-5. With `force`, moves the old `ds-agent.db` and any `-wal`/`-shm` sidecars
+5. With `force`, moves the old `lofibot.db` and any `-wal`/`-shm` sidecars
    together into a private `<home>/backups/` directory (mode `0700`) as
    `pre-restore-<timestamp>.db`, `.db-wal`, and `.db-shm` (mode `0600`). The
    old set is never deleted before the new file is ready.
-6. Renames the verified temporary file over `ds-agent.db` and fsyncs the
+6. Renames the verified temporary file over `lofibot.db` and fsyncs the
    directory. If the install fails, the old database and sidecars are moved
    back from the pre-restore set and the store remains recoverable.
 7. Prints the backup's SHA-256 in the result for audit logs.
@@ -204,7 +201,7 @@ refuses to snapshot a live store recorded above this build's supported schema.
 Run these with the process stopped, so the WAL sidecars are quiescent:
 
 ```bash
-DB="${DS_AGENT_HOME:-./.ds-agent}/ds-agent.db"
+DB="${LOFIBOT_HOME:-./.lofibot}/lofibot.db"
 
 # Ledger and integrity
 sqlite3 "$DB" 'PRAGMA journal_mode;'
@@ -227,16 +224,14 @@ Expected: `journal_mode` is `wal` for a store this build has opened;
 `1` through `5`. A legacy backup may have an empty or missing ledger until its next
 open.
 
-## Rollback checklist
+## Rollback checklist for LofiBot releases
 
 1. Stop the process.
 2. Install the previous binary/tarball.
 3. If the previous binary supports the current schema version (table above),
    start it; no restore is needed.
 4. If the schema advanced past the previous binary's maximum, restore the
-   pre-upgrade backup with the previous binary's `restore --input ... --force`
-   path (or by replacing `ds-agent.db` while stopped), then remove any stale
-   `-wal`/`-shm` files. Alternatively, use the `backups/pre-restore-*.db*`
-   set retained by the last restore.
-5. Verify with the queries above and `ds-agent health`.
+   pre-upgrade backup with the previous binary's `restore <backup> --force`
+   command. The restore operation archives the existing database and sidecars.
+5. Verify with the queries above and `lofibot health`.
 6. Never delete or rewrite `schema_migrations` to force a downgrade.

@@ -7,7 +7,7 @@ import path from 'node:path'
 const dirs: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-skills-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-skills-'))
   dirs.push(dir)
   return dir
 }
@@ -26,12 +26,12 @@ function runCli(home: string, args: string[]): { status: number | null; stdout: 
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' },
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
-describe('ds-agent skills', () => {
+describe('lofibot skills', () => {
   it('lists the configured playbooks', () => {
     const home = tempHome()
     writeSkill(home, 'deploy', 'Check the deploy health.')

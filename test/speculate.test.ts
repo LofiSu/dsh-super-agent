@@ -170,7 +170,7 @@ describe('speculative discard', () => {
       human: true,
       addressed: 'mention',
       at: '2026-10-31T00:01:00.000Z',
-      text: '@ds-agent any update on the flaky test',
+      text: '@lofibot any update on the flaky test',
       channel: { source: 'github', thread: 'pr/7' },
       meta: {},
     })
@@ -265,7 +265,7 @@ describe('ended tickets', () => {
     engine.receive(imTrigger({
       id: 'trg_normal_stop',
       thread: 'topic/normal-stop',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
       at: '2026-10-31T00:00:00.000Z',
     }))
     const ticketId = engine.evaluateDue()[0]!.ticketId!
@@ -284,7 +284,7 @@ describe('ended tickets', () => {
     engine.receive(imTrigger({
       id: 'trg_normal',
       thread: 'topic/ended',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
       at: '2026-10-31T00:00:00.000Z',
     }))
     const ticketId = engine.evaluateDue()[0]!.ticketId!
@@ -397,9 +397,9 @@ describe('speculative workdir', () => {
     expect(fs.readFileSync(path.join(scratch, 'bash.txt'), 'utf8')).toBe('from-bash\n')
     expect(fs.existsSync(path.join(durable, 'secret.txt'))).toBe(false)
 
-    await expect(env.bash(sessionId, 'echo hi > /tmp/ds-agent-speculative-escape', { isolated: true }))
+    await expect(env.bash(sessionId, 'echo hi > /tmp/lofibot-speculative-escape', { isolated: true }))
       .rejects.toThrow(/isolated workdir/)
-    expect(fs.existsSync('/tmp/ds-agent-speculative-escape')).toBe(false)
+    expect(fs.existsSync('/tmp/lofibot-speculative-escape')).toBe(false)
 
     // Quoted absolute paths and shell expansion must not slip past the guard.
     await expect(env.bash(sessionId, "cat '/etc/passwd'", { isolated: true }))
@@ -577,7 +577,7 @@ describe('speculative workdir', () => {
     engine.receive(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
       at: '2026-10-31T00:00:00.000Z',
     }))
     const ticketId = engine.evaluateDue()[0]!.ticketId!

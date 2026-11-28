@@ -14,7 +14,7 @@ const closedChildren = new WeakSet<ChildProcess>()
 const homes: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-delegate-os-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-delegate-os-'))
   homes.push(dir)
   return dir
 }
@@ -31,11 +31,11 @@ function spawnRecoveryChild(home: string, mode: 'seed' | 'restart', task: string
       cwd: process.cwd(),
       env: {
         ...process.env,
-        DS_AGENT_HOME: home,
-        DS_AGENT_DELEGATE_TASK: task,
-        DS_AGENT_RECOVERY_CHILD_MODE: mode,
+        LOFIBOT_HOME: home,
+        LOFIBOT_DELEGATE_TASK: task,
+        LOFIBOT_RECOVERY_CHILD_MODE: mode,
         NODE_NO_WARNINGS: '1',
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -90,7 +90,7 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
             // repository root. Keep this fixture path valid across that
             // boundary so the effect remains in-flight until SIGKILL.
             args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-            env: ['DS_AGENT_TEST_DELEGATE_PID_FILE'],
+            env: ['LOFIBOT_TEST_DELEGATE_PID_FILE'],
             timeoutMs: 60_000,
           },
           {
@@ -154,7 +154,7 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
       ],
       {
         cwd: process.cwd(),
-        env: { ...process.env, DS_AGENT_NODE: process.execPath },
+        env: { ...process.env, LOFIBOT_NODE: process.execPath },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
@@ -193,7 +193,7 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
           id: 'ipc-hold',
           command: process.execPath,
           args: [path.resolve(process.cwd(), 'test/fixtures/delegate-ipc-hold.mjs'), '{task}'],
-          env: ['DS_AGENT_TEST_DELEGATE_PID_FILE'],
+          env: ['LOFIBOT_TEST_DELEGATE_PID_FILE'],
           timeoutMs: 60_000,
         }],
       }),
@@ -242,9 +242,9 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
       env: {
         PATH: process.env.PATH ?? '',
         HOME: process.env.HOME ?? '',
-        DS_AGENT_TEST_DELEGATE_OWNER_FILE: path.join(home, 'missing', 'owner.json'),
-        DS_AGENT_TEST_DELEGATE_OWNER_ACK: path.join(home, 'owner.ack'),
-        DS_AGENT_TEST_DELEGATE_OWNER_PID_AUDIT: pidAudit,
+        LOFIBOT_TEST_DELEGATE_OWNER_FILE: path.join(home, 'missing', 'owner.json'),
+        LOFIBOT_TEST_DELEGATE_OWNER_ACK: path.join(home, 'owner.ack'),
+        LOFIBOT_TEST_DELEGATE_OWNER_PID_AUDIT: pidAudit,
       },
       workspace: () => path.join(home, 'workspace'),
     })
@@ -267,7 +267,7 @@ osFaultDescribe('delegate_agent OS fault boundary', () => {
     }
     const reg = new LocalAgentRegistry([slow], {
       env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
-      workspace: () => fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-ws-')),
+      workspace: () => fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-ws-')),
     })
     const pending = reg.run('slow', 'wait', 'worker_kill')
     try {

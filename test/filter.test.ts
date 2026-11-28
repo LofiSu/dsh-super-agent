@@ -34,7 +34,7 @@ function groupTrigger(input: {
     id: input.id,
     thread: 'chat/eng',
     actor: input.actor ?? 'alex',
-    text: input.text ?? '@ds-agent please fix the login timeout',
+    text: input.text ?? '@lofibot please fix the login timeout',
   })
   return {
     ...base,
@@ -80,7 +80,7 @@ describe('two-level filter', () => {
     const mention = imTrigger({
       id: 'ok',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     })
     expect(filterTrigger(mention, semanticOnly)).toMatchObject({ action: 'pass', strength: 'explicit', layer: 'semantic' })
     const ci = filterTrigger({
@@ -104,7 +104,7 @@ describe('two-level filter', () => {
     }
     expect(filterTrigger(direct, semanticOnly)).toMatchObject({ action: 'pass', strength: 'explicit' })
     const group = {
-      ...imTrigger({ id: 'grp', thread: 'chat/g1', text: '@ds-agent haha', addressed: true }),
+      ...imTrigger({ id: 'grp', thread: 'chat/g1', text: '@lofibot haha', addressed: true }),
       addressed: 'mention' as const,
       channel: { source: 'imessage' as const, thread: 'chat:g1', address: { group: 'g1' } },
     }
@@ -121,7 +121,7 @@ describe('two-level filter', () => {
       actor: { source: 'email', id: 'a' },
       human: true,
       at: '2026-10-31T00:00:00.000Z',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
       meta: {},
     }, semanticOnly)
     expect(email.layer).toBe('fast')
@@ -159,17 +159,17 @@ describe('two-level filter', () => {
     const trigger = imTrigger({
       id: 'admit-unset',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     })
     expect(fastPath(trigger)).toEqual({ pass: true, reason: 'mention-or-direct' })
     expect(fastPath(trigger, {})).toEqual({ pass: true, reason: 'mention-or-direct' })
     expect(fastPath(trigger, { actors: [] })).toEqual({ pass: true, reason: 'mention-or-direct' })
   })
 
-  it('uses HttpOpenAI when DS_AGENT_API_BASE and DS_AGENT_API_KEY are both set', () => {
+  it('uses HttpOpenAI when LOFIBOT_API_BASE and LOFIBOT_API_KEY are both set', () => {
     expect(createModelFromEnv({})).toMatchObject({ name: expect.stringMatching(/MockModel|HttpOpenAI/) })
     // Empty explicit env still allows Mock via createModelFromEnv; demo/fixtures refuse it.
-    expect(createModelFromEnv({ DS_AGENT_API_BASE: 'http://127.0.0.1:9/v1', DS_AGENT_API_KEY: 'test' }).name).toBe('HttpOpenAI')
+    expect(createModelFromEnv({ LOFIBOT_API_BASE: 'http://127.0.0.1:9/v1', LOFIBOT_API_KEY: 'test' }).name).toBe('HttpOpenAI')
   })
 
   it('resolves DEEPSEEK_API_KEY / OPENROUTER / OPENAI / GROK without Mock', () => {
@@ -189,7 +189,7 @@ describe('admission rules (T16)', () => {
       id: 'actor-alex',
       thread: 'topic/bug-login',
       actor: 'alex',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     })
     expect(fastPath(trigger, { actors: ['bob'] }))
       .toEqual({ pass: false, reason: 'actor-not-allowlisted' })
@@ -199,7 +199,7 @@ describe('admission rules (T16)', () => {
       id: 'actor-bob',
       thread: 'topic/bug-login',
       actor: 'bob',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     }), semanticOnly, { actors: ['bob'] }).action).toBe('pass')
   })
 
@@ -207,12 +207,12 @@ describe('admission rules (T16)', () => {
     const self = imTrigger({
       id: 'self',
       thread: 'topic/bug-login',
-      actor: 'ds-agent-bot',
-      text: '@ds-agent please fix the login timeout',
+      actor: 'lofibot-bot',
+      text: '@lofibot please fix the login timeout',
     })
     expect(filterTrigger(self, semanticOnly, {
-      actors: ['ds-agent-bot'],
-      dropSelf: ['ds-agent-bot'],
+      actors: ['lofibot-bot'],
+      dropSelf: ['lofibot-bot'],
     })).toMatchObject({ action: 'drop', layer: 'fast', reason: 'self-drop' })
   })
 
@@ -241,17 +241,17 @@ describe('admission rules (T16)', () => {
   it('wires actor/group/drop-self env into Runtime.ingest', async () => {
     runtime = freshRuntime({
       env: {
-        DS_AGENT_ACTOR_ALLOWLIST: ' bob , ,',
-        DS_AGENT_GROUP_ALLOWLIST: 'eng',
-        DS_AGENT_DROP_SELF: 'ds-agent-bot',
+        LOFIBOT_ACTOR_ALLOWLIST: ' bob , ,',
+        LOFIBOT_GROUP_ALLOWLIST: 'eng',
+        LOFIBOT_DROP_SELF: 'lofibot-bot',
       },
     })
     expect(runtime.ingest(groupTrigger({ id: 'env-alex', actor: 'alex', group: 'eng' }))).toBe('filtered')
     expect(runtime.ingest(groupTrigger({ id: 'env-bob-ok', actor: 'bob', group: 'eng' }))).toBe('stored')
     expect(runtime.ingest(groupTrigger({ id: 'env-bob-bad-group', actor: 'bob', group: 'random' }))).toBe('filtered')
-    expect(runtime.ingest(groupTrigger({ id: 'env-self', actor: 'ds-agent-bot', group: 'eng' }))).toBe('filtered')
+    expect(runtime.ingest(groupTrigger({ id: 'env-self', actor: 'lofibot-bot', group: 'eng' }))).toBe('filtered')
     const text = runtime.log.text()
-    expect(text).toContain('[ingress] admission actors=bob groups=eng dropSelf=ds-agent-bot')
+    expect(text).toContain('[ingress] admission actors=bob groups=eng dropSelf=lofibot-bot')
     expect(text).toContain('actor-not-allowlisted')
     expect(text).toContain('group-not-allowlisted')
     expect(text).toContain('self-drop')
@@ -259,7 +259,7 @@ describe('admission rules (T16)', () => {
 
   it('lets explicit RuntimeOptions.admission win over env', () => {
     runtime = freshRuntime({
-      env: { DS_AGENT_ACTOR_ALLOWLIST: 'bob' },
+      env: { LOFIBOT_ACTOR_ALLOWLIST: 'bob' },
       admission: { actors: ['alex'] },
     })
     expect(runtime.ingest(groupTrigger({ id: 'override-alex', actor: 'alex' }))).toBe('stored')

@@ -60,7 +60,7 @@ impl Bridge {
                 "Desktop is closing",
             ));
         }
-        let executable = std::env::var_os("DS_AGENT_DESKTOP_CLI");
+        let executable = std::env::var_os("LOFIBOT_DESKTOP_CLI");
         let mut command = executable.map_or_else(
             || {
                 let mut command = Command::new("node");
@@ -74,7 +74,7 @@ impl Bridge {
         let mut child = command
             .arg("desktop-bridge")
             .env(
-                "DS_AGENT_DESKTOP_PARENT_PID",
+                "LOFIBOT_DESKTOP_PARENT_PID",
                 std::process::id().to_string(),
             )
             .stdin(Stdio::piped())

@@ -72,7 +72,7 @@ const runtime = Runtime.create({
   jobDelayMs: 0,
   watchdogIntervalMs: 600_000,
   stuckMs: 600_000,
-  env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+  env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
 })
 
 try {

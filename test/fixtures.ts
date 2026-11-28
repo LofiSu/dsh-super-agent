@@ -5,18 +5,18 @@ import { MockModel, requireLiveModelFromEnv, type Model } from '../src/harness/m
 import { Runtime, type RuntimeOptions } from '../src/runtime.ts'
 
 export function tempHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-'))
 }
 
 function resolveFixtureModel(explicit?: Model, allowMockModel = false): Model {
   if (explicit) {
-    if (explicit.name === 'MockModel' && !allowMockModel && process.env.DS_AGENT_ALLOW_MOCK_FIXTURE !== '1') {
-      throw new Error('freshRuntime refuses MockModel; configure DS_AGENT_API_* for a live model')
+    if (explicit.name === 'MockModel' && !allowMockModel && process.env.LOFIBOT_ALLOW_MOCK_FIXTURE !== '1') {
+      throw new Error('freshRuntime refuses MockModel; configure LOFIBOT_API_* for a live model')
     }
     return explicit
   }
   // GitHub Actions offline gate only. Local default suite must use Magpie/live.
-  if (process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1') {
+  if (process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1') {
     return new MockModel()
   }
   return requireLiveModelFromEnv()
@@ -24,7 +24,7 @@ function resolveFixtureModel(explicit?: Model, allowMockModel = false): Model {
 
 /**
  * Default: live Magpie/DeepSeek Runtime (MockModel forbidden).
- * Set DS_AGENT_ALLOW_MOCK_FIXTURE=1 only for offline CI without a live API.
+ * Set LOFIBOT_ALLOW_MOCK_FIXTURE=1 only for offline CI without a live API.
  */
 export function freshRuntime(opts: Partial<RuntimeOptions> & { allowMockModel?: boolean } = {}): Runtime {
   const { model: explicitModel, jobDelayMs, watchdogIntervalMs, stuckMs, home, allowMockModel, ...rest } = opts

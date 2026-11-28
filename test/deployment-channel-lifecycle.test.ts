@@ -95,7 +95,7 @@ function runtime(): Runtime {
     model: new MockModel(),
     jobDelayMs: 0,
     watchdogIntervalMs: 60_000,
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_GROUP_ALLOWLIST: 'oc_test' },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_GROUP_ALLOWLIST: 'oc_test' },
   })
 }
 
@@ -110,8 +110,8 @@ function imessageRuntime(): Runtime {
     watchdogIntervalMs: 60_000,
     env: {
       ...process.env,
-      DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-      DS_AGENT_ACTOR_ALLOWLIST: IMESSAGE_HANDLE,
+      LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+      LOFIBOT_ACTOR_ALLOWLIST: IMESSAGE_HANDLE,
     },
   })
 }
@@ -137,7 +137,7 @@ function feishuTrigger(id: string, ms: number): Trigger {
     human: true,
     addressed: 'mention',
     at: new Date(ms).toISOString(),
-    text: '@ds-agent hi',
+    text: '@lofibot hi',
     channel: {
       source: 'im',
       thread: 'feishu:oc_test',
@@ -213,9 +213,9 @@ describe('deployment resident channel lifecycle', () => {
       watchdogIntervalMs: 60_000,
       env: {
         ...process.env,
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_test',
-        DS_AGENT_RESIDENT_INGRESS_LIMIT: '1',
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_test',
+        LOFIBOT_RESIDENT_INGRESS_LIMIT: '1',
       },
     })
     rt.start()
@@ -262,8 +262,8 @@ describe('deployment resident channel lifecycle', () => {
 
   it('feishu loop replays the uningested window after a saturation rejection', async () => {
     // `runFeishuLoop` reads the ingress cap from process.env.
-    const previousLimit = process.env.DS_AGENT_RESIDENT_INGRESS_LIMIT
-    process.env.DS_AGENT_RESIDENT_INGRESS_LIMIT = '1'
+    const previousLimit = process.env.LOFIBOT_RESIDENT_INGRESS_LIMIT
+    process.env.LOFIBOT_RESIDENT_INGRESS_LIMIT = '1'
     try {
       const rt = Runtime.create({
         home: tempHome(),
@@ -272,9 +272,9 @@ describe('deployment resident channel lifecycle', () => {
         watchdogIntervalMs: 60_000,
         env: {
           ...process.env,
-          DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-          DS_AGENT_GROUP_ALLOWLIST: 'oc_test',
-          DS_AGENT_RESIDENT_INGRESS_LIMIT: '1',
+          LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+          LOFIBOT_GROUP_ALLOWLIST: 'oc_test',
+          LOFIBOT_RESIDENT_INGRESS_LIMIT: '1',
         },
       })
       rt.start()
@@ -328,8 +328,8 @@ describe('deployment resident channel lifecycle', () => {
         .toEqual({ chatId: 'oc_test', lastCreateTimeMs: laterMs })
       await rt.finish()
     } finally {
-      if (previousLimit === undefined) delete process.env.DS_AGENT_RESIDENT_INGRESS_LIMIT
-      else process.env.DS_AGENT_RESIDENT_INGRESS_LIMIT = previousLimit
+      if (previousLimit === undefined) delete process.env.LOFIBOT_RESIDENT_INGRESS_LIMIT
+      else process.env.LOFIBOT_RESIDENT_INGRESS_LIMIT = previousLimit
     }
   })
 

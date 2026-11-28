@@ -33,7 +33,7 @@ describe('Runtime services', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     await settleWithDeadline(runtime, 90_000)
     expect(runtime.store.listDocs<Ticket>('ticket').length).toBeGreaterThan(0)
@@ -55,9 +55,9 @@ describe('Runtime services', () => {
     expect(runtime.workerMesh.pickNode('ticket_3')).toBeUndefined()
   })
 
-  it('accepts multiple filters from DS_AGENT_SHARDS and RuntimeOptions.routerShards', () => {
-    const previous = process.env.DS_AGENT_SHARDS
-    process.env.DS_AGENT_SHARDS = JSON.stringify([
+  it('accepts multiple filters from LOFIBOT_SHARDS and RuntimeOptions.routerShards', () => {
+    const previous = process.env.LOFIBOT_SHARDS
+    process.env.LOFIBOT_SHARDS = JSON.stringify([
       { id: 'env-multi', filters: ['source:github', 'thread:pr/9'], priority: 4 },
     ])
     try {
@@ -65,8 +65,8 @@ describe('Runtime services', () => {
         routerShards: [{ id: 'opt-multi', filters: ['source:im', 'thread:topic/x'], priority: 5 }],
       })
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_SHARDS
-      else process.env.DS_AGENT_SHARDS = previous
+      if (previous === undefined) delete process.env.LOFIBOT_SHARDS
+      else process.env.LOFIBOT_SHARDS = previous
     }
 
     expect(runtime.log.text()).toContain('[routing] shards configured count=1')

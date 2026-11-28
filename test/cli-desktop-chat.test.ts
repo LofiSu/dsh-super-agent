@@ -77,8 +77,8 @@ describe('desktop chat bridge', () => {
       env: {
         PATH: process.env.PATH,
         NODE_NO_WARNINGS: '1',
-        DS_AGENT_HOME: home,
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_HOME: home,
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
       },
       timeout: 10_000,
     })
@@ -115,8 +115,8 @@ describe('desktop chat bridge', () => {
         env: {
           PATH: process.env.PATH,
           NODE_NO_WARNINGS: '1',
-          DS_AGENT_HOME: home,
-          DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+          LOFIBOT_HOME: home,
+          LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
         },
         timeout: 30_000,
       })

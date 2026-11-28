@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe('section 7 metrics', () => {
   it('returns zeros when the state dir has no metrics file', () => {
-    expect(readMetrics(path.join('/tmp', 'ds-agent-metrics-missing'))).toEqual(emptySnapshot())
+    expect(readMetrics(path.join('/tmp', 'lofibot-metrics-missing'))).toEqual(emptySnapshot())
   })
 
   it('coalesces hot-path writes, writes atomically, and merges another process', () => {
@@ -90,12 +90,12 @@ describe('section 7 metrics', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
     expect(runtime.ingest(githubTrigger({
       id: 'trg_maybe',
@@ -190,7 +190,7 @@ describe('section 7 metrics', () => {
 
     const cli = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'metrics'], {
       cwd: path.resolve('.'),
-      env: { ...process.env, DS_AGENT_HOME: runtime.home },
+      env: { ...process.env, LOFIBOT_HOME: runtime.home },
       encoding: 'utf8',
     })
     expect(cli.status, cli.stderr).toBe(0)

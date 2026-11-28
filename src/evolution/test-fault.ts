@@ -4,7 +4,7 @@
  */
 export function assertEvolutionTestFault(home: string, phase: 'hang_after_claim'): never | void {
   if (process.env.CI !== 'true') return
-  if (process.env.DS_AGENT_EVOLUTION_TEST_FAULT !== phase) return
+  if (process.env.LOFIBOT_EVOLUTION_TEST_FAULT !== phase) return
   if (!home.includes('evo-fault-')) return
   if (phase === 'hang_after_claim') {
     process.exit(86)

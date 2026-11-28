@@ -25,7 +25,7 @@ can present to unlock anything.
    ask the question.
 3. The tool asks the Router to tell the owner what needs approval. The Router
    gets the action, the reason, and the approval id.
-4. The owner runs `ds-agent approvals`, then `ds-agent approve`, `deny`, or
+4. The owner runs `lofibot approvals`, then `lofibot approve`, `deny`, or
    `dismiss` with the ticket id and approval id. The card shows the action id.
 5. The decision is stored with the note and timestamp, guidance is written for
    the Worker, and the Harness starts the normal RESUME turns. The Worker sees
@@ -40,12 +40,12 @@ Worker ── request_approval ──▶ pending on Ticket ──▶ Router asks
 ## CLI
 
 ```bash
-ds-agent approvals                     # pending cards across live tickets
-ds-agent approvals --json
-ds-agent approve <ticketId> <approvalId> [--note "ship it"] [--action-id act_...]
-ds-agent deny <ticketId> <approvalId> [--note "use the staging bucket"]
-ds-agent dismiss <ticketId> <approvalId> [--note "not now"]
-ds-agent collab <ticketId>             # pending and decided requests on one ticket
+lofibot approvals                     # pending cards across live tickets
+lofibot approvals --json
+lofibot approve <ticketId> <approvalId> [--note "ship it"] [--action-id act_...]
+lofibot deny <ticketId> <approvalId> [--note "use the staging bucket"]
+lofibot dismiss <ticketId> <approvalId> [--note "not now"]
+lofibot collab <ticketId>             # pending and decided requests on one ticket
 ```
 
 `ticketId` accepts an exact id, a unique prefix, or `latest`.
@@ -54,7 +54,7 @@ ds-agent collab <ticketId>             # pending and decided requests on one tic
 
 - **One pending request per ticket.** A second request is refused; the Worker
   must wait for the first decision.
-- **Requests and pauses are separate.** A human pause (`ds-agent pause`) still
+- **Requests and pauses are separate.** A human pause (`lofibot pause`) still
   blocks replies. An approval hold does not, because the question has to reach
   the owner. A paused ticket cannot request approval.
 - **The decision is checked, not inferred.** Deciding requires the exact
@@ -83,13 +83,13 @@ ds-agent collab <ticketId>             # pending and decided requests on one tic
 - Decisions are CLI-only. A channel adapter cannot approve yet; wiring a
   channel reply to the command requires an authenticated owner identity and a
   signed approval, which is a later change.
-- Approving resumes the ticket, which starts model turns. Like `ds-agent resume`,
+- Approving resumes the ticket, which starts model turns. Like `lofibot resume`,
   `approve`, `deny`, and `dismiss` require a configured live model; without one
   the command fails before deciding, so guidance is not consumed by a mock.
   There is no "approve but keep paused" mode: while the ticket is paused, all
-  three commands refuse and leave the request pending; run `ds-agent resume`
+  three commands refuse and leave the request pending; run `lofibot resume`
   first.
-- `ds-agent approvals` lists live tickets only. A pending request on an ended
+- `lofibot approvals` lists live tickets only. A pending request on an ended
   ticket is stale and is not shown; `collab` still shows the history.
 - The structured `actionId` binds the card to its text; it is not a machine
   description of the operation. The Worker is still trusted to describe the

@@ -23,7 +23,7 @@ afterEach(() => {
 })
 
 function makeRuntime(opts: Partial<RuntimeOptions> = {}): Runtime {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-hardening-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-hardening-'))
   const runtime = Runtime.create({
     home,
     model: silentModel(),
@@ -59,7 +59,7 @@ describe('trigger.meta is data, not a decision (C1)', () => {
     const trigger = imTrigger({
       id: 'trg_short',
       thread: 'topic/spill',
-      text: '@ds-agent please fix it',
+      text: '@lofibot please fix it',
     })
     const result = runtime.ingest({ ...trigger, meta: { spillId } })
     expect(result).toBe('stored')
@@ -73,9 +73,9 @@ describe('trigger.meta is data, not a decision (C1)', () => {
 describe('credential values never reach a spill body (H1)', () => {
   it('redacts the persisted spill, not only the journal', () => {
     const runtime = makeRuntime({
-      env: { ...process.env, DS_AGENT_API_KEY: 'SENTINEL-HARDENING-VALUE' },
+      env: { ...process.env, LOFIBOT_API_KEY: 'SENTINEL-HARDENING-VALUE' },
     })
-    const text = `@ds-agent please investigate SENTINEL-HARDENING-VALUE ${'log line '.repeat(40)}`
+    const text = `@lofibot please investigate SENTINEL-HARDENING-VALUE ${'log line '.repeat(40)}`
     runtime.ingest(imTrigger({ id: 'trg_redact', thread: 'topic/redact', text }))
     const spillId = /spillId=(spill_\d+)/.exec(runtime.log.text())?.[1]
     expect(spillId).toBeTruthy()
@@ -87,7 +87,7 @@ describe('credential values never reach a spill body (H1)', () => {
 
 describe('LocalEnv process boundary (H2/H3)', () => {
   function envFor(options: LocalEnvOptions): LocalEnv {
-    return new LocalEnv(fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-env-')), {
+    return new LocalEnv(fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-env-')), {
       sandbox: { enabled: false },
       env: { PATH: process.env.PATH, HOME: process.env.HOME },
       ...options,
@@ -113,7 +113,7 @@ describe('LocalEnv process boundary (H2/H3)', () => {
 
   it('refuses a quoted absolute path from a speculative shell', async () => {
     const env = envFor({})
-    const target = path.join(os.tmpdir(), `ds-agent-escape-${process.pid}`)
+    const target = path.join(os.tmpdir(), `lofibot-escape-${process.pid}`)
     await expect(env.bash(
       'w3',
       `python3 -c "open('${target}','w').write('x')"`,
@@ -135,8 +135,8 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
 
   it('folds same-thread triggers inside the batch window into one Eval', () => {
     const runtime = makeRuntime({ batchWindowMs: 25 })
-    runtime.ingest(imTrigger({ id: 'trg_b1', thread: 'topic/batch', text: '@ds-agent please fix login' }))
-    runtime.ingest(imTrigger({ id: 'trg_b2', thread: 'topic/batch', text: '@ds-agent please fix signup' }))
+    runtime.ingest(imTrigger({ id: 'trg_b1', thread: 'topic/batch', text: '@lofibot please fix login' }))
+    runtime.ingest(imTrigger({ id: 'trg_b2', thread: 'topic/batch', text: '@lofibot please fix signup' }))
     expect(tickets(runtime)).toHaveLength(0)
     runtime.flushEvals()
     expect(runtime.log.text()).toMatch(/Evals\.batch thread=im:topic\/batch size=2/)
@@ -166,7 +166,7 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
     runtime.ingest(imTrigger({
       id: 'trg_veto',
       thread: 'topic/veto',
-      text: '@ds-agent please fix the checkout timeout',
+      text: '@lofibot please fix the checkout timeout',
     }))
     await runtime.drain()
     expect(runtime.log.text()).toContain('worker skipped')
@@ -176,7 +176,7 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
 
   it('lets the Router stop a ticket through the engine', () => {
     const runtime = makeRuntime()
-    runtime.ingest(imTrigger({ id: 'trg_stop', thread: 'topic/stop', text: '@ds-agent please fix checkout' }))
+    runtime.ingest(imTrigger({ id: 'trg_stop', thread: 'topic/stop', text: '@lofibot please fix checkout' }))
     runtime.flushEvals()
     const ticket = tickets(runtime)[0]!
     runtime.engine.stop(ticket.id, 'test-stop')
@@ -187,7 +187,7 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
 
   it('does not bypass Eval for a contextOnly subscription', async () => {
     const runtime = makeRuntime()
-    runtime.ingest(imTrigger({ id: 'trg_c1', thread: 'topic/ctx', text: '@ds-agent please fix checkout' }))
+    runtime.ingest(imTrigger({ id: 'trg_c1', thread: 'topic/ctx', text: '@lofibot please fix checkout' }))
     runtime.flushEvals()
     await runtime.drain()
     const ticket = tickets(runtime)[0]!
@@ -195,7 +195,7 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
     const result = runtime.ingest(imTrigger({
       id: 'trg_c2',
       thread: 'topic/ctx',
-      text: '@ds-agent any update on the checkout?',
+      text: '@lofibot any update on the checkout?',
     }))
     expect(result).toBe('stored')
     expect(runtime.store.getDoc<Disposition>('disposition', 'trg_c2')?.fanout).toEqual([])
@@ -280,7 +280,7 @@ describe('control plane (M1/M2/H4/M6/M8)', () => {
     runtime.ingest(imTrigger({
       id: 'trg_job',
       thread: 'topic/job',
-      text: '@ds-agent please investigate the job path',
+      text: '@lofibot please investigate the job path',
     }))
     await runtime.jobsSettled()
     const jobs = runtime.store.listJobs()
@@ -322,7 +322,7 @@ describe('subscription removal (M5/T21)', () => {
     runtime.ingest(imTrigger({
       id: 'trg_unsub',
       thread: 'topic/unsub',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     }))
     const ticket = tickets(runtime)[0]!
     const threadKey = ticket.threadKeys[0]!
