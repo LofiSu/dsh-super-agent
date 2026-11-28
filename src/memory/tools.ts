@@ -4,7 +4,7 @@ import { UserError } from '../shared/errors.ts'
 import { threadKey, type ChannelRef, type Role, type Ticket } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
 import { MemoryNotes, type Note } from './notes.ts'
-import { readMemoryTranscript } from './transcript.ts'
+import { readMemoryTranscript, readScopedMemoryTranscript } from './transcript.ts'
 
 export const memorySpec: ToolSpec = {
   name: 'memory',
@@ -34,11 +34,22 @@ export const memorySpec: ToolSpec = {
 export const transcriptSpec: ToolSpec = {
   name: 'memory_transcript',
   description: 'Read original conversation evidence in this session, newest first. '
-    + 'Use the returned before cursor for older evidence. Assistant statements may be unverified.',
+    + 'Use scope: memory to browse or search human evidence in authorized sibling conversations. '
+    + 'Pass a returned ref or an Evidence rows number as ref.id to retrieve a source. '
+    + 'Use before for older evidence. Assistant statements may be unverified.',
   parameters: {
     type: 'object',
     additionalProperties: false,
     properties: {
+      scope: { type: 'string', enum: ['memory'] },
+      query: { type: 'string', maxLength: 240 },
+      ref: {
+        type: 'object', required: ['id'], additionalProperties: false,
+        properties: {
+          sessionId: { type: 'string', maxLength: 512 },
+          id: { type: 'integer', minimum: 1 },
+        },
+      },
       before: { type: 'integer', minimum: 1 },
       limit: { type: 'integer', minimum: 1 },
     },
@@ -83,12 +94,13 @@ export class SessionMemory {
   }
 
   private noteScope(session: MemorySession, ticket: Ticket | undefined): string {
-    if (ticket?.memoryThreadKeys?.length && !ticket.speculative && !ticket.ended?.silent) {
+    if (ticket && Array.isArray(ticket.memoryThreadKeys) && ticket.memoryThreadKeys.length
+      && Array.isArray(ticket.threadKeys) && !ticket.speculative && !ticket.ended?.silent) {
       const exposed = [...new Set(ticket.memoryThreadKeys)].sort()
       const current = new Set(ticket.threadKeys)
       // Legacy tickets and tickets that dropped a source stay ticket-local.
       // Their journal can still contain evidence from the removed source.
-      if (exposed.length === current.size && exposed.every(key => current.has(key))) {
+      if (exposed.length === current.size && exposed.every(key => typeof key === 'string' && current.has(key))) {
         return workerThreadScope(exposed)
       }
     }
@@ -130,7 +142,14 @@ export class SessionMemory {
   }
 
   transcript(sessionId: string, args: Record<string, unknown>) {
-    return readMemoryTranscript(this.store, sessionId, args, this.redact)
+    if (!Object.hasOwn(args, 'scope') && !Object.hasOwn(args, 'ref')) {
+      return readMemoryTranscript(this.store, sessionId, args, this.redact)
+    }
+    const row = this.store.getSessionIdentity(sessionId)
+    const scope = row && this.consolidationScope({ sessionId, role: row.role, ticketId: row.ticketId })
+    return readScopedMemoryTranscript(
+      this.store, sessionId, args, this.redact, scope ? sharedWorkerThreads(scope) : undefined, scope !== undefined,
+    )
   }
 
   index(session: MemorySession): string | undefined {

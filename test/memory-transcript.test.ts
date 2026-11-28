@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
+import { SessionMemory } from '../src/memory/tools.ts'
 import { readMemoryTranscript } from '../src/memory/transcript.ts'
 import { MIGRATIONS, migrate } from '../src/store/schema.ts'
 import { Store } from '../src/store/sqlite.ts'
@@ -137,4 +138,95 @@ describe('transcript evidence', () => {
       store.close()
     }
   })
+})
+
+
+it('looks up and searches redacted original evidence across authorized sibling sessions', () => {
+  const store = new Store(testHome())
+  try {
+    const memory = new SessionMemory(store, redact)
+    const at = '2026-01-01T00:00:00Z'
+    const threads = ['cli:project', 'imessage:project']
+    const worker = (id: string, keys = threads, observed = keys, restrictions = {}) => {
+      const sessionId = 'worker_' + id
+      store.putDoc('ticket', id, { threadKeys: keys, memoryThreadKeys: observed, ...restrictions })
+      store.upsertSession({ id: sessionId, role: 'worker', ticketId: id, status: 'idle', heartbeat: at, createdAt: at })
+      return sessionId
+    }
+    const author = worker('author')
+    const reader = worker('reader', [...threads].reverse())
+    append(store, author, 'user', 'assembled content', { evidenceText: 'Old deployment evidence fake-token' })
+    append(store, author, 'assistant', 'private deployment answer')
+    append(store, author, 'user', 'private deployment envelope')
+    append(store, author, 'tool', 'private deployment output')
+    append(store, worker('subset', threads.slice(0, 1)), 'user', 'ignored', { evidenceText: 'other deployment' })
+    append(store, worker('speculative', threads, threads, { speculative: true }), 'user', 'ignored', { evidenceText: 'speculative deployment' })
+    append(store, worker('silent', threads, threads, { ended: { silent: true } }), 'user', 'ignored', { evidenceText: 'silent deployment' })
+    const malformed = worker('malformed', threads, threads, { threadKeys: { 0: threads[0], 1: threads[1] } })
+    append(store, malformed, 'user', 'ignored', { evidenceText: 'malformed deployment' })
+    append(store, author, 'user', 'ignored', { evidenceText: 'CONNECTOR_EVENT\ndeployment notice' })
+    append(store, reader, 'user', 'assembled content', { evidenceText: 'New deployment evidence' })
+
+    const newest = memory.transcript(reader, { scope: 'memory', query: 'DEPLOYMENT', limit: 1 })
+    expect(newest.entries.map(entry => entry.text)).toEqual(['New deployment evidence'])
+    const older = memory.transcript(reader, { scope: 'memory', query: 'deployment', before: newest.before })
+    const ref = { id: 1, sessionId: author }
+    expect(older.entries).toEqual([expect.objectContaining({ ref, text: 'Old deployment evidence [REDACTED]' })])
+    expect(memory.transcript(reader, { ref })).toEqual(older)
+    const footer = 'Collected deployment notes\n\nEvidence rows: 1\n'
+    const id = Number(footer.match(/Evidence rows: (\d+)/)?.[1])
+    expect(memory.transcript(reader, { ref: { id } }).entries).toEqual([
+      expect.objectContaining({ text: 'Old deployment evidence [REDACTED]', ref: { id } }),
+    ])
+    expect(memory.transcript(author, { ref: { id } }).entries[0]?.text).toBe('Old deployment evidence [REDACTED]')
+    expect(memory.transcript('router:thread:unrelated', { ref: { id } }).entries).toEqual([])
+    expect(memory.transcript(reader, { ref: { id: 1, sessionId: reader } }).entries).toEqual([])
+    expect(() => memory.transcript(reader, { ref, limit: 2 })).toThrow(/ref/)
+    expect(() => memory.transcript(reader, { scope: 'memory', query: ' ' })).toThrow(/query/)
+    expect(memory.transcript(reader, { ref: { id: 2, sessionId: author } }).entries).toEqual([])
+    expect(memory.transcript(reader, { ref: { id: 8, sessionId: malformed } }).entries).toEqual([])
+    const singletonReader = worker('singleton_reader', threads.slice(0, 1))
+    const malformedScalar = worker('malformed_scalar', threads.slice(0, 1), threads.slice(0, 1), {
+      memoryThreadKeys: threads[0],
+    })
+    append(store, malformedScalar, 'user', 'ignored', { evidenceText: 'scalar grant leak' })
+    expect(memory.transcript(singletonReader, { ref: { id: 11, sessionId: malformedScalar } }).entries).toEqual([])
+    expect(memory.transcript(singletonReader, { scope: 'memory', query: 'scalar grant' }).entries).toEqual([])
+    expect(memory.transcript(malformedScalar, { scope: 'memory' }).entries.map(entry => entry.text))
+      .toEqual(['scalar grant leak'])
+    expect(memory.transcript(reader, { scope: 'memory', query: 'fake-token' }).entries).toEqual([])
+    expect(memory.transcript(reader, {}).entries.map(entry => entry.text)).toEqual(['New deployment evidence'])
+    expect(memory.transcript('router:thread:unrelated', { ref }).entries).toEqual([])
+
+    worker('author', threads.slice(0, 1), threads)
+    expect(memory.transcript(reader, { ref }).entries).toEqual([])
+    expect(memory.transcript(reader, { ref: { id } }).entries).toEqual([])
+    expect(memory.transcript(reader, { scope: 'memory', query: 'Old deployment' }).entries).toEqual([])
+
+    worker('author')
+    worker('reader', threads.slice(0, 1), threads)
+    expect(memory.transcript(reader, { ref }).entries).toEqual([])
+  } finally {
+    store.close()
+  }
+})
+
+
+it('includes qualified references in the serialized transcript page budget', () => {
+  const store = new Store(testHome())
+  try {
+    const sessionId = 'router:thread:' + '\u0001'.repeat(300)
+    const at = '2026-01-01T00:00:00Z'
+    store.upsertSession({ id: sessionId, role: 'router', status: 'idle', heartbeat: at, createdAt: at })
+    append(store, sessionId, 'user', '', { evidenceText: '\u0001'.repeat(1_200) })
+    const memory = new SessionMemory(store, redact)
+    const ref = { sessionId, id: 1 }
+    const result = memory.transcript(sessionId, { scope: 'memory' })
+    expect(result.entries).toEqual([expect.objectContaining({ ref, truncated: true })])
+    expect(result.entries[0]?.text.length).toBeGreaterThan(0)
+    expect(JSON.stringify(result).length).toBeLessThan(8_100)
+    expect(memory.transcript(sessionId, { ref })).toEqual(result)
+  } finally {
+    store.close()
+  }
 })
