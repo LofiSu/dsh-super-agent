@@ -2,18 +2,27 @@ import { withSessionRole } from '../core/session-role.ts'
 import { redactRecord } from '../env/sanitize.ts'
 import type { Metrics } from '../metrics/metrics.ts'
 import { formatRefs } from '../memory/graph.ts'
-import type { Assignment, ObjectRef, Role, Ticket, Trigger } from '../shared/types.ts'
+import type { Assignment, Role, Ticket, Trigger } from '../shared/types.ts'
 import type { Model, ModelMessage } from './model.ts'
 import type { SkillInfo } from '../env/skills.ts'
 import { systemPrompt, type PromptFiles } from './prompts.ts'
 import type { LocalAgentInfo } from '../env/local-agents.ts'
 import { directChatRouterShard, directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
 import { isConversationTicket } from '../core/conversation.ts'
-import { isProactiveTicket } from './proactive.ts'
-import { isConnectorWakeTicket } from '../connectors/wake.ts'
+import { isProactiveTicket, PROACTIVE_TRIGGER_PREFIX } from './proactive.ts'
+import { CONNECTOR_TRIGGER_PREFIX, isConnectorWakeTicket } from '../connectors/wake.ts'
 import { TeamRegistry } from './team.ts'
 import { ToolRegistry } from './tools.ts'
 import type { Store } from '../store/sqlite.ts'
+
+function scheduledTrigger(id: string | undefined): boolean {
+  return id !== undefined && (id.startsWith(PROACTIVE_TRIGGER_PREFIX)
+    || id.startsWith(CONNECTOR_TRIGGER_PREFIX) || id.startsWith('trg_routine_'))
+}
+
+function humanEvidence(trigger: Trigger | undefined): string | undefined {
+  return trigger?.human && !scheduledTrigger(trigger.id) ? trigger.text : undefined
+}
 
 export interface HarnessOptions {
   model: Model
@@ -58,20 +67,12 @@ export interface HarnessOptions {
    * Worker follow-up: if the Router stayed silent, the ticket ends silently.
    */
   stopProactiveTicket?: (ticket: Ticket, reason: string) => void
-  /** Cross-ticket recall lines injected into Router and Worker turns. */
-  memory?: (ticket: Ticket) => { id: string; spillId?: string; text: string; refs?: ObjectRef[] }[]
   /** Owner-editable persona, standing instructions, and owner context. */
   prompts?: PromptFiles
   /** Configured local specialists, by id and description only. */
   localAgents?: readonly LocalAgentInfo[]
   /** Owner-authored playbooks, by id and description only. */
   skills?: readonly SkillInfo[]
-  /**
-   * Router-only global memory. Defaults to `memory`; the Runtime narrows this
-   * to same-Thread decisions/digests so a lexical query stays in the Worker
-   * callback (a query failure rejects that Worker turn, not `launch`).
-   */
-  routerMemory?: (ticket: Ticket) => { id: string; spillId?: string; text: string; refs?: ObjectRef[] }[]
   /** T45 bake-off baseline: one turn chain, no Router session. */
   singleSession?: boolean
 }
@@ -264,14 +265,14 @@ export class Harness {
       return Promise.resolve()
     }
     const shard = directChatRouterShard(envelope) ?? 'default'
-    const prompt = conversationPromptFor(envelope, trigger, this.memoryLines(envelope, 'router'))
+    const prompt = conversationPromptFor(envelope, trigger)
     this.opts.log(`[harness] conversation turn ticketId=${envelope.id} triggerId=${trigger.id} shard=${shard}`)
     return this.track(this.routerExclusive(shard, () => this.run(
       routerSessionId(shard),
       'router',
       undefined,
       `${this.withRouterHistory(shard, prompt)}\nshard=${shard}`,
-      trigger.human ? trigger.text : undefined,
+      humanEvidence(trigger),
     )))
   }
 
@@ -302,7 +303,6 @@ export class Harness {
     const refsLine = formatRefs(ticket.refs)
     const routerPrompt = routerPromptFor(ticket, [
       ...(refsLine ? [refsLine] : []),
-      ...this.memoryLines(ticket, 'router'),
     ])
     // Sequence point (T06/T08): Router turn(s) complete first. A Router veto
     // (assess_trigger stop/ignore) ends the ticket, and the Worker never starts.
@@ -582,7 +582,7 @@ export class Harness {
       async () => {
         if (!this.opts.store.isOpen) return
         const trigger = this.opts.store.getDoc<Trigger>('trigger', ticket.originTriggerId)
-        return this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node), trigger?.human ? trigger.text : undefined)
+        return this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node), humanEvidence(trigger))
       },
     ).finally(() => {
       this.activeWorkers.delete(ticket.id)
@@ -612,21 +612,7 @@ export class Harness {
         task.push(`recovered=${input.text}`)
       }
     }
-    for (const line of this.memoryLines(ticket, 'worker')) task.push(line)
     return task.join('\n')
-  }
-
-  /**
-   * Chain-of-recall lines. Every entry keeps its spill id and next-hop refs in
-   * the window; the model follows them with `read_object` only when needed.
-   */
-  private memoryLines(ticket: Ticket, role: 'router' | 'worker'): string[] {
-    const source = role === 'router' ? this.opts.routerMemory ?? this.opts.memory : this.opts.memory
-    return (source?.(ticket) ?? []).map(entry => {
-      const spill = entry.spillId ? ` spillId=${entry.spillId}` : ''
-      const refs = formatRefs(entry.refs)
-      return `memory=${entry.id}${spill}${refs ? ` ${refs}` : ''} text=${entry.text}`
-    })
   }
 
   deliver(ticketId: string, trigger: Trigger, spillId?: string): Promise<void> {
@@ -650,7 +636,7 @@ export class Harness {
     if (refs) lines.push(refs)
     const sessionId = workerSessionId(ticketId)
     return this.track(this.enqueue(sessionId, () => this.run(
-      sessionId, 'worker', ticketId, lines.join('\n'), trigger.human ? trigger.text : undefined,
+      sessionId, 'worker', ticketId, lines.join('\n'), humanEvidence(trigger),
     )))
   }
 
@@ -738,7 +724,6 @@ export class Harness {
       for (const text of guidance) lines.push(`guidance=${text}`)
       const refsLine = formatRefs(ticket.refs)
       if (refsLine) lines.push(refsLine)
-      for (const memory of this.memoryLines(ticket, 'router')) lines.push(memory)
       lines.push('The human resumed this paused task. Keep the acknowledgement short; leave the work to the Worker.')
       return lines.join('\n')
     }
@@ -752,7 +737,7 @@ export class Harness {
       const evidence = [...guidance]
       if (role === 'worker') {
         for (const input of pending) {
-          if (input.human === true && input.text) evidence.push(input.text)
+          if (input.human === true && input.text && !scheduledTrigger(input.triggerId)) evidence.push(input.text)
         }
       }
       return this.run(session, role, role === 'worker' ? ticket.id : undefined, build(guidance), evidence.join('\n') || undefined)

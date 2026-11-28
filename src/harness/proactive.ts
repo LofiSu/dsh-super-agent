@@ -146,8 +146,8 @@ export interface ProactiveSchedulerOptions {
   store: Store
   config: ProactiveConfig
   env?: NodeJS.ProcessEnv
-  /** Related memory, already scoped to the candidate ticket by the caller. */
-  memoryFor?: (ticket: Ticket) => string[]
+  /** Related memory authorized for the selected recipient thread. */
+  memoryFor?: (ticket: Ticket, channel: ChannelRef) => string[]
   /** Must be the Runtime ingress path, not a direct channel send. */
   fire: (trigger: Trigger) => ReceiveResult
   log?: (line: string) => void
@@ -282,7 +282,7 @@ function oneLine(raw: unknown, name: string): string | undefined {
  * gap produces one evaluation at the latest due round, never a burst.
  */
 export class ProactiveScheduler {
-  private readonly memoryFor: (ticket: Ticket) => string[]
+  private readonly memoryFor: (ticket: Ticket, channel: ChannelRef) => string[]
   private readonly log: (line: string) => void
 
   constructor(private readonly opts: ProactiveSchedulerOptions) {
@@ -485,7 +485,7 @@ export function planProactiveContact(input: {
   store: Store
   config: ProactiveConfig
   env: NodeJS.ProcessEnv
-  memoryFor?: (ticket: Ticket) => string[]
+  memoryFor?: (ticket: Ticket, channel: ChannelRef) => string[]
   /** Signals already committed through normal ingress for this Ticket revision. */
   seenSignals?: ReadonlySet<string>
 }): ProactivePlan | undefined {
@@ -523,7 +523,7 @@ export function planProactiveContact(input: {
     if (!owner) continue
     let memory: string | undefined
     try {
-      memory = (input.memoryFor?.(ticket) ?? [])
+      memory = (input.memoryFor?.(ticket, channel) ?? [])
         .map(text => oneLineText(text))
         .find(text => text.length > 0 && sharesToken(text, `${ticket.title} ${signal.fact}`))
     } catch {

@@ -912,6 +912,30 @@ export class Store {
     }))
   }
 
+  listIdleMemorySessions(after: number, idleBefore: string, limit: number): (SessionRow & { cursor: number })[] {
+    const rows = this.db.prepare(`
+      SELECT rowid AS cursor, id, role, ticket_id AS ticketId, status, heartbeat, created_at AS createdAt
+      FROM sessions
+      WHERE rowid > ? AND status = 'idle' AND heartbeat <= ?
+        AND (role = 'worker' OR (role = 'router' AND id GLOB 'router:thread:*'))
+      ORDER BY rowid LIMIT ?
+    `).all(after, idleBefore, limit)
+    return rows.map(row => ({
+      cursor: Number(row.cursor),
+      id: String(row.id),
+      role: row.role as SessionRow['role'],
+      ticketId: row.ticketId ? String(row.ticketId) : undefined,
+      status: 'idle',
+      heartbeat: String(row.heartbeat),
+      createdAt: String(row.createdAt),
+    }))
+  }
+
+  getSessionHeartbeat(sessionId: string): { status: string; heartbeat: string } | undefined {
+    return this.db.prepare('SELECT status, heartbeat FROM sessions WHERE id = ?')
+      .get(sessionId) as { status: string; heartbeat: string } | undefined
+  }
+
   appendMessage(sessionId: string, role: string, body: string): void {
     this.assertWritable()
     this.db.prepare(
@@ -943,6 +967,44 @@ export class Store {
       WHERE session_id = ? AND id < ? AND role IN ('user', 'assistant')
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
+  }
+
+  /** Oldest unprocessed sibling row in an exact shared Worker scope. */
+  earliestMemorySibling(
+    sessionId: string, threadKeys: string[], idleBefore: string, after: number, before: number,
+  ): number | undefined {
+    const keys = JSON.stringify(threadKeys)
+    const row = this.db.prepare(`
+      SELECT message.id
+      FROM messages AS message
+      JOIN sessions AS session ON session.id = message.session_id
+      JOIN documents AS ticket ON ticket.kind = 'ticket' AND ticket.id = session.ticket_id
+      LEFT JOIN documents AS progress ON progress.kind = 'memory_dream_progress' AND progress.id = session.id
+      WHERE message.id > ? AND message.id <= ? AND message.session_id != ? AND message.role = 'user'
+        AND session.role = 'worker' AND session.status = 'idle' AND session.heartbeat <= ?
+        AND session.id = 'worker_' || session.ticket_id
+        AND COALESCE(json_extract(ticket.payload, '$.speculative'), 0) = 0
+        AND COALESCE(json_extract(ticket.payload, '$.ended.silent'), 0) = 0
+        AND message.id > COALESCE(json_extract(progress.payload, '$.through'), 0)
+        AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.threadKeys')) = json_array_length(?)
+        AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.memoryThreadKeys')) = json_array_length(?)
+        AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.threadKeys') EXCEPT SELECT value FROM json_each(?))
+        AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.memoryThreadKeys') EXCEPT SELECT value FROM json_each(?))
+      ORDER BY message.id LIMIT 1
+    `).get(after, before, sessionId, idleBefore, keys, keys, keys, keys)
+    return row ? Number(row.id) : undefined
+  }
+
+  /** Forward cursor for bounded background consolidation. */
+  listTranscriptAfter(
+    sessionId: string, after: number, limit: number,
+  ): { id: number; body: string | null }[] {
+    return this.db.prepare(`
+      SELECT id, CASE WHEN length(CAST(body AS BLOB)) <= 65536 THEN body END AS body
+      FROM messages
+      WHERE session_id = ? AND id > ? AND role = 'user'
+      ORDER BY id LIMIT ?
+    `).all(sessionId, after, limit) as { id: number; body: string | null }[]
   }
 
   addArtifact(ticketId: string, filePath: string): string {

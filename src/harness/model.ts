@@ -42,6 +42,7 @@ export interface CompletionRequest {
   role: Role
   messages: ModelMessage[]
   tools: ToolSpec[]
+  signal?: AbortSignal
 }
 
 export interface Completion {
@@ -275,9 +276,10 @@ export class HttpOpenAI implements Model, SemanticPolicy {
 
   async complete(request: CompletionRequest): Promise<Completion> {
     const url = `${this.base.replace(/\/$/, '')}/chat/completions`
+    const timeout = AbortSignal.timeout(this.timeoutMs)
     const response = await fetch(url, {
       method: 'POST',
-      signal: AbortSignal.timeout(this.timeoutMs),
+      signal: request.signal ? AbortSignal.any([timeout, request.signal]) : timeout,
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',

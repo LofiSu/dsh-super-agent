@@ -63,4 +63,6 @@ flowchart TD
 
 Router 负责回复，Worker 向它回报执行结果，由 Outbox 负责投递。定时事件和信道消息共用同一条入口链路。
 
+Agent 在授权范围内跨会话复用笔记并自动整理。运行 `pnpm lofibot memory` 查看索引，运行 `pnpm lofibot memory archive` 查看历史快照。[记忆架构详解](docs/ANTHROPIC_AGENT_MEMORY.md)
+
 [架构说明](docs/zh/architecture.md) · [模块参考](docs/MODULES.md) · [安全说明](docs/zh/safety.md) · [MIT 许可证](LICENSE)

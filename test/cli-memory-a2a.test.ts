@@ -17,10 +17,10 @@ afterEach(() => {
   for (const dir of homes.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-function command(name: 'memory' | 'a2a' | 'status', env: NodeJS.ProcessEnv): string {
+function command(name: 'memory' | 'a2a' | 'status', env: NodeJS.ProcessEnv, ...args: string[]): string {
   const result = spawnSync(
     process.execPath,
-    ['--import', 'tsx', 'src/cli/main.ts', name],
+    ['--import', 'tsx', 'src/cli/main.ts', name, ...args],
     { encoding: 'utf8', env: { ...process.env, ...env, NODE_NO_WARNINGS: '1' } },
   )
   expect(result.status, result.stderr).toBe(0)
@@ -45,8 +45,8 @@ describe('lofibot memory / a2a', () => {
     const state = JSON.parse(command('memory', {
       LOFIBOT_HOME: dir,
       LOFIBOT_INSTANCE_ID: 'alpha',
-    })) as { instance: string; memories: number; recent: unknown[] }
-    expect(state).toMatchObject({ instance: 'alpha', memories: 0, recent: [] })
+    })) as { instance: string; sessions: unknown[] }
+    expect(state).toMatchObject({ instance: 'alpha', sessions: [] })
   })
 
   it('lists persisted memories and envelopes', () => {
@@ -68,7 +68,7 @@ describe('lofibot memory / a2a', () => {
     })
     store.close()
 
-    const memory = JSON.parse(command('memory', { LOFIBOT_HOME: dir })) as {
+    const memory = JSON.parse(command('memory', { LOFIBOT_HOME: dir }, 'archive')) as {
       instance: string
       memories: number
       recent: { id: string }[]
