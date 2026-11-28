@@ -31,7 +31,7 @@ describe('fill vault documentation accuracy', () => {
   it('documents vault path and helper alternatives without implying they are mandatory', () => {
     const capabilities = fs.readFileSync(path.join(process.cwd(), 'docs/INSTINCT_CAPABILITIES.md'), 'utf8')
     const line = capabilities.split('\n').find(l =>
-      l.includes('DS_AGENT_VAULT_FILE') && l.includes('DS_AGENT_FILL_COMMAND'),
+      l.includes('LOFIBOT_VAULT_FILE') && l.includes('LOFIBOT_FILL_COMMAND'),
     )
     expect(line).toBeDefined()
     expect(line).toContain('owner')
@@ -70,7 +70,7 @@ function runCli(home: string, args: string[], env: NodeJS.ProcessEnv = {}): CliR
       encoding: 'utf8',
       env: {
         ...process.env,
-        DS_AGENT_HOME: home,
+        LOFIBOT_HOME: home,
         NODE_NO_WARNINGS: '1',
         ...env,
       },
@@ -79,10 +79,10 @@ function runCli(home: string, args: string[], env: NodeJS.ProcessEnv = {}): CliR
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
-/** A temp home containing `ds-agent.db`, plus a fresh snapshot of it. */
+/** A temp home containing `lofibot.db`, plus a fresh snapshot of it. */
 function seededHomeWithSnapshot(): { home: string; snapshot: string } {
-  const home = tempDir('ds-agent-wiring-home-')
-  const out = tempDir('ds-agent-wiring-snap-')
+  const home = tempDir('lofibot-wiring-home-')
+  const out = tempDir('lofibot-wiring-snap-')
   const init = runCli(home, ['init'])
   expect(init.status, init.stderr).toBe(0)
 
@@ -108,20 +108,20 @@ function seededHomeWithSnapshot(): { home: string; snapshot: string } {
   return { home, snapshot }
 }
 
-describe('ds-agent ui / backup / restore wiring', () => {
+describe('lofibot ui / backup / restore wiring', () => {
   it('lists ui, backup, and restore in --help', () => {
-    const result = runCli(tempDir('ds-agent-wiring-help-'), ['--help'])
+    const result = runCli(tempDir('lofibot-wiring-help-'), ['--help'])
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toContain('ds-agent ui')
-    expect(result.stdout).toContain('ds-agent backup --out <file.db>')
-    expect(result.stdout).not.toContain('ds-agent backup [--out')
-    expect(result.stdout).toContain('ds-agent restore <file.db> [--force]')
+    expect(result.stdout).toContain('lofibot ui')
+    expect(result.stdout).toContain('lofibot backup --out <file.db>')
+    expect(result.stdout).not.toContain('lofibot backup [--out')
+    expect(result.stdout).toContain('lofibot restore <file.db> [--force]')
   })
 
   it('fails closed without a valid ui token and never starts listening', () => {
-    const home = tempDir('ds-agent-wiring-ui-')
+    const home = tempDir('lofibot-wiring-ui-')
     for (const args of [['ui'], ['ui', '--token', 'too-short']]) {
-      const result = runCli(home, args, { DS_AGENT_UI_TOKEN: '' })
+      const result = runCli(home, args, { LOFIBOT_UI_TOKEN: '' })
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain('requires a token of at least 16 characters')
       expect(result.stdout).not.toContain('listening on')
@@ -134,7 +134,7 @@ describe('ds-agent ui / backup / restore wiring', () => {
 
     const restore = runCli(home, ['restore', snapshot, '--force'])
     expect(restore.status, restore.stderr).toBe(0)
-    expect(fs.existsSync(path.join(home, 'ds-agent.db'))).toBe(true)
+    expect(fs.existsSync(path.join(home, 'lofibot.db'))).toBe(true)
   })
 
   it('refuses restore over an existing store without --force and needs a path', () => {

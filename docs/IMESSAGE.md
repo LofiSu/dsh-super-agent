@@ -1,6 +1,6 @@
 # iMessage channel
 
-Talk to `ds-agent` from iMessage, like texting an assistant. This is a **real
+Talk to `lofibot` from iMessage, like texting an assistant. This is a **real
 channel** (same pattern as Feishu/GitHub): inbound is read from the macOS
 Messages database, outbound is sent through the Messages app. There is no fake
 or mock path.
@@ -16,7 +16,7 @@ ChatDbImessageApi.pull()  ── read ~/Library/Messages/chat.db (read-only)
    ▼
 ImessageSource  ──► imessageTrigger()  ──► Runtime.ingest()
    ▼
-ds-agent Engine → Harness (Router/Worker) → reply enqueued to Outbox
+lofibot Engine → Harness (Router/Worker) → reply enqueued to Outbox
    ▼
 ImessageOutboxAdapter.send()  ── osascript → Messages.app → same conversation
 ```
@@ -24,7 +24,7 @@ ImessageOutboxAdapter.send()  ── osascript → Messages.app → same convers
 - `is_from_me = 0` only, so the agent never re-ingests its own replies.
 - The cursor lives in SQLite (`documents(kind='imessage_cursor', id='cursor')`).
 - Message text reaches AppleScript through the environment
-  (`DS_AGENT_IMSG_TEXT`), never by string interpolation, so quotes/`$`/newlines
+  (`LOFIBOT_IMSG_TEXT`), never by string interpolation, so quotes/`$`/newlines
   cannot inject AppleScript.
 
 ## Preflight (no model, no send)
@@ -32,9 +32,9 @@ ImessageOutboxAdapter.send()  ── osascript → Messages.app → same convers
 Run this before `serve` or `imessage`:
 
 ```bash
-ds-agent channels check --imessage
+lofibot channels check --imessage
 # or, on macOS, the same check under pnpm in this checkout:
-pnpm ds-agent channels check --imessage
+pnpm lofibot channels check --imessage
 ```
 
 It opens `chat.db` read-only, reports whether the required tables/columns exist,
@@ -56,14 +56,14 @@ outbound; it is separate from Full Disk Access.
 If opening `chat.db` fails with `authorization denied` / `Operation not
 permitted`, the preflight says to grant Full Disk Access and names the exact
 path: **System Settings → Privacy & Security → Full Disk Access**. Enable the
-terminal (or whichever app launches `ds-agent`), then **quit and reopen that
+terminal (or whichever app launches `lofibot`), then **quit and reopen that
 app**; changing the setting does not apply to a running process.
 
 ## Safety defaults
 
-Admission is **closed by default**. `ds-agent imessage` and
-`ds-agent serve --imessage` refuse to start when neither a sender allowlist
-(`--handle` / `DS_AGENT_IMESSAGE_HANDLE` or `DS_AGENT_ACTOR_ALLOWLIST`) nor an
+Admission is **closed by default**. `lofibot imessage` and
+`lofibot serve --imessage` refuse to start when neither a sender allowlist
+(`--handle` / `LOFIBOT_IMESSAGE_HANDLE` or `LOFIBOT_ACTOR_ALLOWLIST`) nor an
 explicit opt-out (`--allow-any`) is set. The error is shown before `chat.db` is
 opened (and, for `serve`, before SQLite is opened).
 
@@ -72,13 +72,13 @@ opened (and, for `serve`, before SQLite is opened).
   normal admission rules.
 - **Group chats are skipped by default.** Group detection reads `chat.style`
   (`43` = group) and `chat.room_name`, never message text. Enable ingestion with
-  `--allow-groups` / `DS_AGENT_IMESSAGE_ALLOW_GROUPS=1`. A message joined to
+  `--allow-groups` / `LOFIBOT_IMESSAGE_ALLOW_GROUPS=1`. A message joined to
   both a 1:1 and a group chat is a group. A message with no chat row, or with
   chat metadata that is neither a known 1:1 nor a known group, is treated as a
   group/unknown and skipped by default. For group messages, only a positive
   group row's (`chat.style = 43` or a non-empty room name) chat id is exposed
   as `channel.address.group`; ambiguous/unknown groups leave it unset, so
-  `DS_AGENT_GROUP_ALLOWLIST` and outbound fail closed instead of reusing a 1:1
+  `LOFIBOT_GROUP_ALLOWLIST` and outbound fail closed instead of reusing a 1:1
   chat id. When a message joins several positive group rows, the first non-empty
   chat guid, the first non-empty identifier, and the first safe positive
   `chat.ROWID` are aggregated independently, so an identifier-only row cannot
@@ -136,69 +136,69 @@ opened (and, for `serve`, before SQLite is opened).
    prompt ("… wants to control Messages") → Allow. You can check this without
    sending by running the manual command in [Preflight](#preflight-no-model-no-send);
    **System Settings → Privacy & Security → Automation** shows or repairs it.
-4. **A live model**: set `DS_AGENT_API_BASE` + `DS_AGENT_API_KEY` (+ optional
-   `DS_AGENT_API_MODEL`), or one provider key. MockModel is refused.
+4. **A live model**: set `LOFIBOT_API_BASE` + `LOFIBOT_API_KEY` (+ optional
+   `LOFIBOT_API_MODEL`), or one provider key. MockModel is refused.
 
 ## Environment variables
 
 | Variable | Meaning |
 |----------|---------|
-| `DS_AGENT_IMESSAGE_DB` | chat.db path. Default `~/Library/Messages/chat.db`. |
-| `DS_AGENT_IMESSAGE_HANDLE` | Sender allowlist (same as `--handle`). Required unless `DS_AGENT_ACTOR_ALLOWLIST` is non-empty or `DS_AGENT_IMESSAGE_ALLOW_ANY=1`. |
-| `DS_AGENT_ACTOR_ALLOWLIST` | Comma-separated sender ids. A non-empty list satisfies the startup allowlist and is enforced by runtime admission. |
-| `DS_AGENT_IMESSAGE_ALLOW_ANY` | `1` = intentionally accept messages from any sender. Logs a prominent warning. |
-| `DS_AGENT_IMESSAGE_ALLOW_GROUPS` | `1` = ingest group-chat messages. Closed by default; group messages are never marked direct. |
-| `DS_AGENT_IMESSAGE_INTERVAL_MS` | Poll interval, default `2000`. |
-| `DS_AGENT_IMESSAGE_SINCE` | Start cursor (message ROWID) for replay. |
+| `LOFIBOT_IMESSAGE_DB` | chat.db path. Default `~/Library/Messages/chat.db`. |
+| `LOFIBOT_IMESSAGE_HANDLE` | Sender allowlist (same as `--handle`). Required unless `LOFIBOT_ACTOR_ALLOWLIST` is non-empty or `LOFIBOT_IMESSAGE_ALLOW_ANY=1`. |
+| `LOFIBOT_ACTOR_ALLOWLIST` | Comma-separated sender ids. A non-empty list satisfies the startup allowlist and is enforced by runtime admission. |
+| `LOFIBOT_IMESSAGE_ALLOW_ANY` | `1` = intentionally accept messages from any sender. Logs a prominent warning. |
+| `LOFIBOT_IMESSAGE_ALLOW_GROUPS` | `1` = ingest group-chat messages. Closed by default; group messages are never marked direct. |
+| `LOFIBOT_IMESSAGE_INTERVAL_MS` | Poll interval, default `2000`. |
+| `LOFIBOT_IMESSAGE_SINCE` | Start cursor (message ROWID) for replay. |
 
 ## Usage
 
 ```bash
 # one poll then exit (smoke test; still needs the permissions + model)
-pnpm ds-agent imessage --once --handle "+8613800000000"
+pnpm lofibot imessage --once --handle "+8613800000000"
 
 # continuous two-way channel
-DS_AGENT_IMESSAGE_HANDLE="+8613800000000" pnpm ds-agent imessage
+LOFIBOT_IMESSAGE_HANDLE="+8613800000000" pnpm lofibot imessage
 
 # accept any 1:1 sender (explicit opt-out; logs a warning)
-pnpm ds-agent imessage --allow-any
+pnpm lofibot imessage --allow-any
 
 # include group messages (they are not marked direct)
-pnpm ds-agent imessage --handle "+8613800000000" --allow-groups
+pnpm lofibot imessage --handle "+8613800000000" --allow-groups
 ```
 
 Flags: `--once`, `--interval <ms>`, `--handle <handle>`, `--allow-any`,
 `--allow-groups`, `--since <rowid>`, `--db <path>`.
 
-Without `--handle` (or `DS_AGENT_IMESSAGE_HANDLE`) and a non-empty
-`DS_AGENT_ACTOR_ALLOWLIST`, the command refuses to start with an error that
+Without `--handle` (or `LOFIBOT_IMESSAGE_HANDLE`) and a non-empty
+`LOFIBOT_ACTOR_ALLOWLIST`, the command refuses to start with an error that
 names the safe example `--handle "+..."`. Opt into open use with `--allow-any`
-/ `DS_AGENT_IMESSAGE_ALLOW_ANY=1` only when that is intentional.
+/ `LOFIBOT_IMESSAGE_ALLOW_ANY=1` only when that is intentional.
 
 On first run the cursor starts at the current max ROWID, so only new messages
 are handled. Pass `--since <rowid>` to replay from an explicit point.
 
 ## Running the loop from `serve`
 
-`ds-agent serve --imessage` runs the same inbound poll loop alongside the
+`lofibot serve --imessage` runs the same inbound poll loop alongside the
 watchdog/daemon timer in one process (the loop is shared code, not a second
 implementation). Without `--imessage`, `serve` behavior is unchanged and opens
 no channel.
 
 ```bash
 # daemon + inbound iMessage channel in one process
-DS_AGENT_IMESSAGE_HANDLE="+8613800000000" pnpm ds-agent serve --imessage
+LOFIBOT_IMESSAGE_HANDLE="+8613800000000" pnpm lofibot serve --imessage
 
 # explicit opt-outs still apply
-pnpm ds-agent serve --imessage --allow-any
+pnpm lofibot serve --imessage --allow-any
 
 # include group messages (never marked direct)
-pnpm ds-agent serve --imessage --handle "+8613800000000" --allow-groups
+pnpm lofibot serve --imessage --handle "+8613800000000" --allow-groups
 
 # both primary channels over one Runtime/SQLite store
-DS_AGENT_IMESSAGE_HANDLE="+8613800000000" \
+LOFIBOT_IMESSAGE_HANDLE="+8613800000000" \
 FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=xxx FEISHU_CHAT_ID=oc_xxx \
-pnpm ds-agent serve --imessage --feishu
+pnpm lofibot serve --imessage --feishu
 ```
 
 `serve --imessage --feishu` resolves and validates both configurations before
@@ -209,7 +209,7 @@ store with independent abort controllers, cursors, and outboxes. A loop failure
 is logged and does not kill the other loop or the daemon.
 
 `serve --imessage` accepts the same admission flags and environment variables as
-`ds-agent imessage`: `--handle`, `--allow-any`, `--allow-groups`, `--interval`,
+`lofibot imessage`: `--handle`, `--allow-any`, `--allow-groups`, `--interval`,
 `--since`, and `--db` (plus `--once` for a single poll; the daemon keeps
 running). Admission is checked before `Runtime.create` opens SQLite and before
 `chat.db` is opened, so a missing allowlist fails closed. The cursor is the same
@@ -232,7 +232,7 @@ daemon keep running.
   macOS 13+; the decoder takes the longest printable run after the `NSString`
   marker. Rich formatting is dropped; some messages may decode imperfectly.
 - **Group chats are closed by default.** `--allow-groups` /
-  `DS_AGENT_IMESSAGE_ALLOW_GROUPS=1` opens ingestion, but group triggers are
+  `LOFIBOT_IMESSAGE_ALLOW_GROUPS=1` opens ingestion, but group triggers are
   never `addressed: 'direct'`; they pass the normal admission filter (keyword,
   noise, semantic). A group reply is sent with `chat id` only when a positive
   group row supplied a `chatGuid`; a group target without a `chatGuid` fails
@@ -252,13 +252,13 @@ iMessage and without a model:
 
 ```bash
 # 1. read-only database/schema/admission/osascript report
-pnpm ds-agent channels check --imessage
+pnpm lofibot channels check --imessage
 
 # 2. check the Automation prompt/decision; this command only reads the app name
 osascript -e 'tell application "Messages" to get name'
 
 # 3. inspect the exact serve command without starting it
-pnpm ds-agent --help
+pnpm lofibot --help
 ```
 
 There is no fake send path. The first real reply is the first actual send; use

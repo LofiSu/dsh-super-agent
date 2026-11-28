@@ -21,10 +21,10 @@ afterEach(async () => {
 
 function isolatedEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
-  delete env.DS_AGENT_ALLOW_MOCK_FIXTURE
-  delete env.DS_AGENT_ROUTER_MODEL
-  delete env.DS_AGENT_WORKER_MODEL
-  delete env.DS_AGENT_WATCHDOG_MODEL
+  delete env.LOFIBOT_ALLOW_MOCK_FIXTURE
+  delete env.LOFIBOT_ROUTER_MODEL
+  delete env.LOFIBOT_WORKER_MODEL
+  delete env.LOFIBOT_WATCHDOG_MODEL
   return env
 }
 
@@ -51,7 +51,7 @@ function shardedTicket(
   runtime.engine.receive(imTrigger({
     id,
     thread,
-    text: '@ds-agent please fix the login timeout on checkout',
+    text: '@lofibot please fix the login timeout on checkout',
   }), { shards })
   const decision = runtime.engine.evaluateDue()[0]
   if (!decision?.ticketId) throw new Error('expected a ticket')
@@ -121,7 +121,7 @@ describe('Runtime service integration', () => {
     const owner = imTrigger({
       id: 'connector-runtime-owner',
       thread: 'connector-runtime-owner',
-      text: '@ds-agent please keep this thread available',
+      text: '@lofibot please keep this thread available',
       at: new Date(at).toISOString(),
     })
     expect(runtime.ingest(owner)).toBe('stored')
@@ -188,7 +188,7 @@ describe('Runtime service integration', () => {
       const seed = imTrigger({
         id: `trg_seed_${threadId}`,
         thread: threadId,
-        text: '@ds-agent please fix the login timeout',
+        text: '@lofibot please fix the login timeout',
       })
       runtime.engine.receive(seed)
       const decision = runtime.engine.evaluateDue()[0]
@@ -266,7 +266,7 @@ describe('Runtime service integration', () => {
   it('keeps ambiguous legacy A/B partial fanout incomplete without rerouting', () => {
     const runtime = start()
     const threadId = 'recovery/legacy-partial-a-b'
-    const seed = imTrigger({ id: 'trg_legacy_ab_seed', thread: threadId, text: '@ds-agent fix this timeout' })
+    const seed = imTrigger({ id: 'trg_legacy_ab_seed', thread: threadId, text: '@lofibot fix this timeout' })
     runtime.engine.receive(seed)
     const evaluated = runtime.engine.evaluateDue()[0]!
     const ticketA = runtime.store.getDoc<Ticket>('ticket', evaluated.ticketId!)!
@@ -300,7 +300,7 @@ describe('Runtime service integration', () => {
       const seed = imTrigger({
         id: `trg_${scenario.name}_eval_seed`,
         thread: threadId,
-        text: '@ds-agent please fix the timeout issue',
+        text: '@lofibot please fix the timeout issue',
       })
       runtime.engine.receive(seed)
       const decision = runtime.engine.evaluateDue()[0]
@@ -345,7 +345,7 @@ describe('Runtime service integration', () => {
     const seed = imTrigger({
       id: 'trg_atomic_seed',
       thread: threadId,
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     })
     runtime.engine.receive(seed)
     const decision = runtime.engine.evaluateDue()[0]
@@ -408,15 +408,15 @@ describe('Runtime service integration', () => {
   it('routes a trigger to a shard, runs that router session, and places the worker on the mesh', async () => {
     const runtime = start({
       env: isolatedEnv({
-        DS_AGENT_INSTANCE_ID: 'alpha',
-        DS_AGENT_SHARDS: JSON.stringify([{ id: 'im', filter: 'source:im', priority: 10 }]),
+        LOFIBOT_INSTANCE_ID: 'alpha',
+        LOFIBOT_SHARDS: JSON.stringify([{ id: 'im', filter: 'source:im', priority: 10 }]),
       }),
     })
     expect(runtime.log.text()).toContain('[routing] shards configured count=1')
     runtime.ingest(imTrigger({
       id: 'trg_shard',
       thread: 'topic/shard',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
 
@@ -490,7 +490,7 @@ describe('Runtime service integration', () => {
     const runtime = start({
       model,
       env: isolatedEnv({
-        DS_AGENT_SHARDS: JSON.stringify([
+        LOFIBOT_SHARDS: JSON.stringify([
           { id: 'ci', filter: 'source:im,text:timeout', priority: 5 },
           { id: 'topic', filter: 'thread:topic/overlap', priority: 5 },
           { id: 'later', filter: 'source:im', priority: 1 },
@@ -502,7 +502,7 @@ describe('Runtime service integration', () => {
     runtime.ingest(imTrigger({
       id: 'trg_overlap',
       thread: 'topic/overlap',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
 
@@ -694,12 +694,12 @@ describe('Runtime service integration', () => {
   })
 
   it('ignores malformed shard config instead of failing startup', () => {
-    const runtime = start({ env: isolatedEnv({ DS_AGENT_SHARDS: 'not-json' }) })
-    expect(runtime.log.text()).toContain('DS_AGENT_SHARDS ignored')
+    const runtime = start({ env: isolatedEnv({ LOFIBOT_SHARDS: 'not-json' }) })
+    expect(runtime.log.text()).toContain('LOFIBOT_SHARDS ignored')
     expect(runtime.routerShards.route(imTrigger({
       id: 'trg_cfg',
       thread: 'topic/cfg',
-      text: '@ds-agent please fix the login timeout',
+      text: '@lofibot please fix the login timeout',
     }))).toEqual(['default'])
   })
 
@@ -710,7 +710,7 @@ describe('Runtime service integration', () => {
     runtime.ingest(imTrigger({
       id: 'trg_mem_1',
       thread: 'topic/mem-1',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
     const first = runtime.store.listDocs<Ticket>('ticket')[0]
@@ -721,7 +721,7 @@ describe('Runtime service integration', () => {
     runtime.ingest(imTrigger({
       id: 'trg_mem_2',
       thread: 'topic/mem-2',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
 
@@ -742,7 +742,7 @@ describe('Runtime service integration', () => {
     runtime.ingest(imTrigger({
       id: 'trg_shell',
       thread: 'topic/shell',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
 
@@ -752,9 +752,9 @@ describe('Runtime service integration', () => {
   })
 
   it('turns a local A2A envelope into a normal filtered trigger', async () => {
-    const runtime = start({ env: isolatedEnv({ DS_AGENT_INSTANCE_ID: 'alpha' }) })
+    const runtime = start({ env: isolatedEnv({ LOFIBOT_INSTANCE_ID: 'alpha' }) })
     const delivery = runtime.sendA2A('alpha', {
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
       thread: 'a2a/thread-1',
     })
     expect(delivery.status).toBe('delivered')
@@ -777,7 +777,7 @@ describe('Runtime service integration', () => {
     runtime.ingest(imTrigger({
       id: 'trg_shell_live',
       thread: 'topic/shell-live',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.jobsSettled()
     const ticket = runtime.store.listDocs<Ticket>('ticket')[0]!
@@ -805,7 +805,7 @@ describe('Runtime service integration', () => {
     dual.ingest(imTrigger({
       id: 'trg_dual',
       thread: 'topic/dual',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await dual.jobsSettled()
 
@@ -813,7 +813,7 @@ describe('Runtime service integration', () => {
     single.ingest(imTrigger({
       id: 'trg_single',
       thread: 'topic/single',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await single.jobsSettled()
 

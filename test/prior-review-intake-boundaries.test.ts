@@ -13,10 +13,10 @@ afterEach(async () => {
 
 function isolatedEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
-  delete env.DS_AGENT_ALLOW_MOCK_FIXTURE
-  delete env.DS_AGENT_ROUTER_MODEL
-  delete env.DS_AGENT_WORKER_MODEL
-  delete env.DS_AGENT_WATCHDOG_MODEL
+  delete env.LOFIBOT_ALLOW_MOCK_FIXTURE
+  delete env.LOFIBOT_ROUTER_MODEL
+  delete env.LOFIBOT_WORKER_MODEL
+  delete env.LOFIBOT_WATCHDOG_MODEL
   return env
 }
 
@@ -42,7 +42,7 @@ function shardedTicket(
   runtime.engine.receive(imTrigger({
     id,
     thread,
-    text: '@ds-agent please fix the login timeout on checkout',
+    text: '@lofibot please fix the login timeout on checkout',
   }), { shards })
   const decision = runtime.engine.evaluateDue()[0]
   if (!decision?.ticketId) throw new Error('expected a ticket')

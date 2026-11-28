@@ -15,8 +15,8 @@ const CANARY_VALUES = {
   ANTHROPIC_API_KEY: 'canary_anthropic_9f3c2a1b',
   DEEPSEEK_API_KEY: 'canary_deepseek_9f3c2a1b',
   GITHUB_TOKEN: 'canary_github_9f3c2a1b',
-  DS_AGENT_API_KEY: 'canary_ds_agent_9f3c2a1b',
-  DS_AGENT_API_BASE: 'http://canary.invalid/9f3c2a1b',
+  LOFIBOT_API_KEY: 'canary_ds_agent_9f3c2a1b',
+  LOFIBOT_API_BASE: 'http://canary.invalid/9f3c2a1b',
   // Benign on purpose: the eval must still run before the fix, so a failure is
   // an environment-leak assertion rather than a broken child.
   NODE_OPTIONS: '--trace-exit',
@@ -29,7 +29,7 @@ const tempDirs: string[] = []
 const savedEnv = new Map<string, string | undefined>()
 
 function makeWorkDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-eval-env-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-eval-env-'))
   tempDirs.push(dir)
   return dir
 }
@@ -124,8 +124,8 @@ describe('buildEvaluatorChildEnv', () => {
       ANTHROPIC_API_KEY: CANARY_VALUES.ANTHROPIC_API_KEY,
       DEEPSEEK_API_KEY: CANARY_VALUES.DEEPSEEK_API_KEY,
       GITHUB_TOKEN: CANARY_VALUES.GITHUB_TOKEN,
-      DS_AGENT_API_KEY: CANARY_VALUES.DS_AGENT_API_KEY,
-      DS_AGENT_API_BASE: CANARY_VALUES.DS_AGENT_API_BASE,
+      LOFIBOT_API_KEY: CANARY_VALUES.LOFIBOT_API_KEY,
+      LOFIBOT_API_BASE: CANARY_VALUES.LOFIBOT_API_BASE,
       NODE_OPTIONS: '--require /nonexistent/repro.js',
       NODE_PATH: '/nonexistent/node_modules',
       NODE_EXTRA_REQUIRE_EXTENSIONS: '.js',
@@ -141,8 +141,8 @@ describe('buildEvaluatorChildEnv', () => {
       'ANTHROPIC_API_KEY',
       'DEEPSEEK_API_KEY',
       'GITHUB_TOKEN',
-      'DS_AGENT_API_KEY',
-      'DS_AGENT_API_BASE',
+      'LOFIBOT_API_KEY',
+      'LOFIBOT_API_BASE',
       'NODE_OPTIONS',
       'NODE_PATH',
       'NODE_EXTRA_REQUIRE_EXTENSIONS',

@@ -23,9 +23,9 @@ if (!home) {
   process.exit(2)
 }
 
-const mode = process.env.DS_AGENT_RECOVERY_CHILD_MODE ?? 'seed'
+const mode = process.env.LOFIBOT_RECOVERY_CHILD_MODE ?? 'seed'
 const marker = path.join(home, mode === 'restart' ? '.delegate-os-recovered' : '.delegate-os-ready')
-const task = process.env.DS_AGENT_DELEGATE_TASK ?? 'delegate-task'
+const task = process.env.LOFIBOT_DELEGATE_TASK ?? 'delegate-task'
 
 function runningTicket(): Ticket {
   const at = new Date().toISOString()
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     jobDelayMs: 0,
     watchdogIntervalMs: 600_000,
     stuckMs: 600_000,
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
   })
 
   const localAgents = runtime.localAgents

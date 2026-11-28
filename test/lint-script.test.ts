@@ -7,7 +7,7 @@ import { checkOsProbePortability, runLint, type Violation } from '../scripts/lin
 const roots: string[] = []
 
 function fixture(files: Record<string, string>): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-lint-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-lint-'))
   roots.push(root)
   for (const [file, content] of Object.entries(files)) {
     const absolute = path.join(root, file)

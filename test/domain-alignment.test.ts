@@ -89,7 +89,7 @@ describe('article domain alignment', () => {
 
   it('a context-only Subscription reads context but neither wakes nor bypasses', () => {
     const { store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout'))
     engine.evaluateDue()
     const first = store.listDocs<Ticket>('ticket')[0]!
     store.putDoc('thread', 'im:topic/watch', {
@@ -103,7 +103,7 @@ describe('article domain alignment', () => {
     })
     engine.followForContext(first.id, 'im:topic/watch')
 
-    engine.receive(trigger('trg_watch', '@ds-agent the payment service is also failing', 'topic/watch'))
+    engine.receive(trigger('trg_watch', '@lofibot the payment service is also failing', 'topic/watch'))
     engine.evaluateDue()
     const disposition = store.getDoc<Disposition>('disposition', 'trg_watch')!
     expect(disposition.fanout).toEqual([])
@@ -117,7 +117,7 @@ describe('article domain alignment', () => {
 
   it('failure ends the Assignment, and retry creates a new Assignment on the same Ticket', () => {
     const { store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
     engine.assignmentStarted(ticket.id, ticket.assignments[0]!.id, `worker_${ticket.id}`)
@@ -140,12 +140,12 @@ describe('article domain alignment', () => {
 
   it('grants a subscription fan-out the ingress-owned spill, never caller meta', () => {
     const { store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
 
     const trusted = store.putSpill('trusted subscription context')
-    engine.receive(trigger('trg_trusted', '@ds-agent login still 500'), { spillId: trusted })
+    engine.receive(trigger('trg_trusted', '@lofibot login still 500'), { spillId: trusted })
     const afterTrusted = store.getDoc<Ticket>('ticket', ticket.id)!
     const trustedInput = afterTrusted.inputs.find(input => input.triggerId === 'trg_trusted')!
     expect(trustedInput.spillId).toBe(trusted)
@@ -155,7 +155,7 @@ describe('article domain alignment', () => {
 
     const forged = store.putSpill('caller-supplied secret')
     engine.receive({
-      ...trigger('trg_forged', '@ds-agent login still 500'),
+      ...trigger('trg_forged', '@lofibot login still 500'),
       meta: { spillId: forged },
     })
     const afterForged = store.getDoc<Ticket>('ticket', ticket.id)!
@@ -167,7 +167,7 @@ describe('article domain alignment', () => {
 
   it('replies go to the Thread that produced the input, not the first Channel', () => {
     const { store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout', 'topic/a'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout', 'topic/a'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
     ticket.channels.push({ source: 'im', thread: 'topic/b' })
@@ -183,7 +183,7 @@ describe('article domain alignment', () => {
 
   it('Outbox retries a failed send instead of dropping it', async () => {
     const { store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
     engine.reply(ticket.id, 'result body', 'result')
@@ -214,7 +214,7 @@ describe('article domain alignment', () => {
 
   it('Panel derives Execution state from facts and separates delivery from ticket end', () => {
     const { home, store, engine } = fixture()
-    engine.receive(trigger('trg_a', '@ds-agent fix the login timeout'))
+    engine.receive(trigger('trg_a', '@lofibot fix the login timeout'))
     engine.evaluateDue()
     const ticket = store.listDocs<Ticket>('ticket')[0]!
     // Conversational IM suppresses the canned acknowledgement on ticket create.

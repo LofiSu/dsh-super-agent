@@ -18,13 +18,13 @@ Instinct acceptance is extracted by `acceptanceFromInstinctEvidenceColumn` only 
 
 ## Configuration
 
-The file is `<DS_AGENT_HOME>/github-dispatch.json`. This slice loads the same `github` and `rsi` schema used by #177; RSI can be enabled while GitHub dispatch is disabled. RSI defaults to a 6 hour interval with a 30 minute minimum floor.
+The file is `<LOFIBOT_HOME>/github-dispatch.json`. This slice loads the same `github` and `rsi` schema used by #177; RSI can be enabled while GitHub dispatch is disabled. RSI defaults to a 6 hour interval with a 30 minute minimum floor.
 
 ```json
 {
   "github": {
     "enabled": false,
-    "repo": "LofiSu/deepseek-super-agent"
+    "repo": "LofiSu/LofiBot"
   },
   "rsi": {
     "enabled": true,

@@ -510,7 +510,7 @@ describe('restart recovery', () => {
 
   it('never writes an environment credential into recovery state, events, or logs', () => {
     const home = tempHome()
-    const runtime = createRuntime(home, { env: { ...process.env, DS_AGENT_API_KEY: SECRET } })
+    const runtime = createRuntime(home, { env: { ...process.env, LOFIBOT_API_KEY: SECRET } })
     runtime.store.putDoc('ticket', 'ticket_secret', runningTicket('ticket_secret'))
     vi.spyOn(runtime.harness, 'launch').mockImplementation(() => Promise.resolve())
 

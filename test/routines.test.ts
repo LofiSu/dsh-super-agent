@@ -17,7 +17,7 @@ const homes: string[] = []
 const runtimes: Runtime[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-routines-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-routines-'))
   homes.push(dir)
   return dir
 }
@@ -67,7 +67,7 @@ describe('routine configuration', () => {
     expect(loadRoutines(tempHome())).toEqual([])
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'routines.json'), '  \n')
-    const env = { DS_AGENT_ROUTINES: JSON.stringify([{ id: 'seeded', everyMinutes: 30, prompt: 'Seed.' }]) }
+    const env = { LOFIBOT_ROUTINES: JSON.stringify([{ id: 'seeded', everyMinutes: 30, prompt: 'Seed.' }]) }
     // A blank owner file wins over the env seed instead of throwing.
     expect(loadRoutines(home, env)).toEqual([])
   })
@@ -75,7 +75,7 @@ describe('routine configuration', () => {
   it('reads the environment seed when no file exists, and the file wins', () => {
     const home = tempHome()
     const env = {
-      DS_AGENT_ROUTINES: JSON.stringify([{ id: 'seeded', everyMinutes: 30, prompt: 'Seed.' }]),
+      LOFIBOT_ROUTINES: JSON.stringify([{ id: 'seeded', everyMinutes: 30, prompt: 'Seed.' }]),
     }
     expect(loadRoutines(home, env).map(routine => routine.id)).toEqual(['seeded'])
     writeRoutines(home, [{ id: 'from-file', everyMinutes: 30, prompt: 'File.' }])

@@ -131,8 +131,8 @@ def launch_worker(home, repo_root, supervisor_script, gate, report_file, stderr_
     supervisor_pid_file = home_path / '.parent-race-supervisor.pid'
     worker_pid_file.write_text(f'{os.getpid()}\n')
     child_env = os.environ.copy()
-    child_env['DS_AGENT_TEST_PARENT_RACE_GATE'] = gate
-    child_env['DS_AGENT_TEST_HELPER_LAUNCH_MARKER'] = helper_launch_marker
+    child_env['LOFIBOT_TEST_PARENT_RACE_GATE'] = gate
+    child_env['LOFIBOT_TEST_HELPER_LAUNCH_MARKER'] = helper_launch_marker
     with open(report_file, 'wb') as stdout, open(stderr_file, 'wb') as stderr:
         child = subprocess.Popen(
             [sys.executable, supervisor_script, 'fault', home, repo_root, 'parent-death-race-probe', str(os.getpid())],

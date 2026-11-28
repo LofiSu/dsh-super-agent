@@ -7,7 +7,7 @@ import path from 'node:path'
 const dirs: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-routines-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-routines-'))
   dirs.push(dir)
   return dir
 }
@@ -20,12 +20,12 @@ function runCli(home: string, args: string[]): { status: number | null; stdout: 
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' },
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
-describe('ds-agent routines', () => {
+describe('lofibot routines', () => {
   it('lists the configured routines with their cadence and channel', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'routines.json'), JSON.stringify([{

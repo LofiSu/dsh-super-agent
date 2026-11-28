@@ -1,6 +1,6 @@
 # Local UI (read-only)
 
-`ds-agent ui` is a read-only, token-gated window into persisted agent state. It
+`lofibot ui` is a read-only, token-gated window into persisted agent state. It
 lets a person see what the agent is doing without holding a Session, opening a
 model, or starting the daemon.
 
@@ -10,22 +10,22 @@ The UI is a library plus a wired command:
   Host/method/path guards, and the SSE stream.
 - `src/ui/render.ts` — the server-rendered HTML page and escaping.
 - `src/cli/ui.ts` — `runUi()` (process lifecycle and signals).
-- `src/cli/main.ts` — dispatches `ds-agent ui` to `runUi(home, options)`.
+- `src/cli/main.ts` — dispatches `lofibot ui` to `runUi(home, options)`.
 
 ## Status and command wiring
 
-`ds-agent ui` is registered in `src/cli/main.ts` (PR #136) and covered by
+`lofibot ui` is registered in `src/cli/main.ts` (PR #136) and covered by
 `test/cli-ui.test.ts` plus `test/cli-command-wiring.test.ts`. The command is:
 
 ```text
-DS_AGENT_UI_TOKEN=... ds-agent ui [--host 127.0.0.1] [--port 4318] [--token ...]
+LOFIBOT_UI_TOKEN=... lofibot ui [--host 127.0.0.1] [--port 4318] [--token ...]
 ```
 
 Prefer the environment variable over `--token`: argv is visible in process
 listings. The token is required and must be at least 16 characters; startup
-fails closed when neither `DS_AGENT_UI_TOKEN` nor `--token` supplies one. The
-state home is resolved by the CLI from `DS_AGENT_HOME`, falling back to
-`./.ds-agent`; there is no `--home` flag. The command forwards `--host`, `--port`
+fails closed when neither `LOFIBOT_UI_TOKEN` nor `--token` supplies one. The
+state home is resolved by the CLI from `LOFIBOT_HOME`, falling back to
+`./.lofibot`; there is no `--home` flag. The command forwards `--host`, `--port`
 (validated), and `--token`; `runUi` keeps the loopback and token enforcement.
 
 ## Endpoints and auth
@@ -59,8 +59,8 @@ no cookie; query tokens are accepted only for this bootstrap.
 Command-line use:
 
 ```text
-curl -H "Authorization: Bearer $DS_AGENT_UI_TOKEN" http://127.0.0.1:4318/api/snapshot
-curl -H "Authorization: Bearer $DS_AGENT_UI_TOKEN" http://127.0.0.1:4318/api/events
+curl -H "Authorization: Bearer $LOFIBOT_UI_TOKEN" http://127.0.0.1:4318/api/snapshot
+curl -H "Authorization: Bearer $LOFIBOT_UI_TOKEN" http://127.0.0.1:4318/api/events
 ```
 
 ## Read model
@@ -114,7 +114,7 @@ documents.
 ## Security model
 
 - **Token required.** `startUiServer()` fails closed without a token of at least
-  16 characters; `runUi()` resolves `DS_AGENT_UI_TOKEN` or `--token` before
+  16 characters; `runUi()` resolves `LOFIBOT_UI_TOKEN` or `--token` before
   opening state.
 - **Loopback only.** The server binds `127.0.0.1`; `startUiServer()` refuses a
   non-loopback host and `runUi()` rejects one before opening state.

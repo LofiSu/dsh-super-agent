@@ -32,7 +32,7 @@ const fakeResult = (status: number): SpawnSyncReturns<string> => ({
 
 const networkResult = (status: number): SpawnSyncReturns<string> => ({
   ...fakeResult(status),
-  stdout: 'ds-agent-network-probe-started\n',
+  stdout: 'lofibot-network-probe-started\n',
 })
 
 const realBash = (command: string): SpawnSyncReturns<string> =>
@@ -47,7 +47,7 @@ function readIsolationHooks(
     runWrapped: command => {
       if (command === 'true') return fakeResult(0)
       if (command.includes('echo ok')) return fakeResult(0)
-      if (command.includes('ds-agent-sandbox-negative-probe')) return fakeResult(0)
+      if (command.includes('lofibot-sandbox-negative-probe')) return fakeResult(0)
       if (command.includes('test -r') && command.includes('probe-write.txt')) return fakeResult(wrappedReadStatus)
       if (command.includes('fetch(')) return networkResult(1)
       if (command.includes('kill -0')) return fakeResult(command.includes('PPID') ? 1 : 0)
@@ -110,7 +110,7 @@ describe('sandbox wrapper probe (PATH ≠ enforcement)', () => {
   it('requires an in-wrapper startup marker before crediting network isolation', () => {
     const probe = probeSandboxConfinement(linuxBwrapSystem(), {
       runWrapped: command => {
-        if (command === 'true' || command.includes('echo ok') || command.includes('ds-agent-sandbox-negative-probe')) {
+        if (command === 'true' || command.includes('echo ok') || command.includes('lofibot-sandbox-negative-probe')) {
           return fakeResult(0)
         }
         if (command.includes('fetch(')) return fakeResult(1)
@@ -126,7 +126,7 @@ describe('sandbox wrapper probe (PATH ≠ enforcement)', () => {
   it('does not mistake an HTTP response for denied network access', () => {
     const probe = probeSandboxConfinement(linuxBwrapSystem(), {
       runWrapped: (command, policy) => {
-        if (command === 'true' || command.includes('echo ok') || command.includes('ds-agent-sandbox-negative-probe')) {
+        if (command === 'true' || command.includes('echo ok') || command.includes('lofibot-sandbox-negative-probe')) {
           return fakeResult(0)
         }
         if (command.includes('fetch(')) return networkResult(policy.allowNetwork === true ? 0 : 2)
@@ -157,7 +157,7 @@ describe('sandbox wrapper probe (PATH ≠ enforcement)', () => {
   })
 
   it('cloud host runtime sandbox probe (non-gating)', () => {
-    if (!process.env.DS_AGENT_CLOUD_SANDBOX_PROBE) return
+    if (!process.env.LOFIBOT_CLOUD_SANDBOX_PROBE) return
     const confinement = probeSandboxConfinement()
     expect(['enforced', 'not_enforced', 'probe_failed', 'unsupported']).toContain(confinement.outcome)
     if (confinement.outcome !== 'unsupported') {
@@ -210,7 +210,7 @@ describe('sandbox read isolation requires a readable canary', () => {
     expect(probe.dimensions.write).toBe('enforced')
     expect(probe.dimensions.read).toBe('enforced')
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'read' }, strictReadPolicy),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'read' }, strictReadPolicy),
     ).not.toThrow()
   })
 
@@ -248,7 +248,7 @@ describe('sandbox probe requires the forbidden parent to be visible', () => {
     }
     return {
       runWrapped: (command, policy) => {
-        if (command.includes('ds-agent-sandbox-negative-probe')) {
+        if (command.includes('lofibot-sandbox-negative-probe')) {
           recallForbiddenDir(command)
           // Keep the write dimension enforced so the read path is tested alone.
           if (mode === 'read') return fakeResult(0)
@@ -319,7 +319,7 @@ describe.skipIf(!REAL_LINUX_BWRAP)('sandbox probe with TMPDIR outside /tmp (on h
   it('reports probe_failed for write and read instead of enforced', () => {
     let outside: string
     try {
-      outside = mkdtempSync(join(homedir(), '.ds-agent-tmpdir-outside-'))
+      outside = mkdtempSync(join(homedir(), '.lofibot-tmpdir-outside-'))
     } catch {
       return // no writable location outside /tmp on this host
     }

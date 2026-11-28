@@ -1,17 +1,17 @@
 :root {
   color-scheme: light;
-  --paper: #f4f0e6;
-  --paper-2: #e7e0d2;
-  --ink: #1c1916;
-  --ink-soft: #3a342e;
-  --rule: #d5cbbd;
-  --accent: #8a342c;
-  --accent-ink: #6b2420;
-  --focus: #1d4a38;
+  --paper: #fbf4f8;
+  --paper-2: #f2e7f5;
+  --ink: #17234e;
+  --ink-soft: #444b68;
+  --rule: #ddcbdf;
+  --accent: #a73968;
+  --accent-ink: #812852;
+  --focus: #345eb1;
   --sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", "STSong", "PMingLiU", "Noto Serif CJK SC", serif;
   --mono: ui-monospace, "SFMono-Regular", "Source Code Pro", Menlo, Consolas, monospace;
-  --measure: 40rem;
+  --measure: 42rem;
 }
 
 *,
@@ -34,7 +34,7 @@ body {
   font-family: var(--serif);
   font-size: 1.125rem;
   line-height: 1.75;
-  border-top: 4px solid var(--accent);
+  border-top: 4px solid #e94d9a;
 }
 
 .skip {
@@ -71,8 +71,7 @@ main,
   font-family: var(--sans);
   font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   text-decoration: none;
   color: var(--ink);
 }
@@ -113,6 +112,9 @@ main {
 
 .banner {
   margin: 0 0 1.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.65rem;
+  overflow: hidden;
 }
 
 .banner img {
@@ -139,7 +141,7 @@ h2,
 h3 {
   font-family: var(--sans);
   line-height: 1.3;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 h1 {
@@ -196,8 +198,8 @@ pre,
 .highlight {
   overflow-x: auto;
   padding: 0.9rem 1rem;
-  background: #241f1b;
-  color: #f4f0e6;
+  background: #17234e;
+  color: #fbf4f8;
   line-height: 1.55;
 }
 

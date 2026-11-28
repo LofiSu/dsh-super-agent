@@ -252,16 +252,16 @@ function linuxStrictArgv(policy: SandboxPolicy, exists: (path: string) => boolea
 }
 
 /**
- * Parse `DS_AGENT_SANDBOX_READ_ISOLATION`. Unset/empty/`0`/`false` keep today's
+ * Parse `LOFIBOT_SANDBOX_READ_ISOLATION`. Unset/empty/`0`/`false` keep today's
  * host-wide reads; `1`/`true`/`strict` opt in. Any other value fails closed.
  */
 export function readIsolationFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.DS_AGENT_SANDBOX_READ_ISOLATION
+  const raw = env.LOFIBOT_SANDBOX_READ_ISOLATION
   if (raw === undefined) return false
   const value = raw.trim()
   if (value === '' || value === '0' || value === 'false') return false
   if (value === '1' || value === 'true' || value === 'strict') return true
-  throw new UserError(`invalid DS_AGENT_SANDBOX_READ_ISOLATION: "${raw}" (expected 0, 1, false, true, or strict)`)
+  throw new UserError(`invalid LOFIBOT_SANDBOX_READ_ISOLATION: "${raw}" (expected 0, 1, false, true, or strict)`)
 }
 
 /**
@@ -342,7 +342,7 @@ export interface SandboxAvailabilityDiagnostic {
   workerSandboxWrapper: SandboxWrapperAvailability
   /**
    * Env/policy signal: strict read argv or profile would be selected when wrapping.
-   * `unknown` when `DS_AGENT_SANDBOX_READ_ISOLATION` is invalid.
+   * `unknown` when `LOFIBOT_SANDBOX_READ_ISOLATION` is invalid.
    */
   strictReadIsolationPolicy: 'on' | 'off' | 'unknown'
 }

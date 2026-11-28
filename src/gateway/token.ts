@@ -41,7 +41,7 @@ class GatewayTokenEmptyFileError extends GatewayTokenFileError {
   }
 }
 
-/** Local gateway bearer token lives here (mode 0600) so ds-agent can auto-read it. */
+/** Local gateway bearer token lives here (mode 0600) so lofibot can auto-read it. */
 export function gatewayTokenPath(home: string): string {
   return path.join(home, 'gateway.token')
 }

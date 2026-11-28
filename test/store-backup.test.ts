@@ -111,8 +111,8 @@ afterEach(() => {
 
 describe('backupStore', () => {
   it('snapshots committed writes that are still only in the WAL', () => {
-    const home = tempDir('ds-agent-backup-wal-')
-    const out = path.join(tempDir('ds-agent-backup-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-backup-wal-')
+    const out = path.join(tempDir('lofibot-backup-out-'), 'snapshot.db')
     const store = openStore(home)
 
     store.putDoc('ticket', 'T1', { id: 'T1', title: 'first' })
@@ -139,8 +139,8 @@ describe('backupStore', () => {
   })
 
   it('refuses to overwrite an existing output', () => {
-    const home = tempDir('ds-agent-backup-refuse-')
-    const outDir = tempDir('ds-agent-backup-refuse-out-')
+    const home = tempDir('lofibot-backup-refuse-')
+    const outDir = tempDir('lofibot-backup-refuse-out-')
     const out = path.join(outDir, 'existing.db')
     openStore(home).close()
     fs.writeFileSync(out, 'do not replace me')
@@ -150,8 +150,8 @@ describe('backupStore', () => {
   })
 
   it('refuses a corrupt live store before creating any output', () => {
-    const home = tempDir('ds-agent-backup-corrupt-source-')
-    const outDir = tempDir('ds-agent-backup-corrupt-source-out-')
+    const home = tempDir('lofibot-backup-corrupt-source-')
+    const outDir = tempDir('lofibot-backup-corrupt-source-out-')
     const out = path.join(outDir, 'snapshot.db')
 
     writeCorruptButParseableBackup(dbPath(home))
@@ -165,8 +165,8 @@ describe('backupStore', () => {
   })
 
   it('preserves a file that appears before install when the backup later fails', () => {
-    const home = tempDir('ds-agent-backup-failure-preserve-')
-    const outDir = tempDir('ds-agent-backup-failure-preserve-out-')
+    const home = tempDir('lofibot-backup-failure-preserve-')
+    const outDir = tempDir('lofibot-backup-failure-preserve-out-')
     const out = path.join(outDir, 'snapshot.db')
     const sentinel = 'created by another process, must survive'
     openStore(home).close()
@@ -186,8 +186,8 @@ describe('backupStore', () => {
   })
 
   it('refuses a race-created output without touching it', () => {
-    const home = tempDir('ds-agent-backup-race-')
-    const outDir = tempDir('ds-agent-backup-race-out-')
+    const home = tempDir('lofibot-backup-race-')
+    const outDir = tempDir('lofibot-backup-race-out-')
     const out = path.join(outDir, 'snapshot.db')
     const sentinel = 'race winner'
     openStore(home).close()
@@ -206,8 +206,8 @@ describe('backupStore', () => {
   })
 
   it('refuses a snapshot whose ledger does not match the source version', () => {
-    const home = tempDir('ds-agent-backup-schema-mismatch-')
-    const outDir = tempDir('ds-agent-backup-schema-mismatch-out-')
+    const home = tempDir('lofibot-backup-schema-mismatch-')
+    const outDir = tempDir('lofibot-backup-schema-mismatch-out-')
     const out = path.join(outDir, 'snapshot.db')
     openStore(home).close()
 
@@ -230,7 +230,7 @@ describe('backupStore', () => {
   })
 
   it('refuses the live database and spill directories', () => {
-    const home = tempDir('ds-agent-backup-paths-')
+    const home = tempDir('lofibot-backup-paths-')
     openStore(home).close()
     const spill = path.join(home, STORE_SPILL_DIRS[0])
     fs.mkdirSync(spill)
@@ -246,8 +246,8 @@ describe('backupStore', () => {
   })
 
   it('requires a .db or .sqlite extension unless explicitly allowed', () => {
-    const home = tempDir('ds-agent-backup-extension-')
-    const outDir = tempDir('ds-agent-backup-extension-out-')
+    const home = tempDir('lofibot-backup-extension-')
+    const outDir = tempDir('lofibot-backup-extension-out-')
     openStore(home).close()
 
     expectUserError(
@@ -263,14 +263,14 @@ describe('backupStore', () => {
   })
 
   it('refuses an empty home with an actionable message', () => {
-    const home = tempDir('ds-agent-backup-empty-')
-    const out = path.join(tempDir('ds-agent-backup-empty-out-'), 'snapshot.db')
-    expectUserError(() => backupStore(home, out), /no store at .*ds-agent\.db/)
+    const home = tempDir('lofibot-backup-empty-')
+    const out = path.join(tempDir('lofibot-backup-empty-out-'), 'snapshot.db')
+    expectUserError(() => backupStore(home, out), /no store at .*lofibot\.db/)
   })
 
   it('refuses to back up a store recorded by a newer schema version', () => {
-    const home = tempDir('ds-agent-backup-future-')
-    const out = path.join(tempDir('ds-agent-backup-future-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-backup-future-')
+    const out = path.join(tempDir('lofibot-backup-future-out-'), 'snapshot.db')
 
     const db = new DatabaseSync(dbPath(home))
     db.exec(`
@@ -293,8 +293,8 @@ CREATE TABLE schema_migrations (
 
 describe('restoreStore', () => {
   it('restores a backup round-trip', () => {
-    const home = tempDir('ds-agent-restore-roundtrip-')
-    const out = path.join(tempDir('ds-agent-restore-roundtrip-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-restore-roundtrip-')
+    const out = path.join(tempDir('lofibot-restore-roundtrip-out-'), 'snapshot.db')
 
     const store = openStore(home)
     store.putDoc('ticket', 'T1', { id: 'T1', title: 'original' })
@@ -332,8 +332,8 @@ describe('restoreStore', () => {
   })
 
   it('refuses to replace an existing store without force', () => {
-    const home = tempDir('ds-agent-restore-noforce-')
-    const out = path.join(tempDir('ds-agent-restore-noforce-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-restore-noforce-')
+    const out = path.join(tempDir('lofibot-restore-noforce-out-'), 'snapshot.db')
 
     const store = openStore(home)
     store.putDoc('ticket', 'T1', { id: 'T1', title: 'live row' })
@@ -349,8 +349,8 @@ describe('restoreStore', () => {
   })
 
   it('refuses a corrupt but parseable backup without touching the live store', () => {
-    const home = tempDir('ds-agent-restore-corrupt-')
-    const outDir = tempDir('ds-agent-restore-corrupt-out-')
+    const home = tempDir('lofibot-restore-corrupt-')
+    const outDir = tempDir('lofibot-restore-corrupt-out-')
     const corrupt = path.join(outDir, 'corrupt.db')
 
     const store = openStore(home)
@@ -378,8 +378,8 @@ describe('restoreStore', () => {
   })
 
   it('rolls the old database and WAL back when install fails after the move', () => {
-    const home = tempDir('ds-agent-restore-install-failure-')
-    const out = path.join(tempDir('ds-agent-restore-install-failure-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-restore-install-failure-')
+    const out = path.join(tempDir('lofibot-restore-install-failure-out-'), 'snapshot.db')
 
     const store = openStore(home)
     store.putDoc('ticket', 'T1', { id: 'T1', title: 'keep me' })
@@ -410,8 +410,8 @@ describe('restoreStore', () => {
   })
 
   it('refuses a backup recorded by a newer schema version', () => {
-    const home = tempDir('ds-agent-restore-future-')
-    const outDir = tempDir('ds-agent-restore-future-out-')
+    const home = tempDir('lofibot-restore-future-')
+    const outDir = tempDir('lofibot-restore-future-out-')
     const future = path.join(outDir, 'future.db')
 
     const db = new DatabaseSync(future)
@@ -433,8 +433,8 @@ CREATE TABLE schema_migrations (
   })
 
   it('removes stale -wal and -shm sidecars', () => {
-    const home = tempDir('ds-agent-restore-sidecars-')
-    const out = path.join(tempDir('ds-agent-restore-sidecars-out-'), 'snapshot.db')
+    const home = tempDir('lofibot-restore-sidecars-')
+    const out = path.join(tempDir('lofibot-restore-sidecars-out-'), 'snapshot.db')
 
     const store = openStore(home)
     store.putDoc('ticket', 'T1', { id: 'T1', title: 'before' })
@@ -458,8 +458,8 @@ CREATE TABLE schema_migrations (
   })
 
   it('restores a legacy database with no schema_migrations ledger', () => {
-    const home = tempDir('ds-agent-restore-legacy-')
-    const outDir = tempDir('ds-agent-restore-legacy-out-')
+    const home = tempDir('lofibot-restore-legacy-')
+    const outDir = tempDir('lofibot-restore-legacy-out-')
     const legacy = path.join(outDir, 'legacy.sqlite')
 
     const db = new DatabaseSync(legacy)
@@ -485,8 +485,8 @@ CREATE TABLE documents (
   })
 
   it('refuses a missing or invalid backup file', () => {
-    const home = tempDir('ds-agent-restore-invalid-')
-    const outDir = tempDir('ds-agent-restore-invalid-out-')
+    const home = tempDir('lofibot-restore-invalid-')
+    const outDir = tempDir('lofibot-restore-invalid-out-')
     const missing = path.join(outDir, 'missing.db')
     const invalid = path.join(outDir, 'invalid.db')
     fs.writeFileSync(invalid, 'not a database')

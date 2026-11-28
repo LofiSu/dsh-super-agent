@@ -23,14 +23,14 @@ export const T48_INCREMENTAL_SAMPLES = FIXTURE_CORPUS
 /** Held-out queries stable across samples (full protocol query set). */
 export const T48_HELD_OUT_QUERIES: readonly ProtocolQuery[] = PROTOCOL_QUERIES
 
-export const T48_CORPUS_STATE_REL = '.ds-agent/measurement/t48-corpus-state.json'
+export const T48_CORPUS_STATE_REL = '.lofibot/measurement/t48-corpus-state.json'
 
 /**
  * A measurement fixture never shares the operator's Runtime SQLite store.
  * The path lives below the measurement area so it can be retained across
  * samples without allowing fixture retention to prune production memories.
  */
-export const T48_MEASUREMENT_HOME_REL = '.ds-agent/measurement/t48-fixture'
+export const T48_MEASUREMENT_HOME_REL = '.lofibot/measurement/t48-fixture'
 
 export function resolveT48MeasurementHome(home: string): string {
   return path.join(home, T48_MEASUREMENT_HOME_REL)
@@ -75,14 +75,14 @@ function retentionForMode(env: NodeJS.ProcessEnv): {
     coldMaxEntries: number
     coldMaxAgeDays: number
   } = { ...FIXTURE_RETENTION }
-  const testMaxAgeDays = env.DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS?.trim()
+  const testMaxAgeDays = env.LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS?.trim()
   if (testMaxAgeDays != null && testMaxAgeDays.length > 0) {
     const days = Number(testMaxAgeDays)
     if (Number.isFinite(days) && days >= 0) {
       retention = { ...retention, maxAgeDays: days }
     }
   }
-  const testMaxEntries = env.DS_AGENT_T48_TEST_HOT_MAX_ENTRIES?.trim()
+  const testMaxEntries = env.LOFIBOT_T48_TEST_HOT_MAX_ENTRIES?.trim()
   if (testMaxEntries != null && testMaxEntries.length > 0) {
     const n = Number(testMaxEntries)
     if (Number.isFinite(n) && n >= 1) {

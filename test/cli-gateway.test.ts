@@ -36,15 +36,15 @@ describe('gateway CLI token label', () => {
     })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const originalArgv = process.argv
-    process.argv = ['node', 'ds-agent', 'gateway', '--token', 'cli-explicit-secret']
-    vi.stubEnv('DS_AGENT_GATEWAY_PROVIDERS', JSON.stringify([
+    process.argv = ['node', 'lofibot', 'gateway', '--token', 'cli-explicit-secret']
+    vi.stubEnv('LOFIBOT_GATEWAY_PROVIDERS', JSON.stringify([
       { id: 'fake', baseUrl: 'http://127.0.0.1:1', apiKey: 'k', models: ['m'] },
     ]))
-    vi.stubEnv('DS_AGENT_API_BASE', '')
-    vi.stubEnv('DS_AGENT_API_KEY', '')
-    vi.stubEnv('DS_AGENT_API_MODEL', '')
-    vi.stubEnv('DS_AGENT_GATEWAY_MODEL', '')
-    vi.stubEnv('DS_AGENT_GATEWAY_TOKEN', '')
+    vi.stubEnv('LOFIBOT_API_BASE', '')
+    vi.stubEnv('LOFIBOT_API_KEY', '')
+    vi.stubEnv('LOFIBOT_API_MODEL', '')
+    vi.stubEnv('LOFIBOT_GATEWAY_MODEL', '')
+    vi.stubEnv('LOFIBOT_GATEWAY_TOKEN', '')
 
     try {
       // A successful runGatewayCommand stays alive until a signal arrives; the
@@ -53,7 +53,7 @@ describe('gateway CLI token label', () => {
       await vi.waitFor(() => { expect(log).toHaveBeenCalled() })
 
       const output = logs.join('\n')
-      expect(output).toContain('supplied via --token / DS_AGENT_GATEWAY_TOKEN')
+      expect(output).toContain('supplied via --token / LOFIBOT_GATEWAY_TOKEN')
       expect(output).not.toContain(gatewayTokenPath(home))
       expect(output).not.toContain('cli-explicit-secret')
       expect(startGatewayServer).toHaveBeenCalledTimes(1)

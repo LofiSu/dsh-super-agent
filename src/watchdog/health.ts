@@ -28,7 +28,7 @@ export interface RequestedCapability {
 export interface HealthCapabilities {
   /** Store schema recorded by the database, or `unknown` when it cannot be read. */
   schemaVersion: number | 'unknown'
-  /** Strict read confinement requested through `DS_AGENT_SANDBOX_READ_ISOLATION`. */
+  /** Strict read confinement requested through `LOFIBOT_SANDBOX_READ_ISOLATION`. */
   readIsolation: RequestedCapability
   /** Worker bash sandbox requested through the default-on sandbox policy. */
   workerSandbox: RequestedCapability

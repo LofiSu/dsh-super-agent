@@ -17,16 +17,16 @@ const homes: string[] = []
 const children: ChildProcess[] = []
 
 const OFFLINE_KEYS = [
-  'DS_AGENT_API_BASE',
-  'DS_AGENT_API_KEY',
-  'DS_AGENT_API_MODEL',
-  'DS_AGENT_PROVIDER',
+  'LOFIBOT_API_BASE',
+  'LOFIBOT_API_KEY',
+  'LOFIBOT_API_MODEL',
+  'LOFIBOT_PROVIDER',
   'DEEPSEEK_API_KEY',
   'OPENAI_API_KEY',
 ]
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-os-fault-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-os-fault-'))
   homes.push(dir)
   return dir
 }
@@ -36,7 +36,7 @@ function markerPath(home: string): string {
 }
 
 function childEnv(home: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' }
+  const env: NodeJS.ProcessEnv = { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' }
   for (const key of OFFLINE_KEYS) delete env[key]
   return { ...env, ...extra }
 }
@@ -47,7 +47,7 @@ function startChild(home: string, mode: 'seed' | 'restart'): ChildProcess {
     ['--import', 'tsx', 'test/helpers/recovery-os-child.ts', home],
     {
       cwd: process.cwd(),
-      env: childEnv(home, { DS_AGENT_RECOVERY_CHILD_MODE: mode }),
+      env: childEnv(home, { LOFIBOT_RECOVERY_CHILD_MODE: mode }),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )

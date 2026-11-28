@@ -21,13 +21,13 @@ afterEach(() => {
 })
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-lifecycle-persistence-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-lifecycle-persistence-'))
   homes.push(home)
   return home
 }
 
 function dbPath(home: string): string {
-  return path.join(home, 'ds-agent.db')
+  return path.join(home, 'lofibot.db')
 }
 
 /**

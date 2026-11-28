@@ -489,11 +489,11 @@ describe('gateway CLI', () => {
     cleanup.push(async () => { fs.rmSync(home, { recursive: true, force: true }) })
     const originalArgv = process.argv
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.stubEnv('DS_AGENT_GATEWAY_PROVIDERS', '')
-    vi.stubEnv('DS_AGENT_API_BASE', '')
-    vi.stubEnv('DS_AGENT_API_KEY', '')
-    vi.stubEnv('DS_AGENT_GATEWAY_TOKEN', '')
-    process.argv = ['node', 'ds-agent', 'gateway', '--host', '0.0.0.0']
+    vi.stubEnv('LOFIBOT_GATEWAY_PROVIDERS', '')
+    vi.stubEnv('LOFIBOT_API_BASE', '')
+    vi.stubEnv('LOFIBOT_API_KEY', '')
+    vi.stubEnv('LOFIBOT_GATEWAY_TOKEN', '')
+    process.argv = ['node', 'lofibot', 'gateway', '--host', '0.0.0.0']
     try {
       await expect(runGatewayCommand(home)).rejects.toThrow(/no providers configured/)
       expect(warn).toHaveBeenCalledTimes(1)
@@ -509,7 +509,7 @@ describe('gateway CLI', () => {
 describe('gateway config from env', () => {
   it('parses JSON providers and resolves apiKeyEnv', () => {
     const env = {
-      DS_AGENT_GATEWAY_PROVIDERS: JSON.stringify([{ id: 'd', baseUrl: 'http://x', apiKeyEnv: 'MY_KEY', models: ['m'] }]),
+      LOFIBOT_GATEWAY_PROVIDERS: JSON.stringify([{ id: 'd', baseUrl: 'http://x', apiKeyEnv: 'MY_KEY', models: ['m'] }]),
       MY_KEY: 'secret',
     } as NodeJS.ProcessEnv
     expect(gatewayProvidersFromEnv(env)[0]).toMatchObject({ id: 'd', baseUrl: 'http://x', apiKey: 'secret', models: ['m'] })
@@ -517,7 +517,7 @@ describe('gateway config from env', () => {
 
   it('resolves a preset by name and its key env', () => {
     const env = {
-      DS_AGENT_GATEWAY_PROVIDERS: JSON.stringify([{ id: 'ds', preset: 'deepseek' }]),
+      LOFIBOT_GATEWAY_PROVIDERS: JSON.stringify([{ id: 'ds', preset: 'deepseek' }]),
       DEEPSEEK_API_KEY: 'k',
     } as NodeJS.ProcessEnv
     expect(gatewayProvidersFromEnv(env)[0]).toMatchObject({ id: 'ds', baseUrl: 'https://api.deepseek.com', apiKey: 'k', models: ['deepseek-flash'] })
@@ -525,9 +525,9 @@ describe('gateway config from env', () => {
 
   it('falls back to a single BYOM provider', () => {
     const env = {
-      DS_AGENT_API_BASE: 'http://y',
-      DS_AGENT_API_KEY: 'k',
-      DS_AGENT_API_MODEL: 'm2',
+      LOFIBOT_API_BASE: 'http://y',
+      LOFIBOT_API_KEY: 'k',
+      LOFIBOT_API_MODEL: 'm2',
     } as NodeJS.ProcessEnv
     expect(gatewayProvidersFromEnv(env)).toEqual([
       { id: 'default', baseUrl: 'http://y', apiKey: 'k', priority: 0, models: ['m2'] },
@@ -535,7 +535,7 @@ describe('gateway config from env', () => {
   })
 
   it('parses routing aliases', () => {
-    const env = { DS_AGENT_GATEWAY_ALIASES: JSON.stringify({ auto: ['a/m1', 'b/m9'] }) } as NodeJS.ProcessEnv
+    const env = { LOFIBOT_GATEWAY_ALIASES: JSON.stringify({ auto: ['a/m1', 'b/m9'] }) } as NodeJS.ProcessEnv
     expect(gatewayAliasesFromEnv(env)).toEqual({ auto: ['a/m1', 'b/m9'] })
   })
 

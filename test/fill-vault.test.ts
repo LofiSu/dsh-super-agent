@@ -17,7 +17,7 @@ import { LocalEnv } from '../src/env/local-env.ts'
 const dirs: string[] = []
 
 function home(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-fill-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-fill-'))
   dirs.push(dir)
   return dir
 }
@@ -143,10 +143,10 @@ describe('fill-only vault', () => {
     expect(loadFillVault(flat)).toMatchObject({ reason: 'no-fill-entries' })
   })
 
-  it('defaults the path to vault.json and honours DS_AGENT_VAULT_FILE', () => {
+  it('defaults the path to vault.json and honours LOFIBOT_VAULT_FILE', () => {
     const dir = home()
     expect(fillVaultPath(dir, {})).toBe(path.join(dir, 'vault.json'))
-    expect(fillVaultPath(dir, { DS_AGENT_VAULT_FILE: '/tmp/other.json' })).toBe('/tmp/other.json')
+    expect(fillVaultPath(dir, { LOFIBOT_VAULT_FILE: '/tmp/other.json' })).toBe('/tmp/other.json')
   })
 
   it('builds a stable, bounded action text', () => {

@@ -45,7 +45,7 @@ describe('gateway config file + sources', () => {
 
   it('falls back to env when there is no config file', () => {
     const home = tempHome()
-    const env = { DS_AGENT_API_BASE: 'http://y', DS_AGENT_API_KEY: 'k', DS_AGENT_API_MODEL: 'm2' } as NodeJS.ProcessEnv
+    const env = { LOFIBOT_API_BASE: 'http://y', LOFIBOT_API_KEY: 'k', LOFIBOT_API_MODEL: 'm2' } as NodeJS.ProcessEnv
     const resolved = gatewayFromSources(home, env)
     expect(resolved.source).toBe('env')
     expect(resolved.providers[0]).toMatchObject({ id: 'default', baseUrl: 'http://y' })

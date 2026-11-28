@@ -53,7 +53,7 @@ function spawnFinalizeAsync(
       ['--import', 'tsx', path.join(repoRoot, 'scripts/finalize-once.ts'), home, datasetRoot, candidateId],
       {
         cwd: repoRoot,
-        env: { ...process.env, CI: 'true', DS_AGENT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
+        env: { ...process.env, CI: 'true', LOFIBOT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
       },
     )
     let stdout = ''
@@ -75,7 +75,7 @@ function spawnFinalizeSync(home: string, datasetRoot: string, candidateId: strin
     ['--import', 'tsx', path.join(repoRoot, 'scripts/finalize-once.ts'), home, datasetRoot, candidateId],
     {
       cwd: repoRoot,
-      env: { ...process.env, CI: 'true', DS_AGENT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
+      env: { ...process.env, CI: 'true', LOFIBOT_ALLOW_MOCK_FIXTURE: '1', ...extraEnv },
       encoding: 'utf8',
     },
   )
@@ -110,7 +110,7 @@ describe('final test concurrent OS processes', () => {
     const { report, winner } = await pipeline(home, datasetRoot)
 
     const hung = spawnFinalizeSync(home, datasetRoot, winner.candidateId, {
-      DS_AGENT_EVOLUTION_TEST_FAULT: 'hang_after_claim',
+      LOFIBOT_EVOLUTION_TEST_FAULT: 'hang_after_claim',
     })
     expect(hung.status).toBe(86)
 

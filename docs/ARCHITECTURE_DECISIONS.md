@@ -10,11 +10,11 @@ rewrite `PLAN.md`; link to the contract instead.
 - **Context:** `#64` marked every iMessage trigger `addressed: 'direct'`. The
   ingress `admissionDeny` already runs before `addressed`, but a default run
   configures no admission rules, so nothing is denied and the always-`direct`
-  marker passes the fast path. `--handle`/`DS_AGENT_IMESSAGE_HANDLE` was
+  marker passes the fast path. `--handle`/`LOFIBOT_IMESSAGE_HANDLE` was
   optional, and no group metadata was read. Any sender in any chat could
   trigger work. A message joined to multiple chats can be deduped to a 1:1 row.
 - **Decision:** require a sender allowlist (`--handle`,
-  `DS_AGENT_IMESSAGE_HANDLE`, or non-empty `DS_AGENT_ACTOR_ALLOWLIST`) unless
+  `LOFIBOT_IMESSAGE_HANDLE`, or non-empty `LOFIBOT_ACTOR_ALLOWLIST`) unless
   the operator passes an explicit `--allow-any` opt-out. Group chats are closed
   by default and require an explicit `--allow-groups`. Groupness is aggregated
   across all `chat_message_join` rows before guid dedupe; missing or ambiguous
@@ -142,7 +142,7 @@ rewrite `PLAN.md`; link to the contract instead.
 - **Status:** accepted; implemented by #91
 - **Context:** the credential-sentinel test injects a capturing MockModel and
   therefore needs to run under the live `pnpm test` default without a provider
-  key. The global `DS_AGENT_ALLOW_MOCK_FIXTURE=1` flag was the only opt-in and
+  key. The global `LOFIBOT_ALLOW_MOCK_FIXTURE=1` flag was the only opt-in and
   weakened the fixture guard for every test in the process.
 - **Decision:** `freshRuntime` accepts an explicit `allowMockModel: true` option.
   The default remains a refusal: a MockModel is rejected unless the caller opts
@@ -199,7 +199,7 @@ rewrite `PLAN.md`; link to the contract instead.
   (`src/gateway/token.ts:164-168`). If the path already exists, `O_EXCL` fails
   with `EEXIST`; the re-read still sees no token, so the call throws
   `GatewayTokenFileError(file, 'was created concurrently and is empty')`
-  (`src/gateway/token.ts:140-146`). Both `ds-agent gateway`
+  (`src/gateway/token.ts:140-146`). Both `lofibot gateway`
   (`src/cli/gateway.ts:42-43`) and the embedded gateway
   (`src/gateway/embedded.ts:26`) call this before binding a port, so startup
   aborts and the file's content and inode are left unchanged. On POSIX the
@@ -236,7 +236,7 @@ rewrite `PLAN.md`; link to the contract instead.
   `nlink == 1`, owned by the intended user, mode `0600`, parent directory not
   group/world-writable), decide whether the empty state is expected (crash) or
   suspicious (tamper), then remove the file deliberately and restart, or start
-  with an explicit `--token` / `DS_AGENT_GATEWAY_TOKEN` without touching the
+  with an explicit `--token` / `LOFIBOT_GATEWAY_TOKEN` without touching the
   file. If the state is suspicious, preserve a copy as evidence and treat the
   local token and any upstream credentials as potentially compromised before
   minting a replacement.
@@ -504,8 +504,8 @@ rewrite `PLAN.md`; link to the contract instead.
   - `filterTriggerWithPolicy` runs `fastPath` first. A fast drop returns before
     the policy is called and cannot be overridden. Only a fast pass reaches the
     model, and the combined verdict keeps the existing `FilterVerdict` labels.
-  - `Runtime` defaults to `rules`. `DS_AGENT_SLOW_PATH=model` (or
-    `RuntimeOptions.slowPath.mode`) opts in; `DS_AGENT_SLOW_PATH_TIMEOUT_MS`
+  - `Runtime` defaults to `rules`. `LOFIBOT_SLOW_PATH=model` (or
+    `RuntimeOptions.slowPath.mode`) opts in; `LOFIBOT_SLOW_PATH_TIMEOUT_MS`
     defaults to 3000 and is valid only from 100 to 30000. An invalid mode,
     timeout, or a model without `classifyPolicy` falls back to rules with one
     reason-only log line (fail closed).
@@ -660,7 +660,7 @@ rewrite `PLAN.md`; link to the contract instead.
   events are rebuilt from a per-kind whitelist and events for invisible tickets
   or unknown kinds are dropped. Metrics are re-read from disk on each frame.
   The UI never writes domain state and never calls `Metrics.flush()`. SSE uses a
-  bounded drain wait rather than unbounded buffering. `ds-agent ui` wires the
+  bounded drain wait rather than unbounded buffering. `lofibot ui` wires the
   command in `main.ts`; token and loopback enforcement stay in `runUi`.
 - **Consequences:** the UI is single-user and local-trust. The token appears
   once in browser history during bootstrap; any same-uid process that can read
@@ -683,7 +683,7 @@ rewrite `PLAN.md`; link to the contract instead.
 - **Status:** accepted; #131 merged backup/restore and release checks
 - **Context:** The SQLite store is the durable domain state. A naive file copy
   of a live WAL database is not a consistent snapshot, and a restore that
-  overwrites `ds-agent.db` can destroy the only copy on a failed copy. Operators
+  overwrites `lofibot.db` can destroy the only copy on a failed copy. Operators
   also need a non-destructive release gate.
 - **Decision:** `backupStore` runs `PRAGMA integrity_check` on the source,
   refuses newer schemas, uses `VACUUM INTO` a unique temp file in the output
@@ -769,8 +769,8 @@ rewrite `PLAN.md`; link to the contract instead.
   wall-clock-dependent ranking is added. Hot/cold pruning uses the injectable
   clock and runs inside the write transaction.
 - **Retention defaults:** hot 1000 / 90 days; cold 200 / 3650 days. Both are
-  configurable (`DS_AGENT_MEMORY_MAX_ENTRIES`, `DS_AGENT_MEMORY_MAX_AGE_DAYS`,
-  `DS_AGENT_MEMORY_COLD_MAX_ENTRIES`, `DS_AGENT_MEMORY_COLD_MAX_AGE_DAYS`) and
+  configurable (`LOFIBOT_MEMORY_MAX_ENTRIES`, `LOFIBOT_MEMORY_MAX_AGE_DAYS`,
+  `LOFIBOT_MEMORY_COLD_MAX_ENTRIES`, `LOFIBOT_MEMORY_COLD_MAX_AGE_DAYS`) and
   `0` disables a dimension.
 - **Evidence:** `test/memory-graph.test.ts` covers spill refs, trigger→thread→
   ticket hops, cross-ticket denial, decision memory, and cold-digest creation.
@@ -814,10 +814,10 @@ rewrite `PLAN.md`; link to the contract instead.
   3. **Hybrid ranking.** An entry is eligible when it is a lexical direct
      candidate, is reached by the existing one-hop tag walk, or its cosine
      clears `embeddingFloor` (default 0.35, clamped to 0..1,
-     `RuntimeOptions.embeddingFloor` or `DS_AGENT_EMBEDDING_FLOOR`). Semantic
+     `RuntimeOptions.embeddingFloor` or `LOFIBOT_EMBEDDING_FLOOR`). Semantic
      candidates never seed a hop. Ordering adds `similarity` after `hopScore`.
   4. **Default on, explicitly off.** The Runtime constructs `HashedEmbedding`
-     by default. `embeddings: false` or `DS_AGENT_SEMANTIC_RECALL` set to
+     by default. `embeddings: false` or `LOFIBOT_SEMANTIC_RECALL` set to
      `0`, `false`, `off`, `no`, or empty disables it. An explicit
      programmatic port wins over the environment.
   5. **Fail open to lexical-only.** A provider throw during a write leaves the

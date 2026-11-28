@@ -1,6 +1,6 @@
 /**
  * Embedded gateway: when a `gateway.config.json` exists and no explicit
- * `DS_AGENT_GATEWAY_URL` is set, start the gateway in-process so `ds-agent
+ * `LOFIBOT_GATEWAY_URL` is set, start the gateway in-process so `lofibot
  * chat` / `imessage` need no separate gateway process (and no Magpie).
  */
 
@@ -18,7 +18,7 @@ export async function startEmbeddedGateway(
   home: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<EmbeddedGateway | undefined> {
-  if (env.DS_AGENT_GATEWAY_URL?.trim()) return undefined
+  if (env.LOFIBOT_GATEWAY_URL?.trim()) return undefined
   const file = readGatewayConfigFile(home)
   if (!file || !Array.isArray(file.providers) || file.providers.length === 0) return undefined
   const { providers, aliases, defaultModel, masking } = gatewayFromSources(home, env)
@@ -30,7 +30,7 @@ export async function startEmbeddedGateway(
     token,
     providers,
     home,
-    masking: masking === true || env.DS_AGENT_GATEWAY_MASKING === '1',
+    masking: masking === true || env.LOFIBOT_GATEWAY_MASKING === '1',
     ...(defaultModel ? { defaultModel } : {}),
     ...(Object.keys(aliases).length ? { aliases } : {}),
   })

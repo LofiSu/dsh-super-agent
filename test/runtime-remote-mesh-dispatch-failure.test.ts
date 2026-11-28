@@ -36,11 +36,11 @@ function runtimeFor(home: string, remoteResultTimeoutMs = 60_000): Runtime {
     stuckMs: 600_000,
     env: {
       ...process.env,
-      DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-      DS_AGENT_MESH_CAPACITY: '1',
-      DS_AGENT_INSTANCE_ID: HOST_PEER,
-      DS_AGENT_REMOTE_MESH: '',
-      DS_AGENT_MESH_REQUIRED_CAPABILITIES: REQUIRED_CAPABILITY,
+      LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+      LOFIBOT_MESH_CAPACITY: '1',
+      LOFIBOT_INSTANCE_ID: HOST_PEER,
+      LOFIBOT_REMOTE_MESH: '',
+      LOFIBOT_MESH_REQUIRED_CAPABILITIES: REQUIRED_CAPABILITY,
     },
   })
 }
@@ -49,7 +49,7 @@ function createTicket(runtime: Runtime, slug: string): string {
   runtime.engine.receive(imTrigger({
     id: `trg_${slug}`,
     thread: `topic/${slug}`,
-    text: '@ds-agent fix checkout',
+    text: '@lofibot fix checkout',
   }), { shards: ['default'] })
   const decision = runtime.engine.evaluateDue()[0]
   if (!decision?.ticketId) throw new Error('expected ticket')

@@ -30,8 +30,8 @@ function buildConfig(found: DiscoveredEndpoint[]): Record<string, unknown> {
 }
 
 /**
- * `ds-agent setup` — discover local OpenAI-compatible products and scaffold
- * `~/.ds-agent/gateway.config.json`. Pass `--write` to save; `--url` to probe an
+ * `lofibot setup` — discover local OpenAI-compatible products and scaffold
+ * `~/.lofibot/gateway.config.json`. Pass `--write` to save; `--url` to probe an
  * extra endpoint. Hint: add an `apiKey` to any provider that needs auth.
  */
 export async function runSetupCommand(home: string): Promise<void> {
@@ -40,7 +40,7 @@ export async function runSetupCommand(home: string): Promise<void> {
   const found = await discoverLocalEndpoints(extra ? [extra] : [])
   if (found.length === 0) {
     console.log('No local OpenAI-compatible endpoint found.')
-    console.log('Start your local product, or point at one explicitly:  pnpm ds-agent setup --url http://host:port/v1')
+    console.log('Start your local product, or point at one explicitly:  pnpm lofibot setup --url http://host:port/v1')
     return
   }
   console.log('Discovered local endpoints:')
@@ -55,7 +55,7 @@ export async function runSetupCommand(home: string): Promise<void> {
     fs.writeFileSync(gatewayConfigPath(home), text, { mode: 0o600 })
     fs.chmodSync(gatewayConfigPath(home), 0o600)
     console.log(`\nWrote ${gatewayConfigPath(home)}`)
-    console.log('Add an "apiKey" to any provider that needs auth, then run: pnpm ds-agent gateway')
+    console.log('Add an "apiKey" to any provider that needs auth, then run: pnpm lofibot gateway')
   } else {
     console.log(`\nProposed ${gatewayConfigPath(home)} (re-run with --write to save):\n${text}`)
   }

@@ -25,19 +25,19 @@ afterEach(async () => {
 
 describe('secret redaction', () => {
   it('treats API key names as secret and ignores short or ordinary values', () => {
-    expect(isSecretEnvName('DS_AGENT_API_KEY')).toBe(true)
+    expect(isSecretEnvName('LOFIBOT_API_KEY')).toBe(true)
     expect(isSecretEnvName('OPENAI_API_KEY')).toBe(true)
     expect(isSecretEnvName('GITHUB_TOKEN')).toBe(true)
     expect(isSecretEnvName('PATH')).toBe(false)
     expect(isSecretEnvName('HOME')).toBe(false)
     expect(secretValues({
       PATH: '/usr/bin',
-      DS_AGENT_API_KEY: 'short',
+      LOFIBOT_API_KEY: 'short',
       GITHUB_TOKEN: 'ghp_example_token_value',
     })).toEqual(['ghp_example_token_value'])
     expect(allowlistedEnv(
-      { PATH: '/usr/bin', DS_AGENT_API_KEY: secret, FOO: '1' },
-      ['PATH', 'DS_AGENT_API_KEY', 'FOO'],
+      { PATH: '/usr/bin', LOFIBOT_API_KEY: secret, FOO: '1' },
+      ['PATH', 'LOFIBOT_API_KEY', 'FOO'],
     )).toEqual({ PATH: '/usr/bin', FOO: '1' })
     expect(redactSecrets(`a ${secret} b ${secret}`, [secret])).toBe('a [redacted] b [redacted]')
   })
@@ -92,17 +92,17 @@ describe('secret redaction', () => {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        DS_AGENT_API_KEY: secret,
+        LOFIBOT_API_KEY: secret,
         AWS_SECRET_ACCESS_KEY: `${secret}-aws`,
         FOO_LEAK: 'should-not-pass',
       },
-      allowlist: ['PATH', 'HOME', 'DS_AGENT_API_KEY'],
+      allowlist: ['PATH', 'HOME', 'LOFIBOT_API_KEY'],
     })
     const listed = await env.bash('w1', 'printenv')
     expect(listed.code).toBe(0)
     expect(listed.stdout).toContain('PATH=')
     expect(listed.stdout).not.toContain(secret)
-    expect(listed.stdout).not.toContain('DS_AGENT_API_KEY')
+    expect(listed.stdout).not.toContain('LOFIBOT_API_KEY')
     expect(listed.stdout).not.toContain('should-not-pass')
     expect(listed.stderr).not.toContain(secret)
 
@@ -138,7 +138,7 @@ describe('secret redaction', () => {
       routerTurn: async () => {},
     })
     const bash = await tools.invoke(
-      { id: 'call_bash', name: 'bash', args: { command: 'echo KEY=$DS_AGENT_API_KEY' } },
+      { id: 'call_bash', name: 'bash', args: { command: 'echo KEY=$LOFIBOT_API_KEY' } },
       { sessionId: 'w1', role: 'worker' },
     )
     const readTool = await tools.invoke(
@@ -153,12 +153,12 @@ describe('secret redaction', () => {
 
   it('keeps API key values out of prompts and session transcripts', async () => {
     runtime = freshRuntime({
-      env: { ...process.env, DS_AGENT_API_KEY: secret, OPENAI_API_KEY: `${secret}-openai` },
+      env: { ...process.env, LOFIBOT_API_KEY: secret, OPENAI_API_KEY: `${secret}-openai` },
     })
     runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: `@ds-agent please fix the login timeout ${secret} ${secret}-openai`,
+      text: `@lofibot please fix the login timeout ${secret} ${secret}-openai`,
     }))
     await settleWithDeadline(runtime, 90_000)
     const bodies = runtime.store.listMessages().map(message => message.body).join('\n')

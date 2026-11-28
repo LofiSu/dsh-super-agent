@@ -53,7 +53,7 @@ describe('transcript evidence', () => {
 
   it('indexes a version 7 journal without rewriting historical evidence', () => {
     const home = testHome()
-    const database = new DatabaseSync(path.join(home, 'ds-agent.db'))
+    const database = new DatabaseSync(path.join(home, 'lofibot.db'))
     try {
       migrate(database, MIGRATIONS.filter(migration => migration.version <= 7), 7)
       database.prepare(
@@ -71,7 +71,7 @@ describe('transcript evidence', () => {
     } finally {
       upgraded.close()
     }
-    const probe = new DatabaseSync(path.join(home, 'ds-agent.db'), { readOnly: true })
+    const probe = new DatabaseSync(path.join(home, 'lofibot.db'), { readOnly: true })
     try {
       const indexColumns = probe.prepare("SELECT name FROM pragma_index_info('messages_session_id_idx')").all()
       expect(indexColumns).toEqual([{ name: 'session_id' }, { name: 'id' }])

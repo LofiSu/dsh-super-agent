@@ -95,7 +95,7 @@ async function loadResolver(): Promise<(moduleDir?: string) => EvaluatorArtifact
 
 beforeAll(() => {
   runBuild()
-  publishedRoot = makeTemp('ds-agent-eval-pack-published-')
+  publishedRoot = makeTemp('lofibot-eval-pack-published-')
   assemblePublishedTree(publishedRoot)
 }, 180_000)
 
@@ -140,7 +140,7 @@ describe('published package layout', () => {
 
   it('scores a tiny fixture through plain node in the published layout', async () => {
     const iso = await importPublished<IsolateEvalModule>('dist/evolution/isolate-eval.js')
-    const workDir = makeTemp('ds-agent-eval-pack-work-')
+    const workDir = makeTemp('lofibot-eval-pack-work-')
     const strategy: DeliverGateStrategyV1 = {
       schemaVersion: 2,
       domain: 'deliver-gate-v1',
@@ -162,7 +162,7 @@ describe('published package layout', () => {
 describe('evaluator artifact resolver', () => {
   it('prefers source .ts files and the repo scripts child', async () => {
     const resolve = await loadResolver()
-    const repo = makeTemp('ds-agent-eval-pack-resolver-src-')
+    const repo = makeTemp('lofibot-eval-pack-resolver-src-')
     writeFiles(repo, {
       'src/evolution/score.ts': '// score',
       'src/evolution/strategy-gate.ts': '// gate',
@@ -179,7 +179,7 @@ describe('evaluator artifact resolver', () => {
 
   it('falls back to dist .js files and dist/scripts when src is absent', async () => {
     const resolve = await loadResolver()
-    const pkg = makeTemp('ds-agent-eval-pack-resolver-dist-')
+    const pkg = makeTemp('lofibot-eval-pack-resolver-dist-')
     writeFiles(pkg, {
       'dist/evolution/score.js': '// score',
       'dist/evolution/strategy-gate.js': '// gate',
@@ -196,7 +196,7 @@ describe('evaluator artifact resolver', () => {
 
   it('throws a clear error when an evaluator source is missing', async () => {
     const resolve = await loadResolver()
-    const broken = makeTemp('ds-agent-eval-pack-resolver-missing-')
+    const broken = makeTemp('lofibot-eval-pack-resolver-missing-')
     writeFiles(broken, {
       'src/evolution/score.ts': '// score',
       'src/evolution/strategy-gate.ts': '// gate',
@@ -207,7 +207,7 @@ describe('evaluator artifact resolver', () => {
 
   it('throws a clear error when the child script is missing', async () => {
     const resolve = await loadResolver()
-    const broken = makeTemp('ds-agent-eval-pack-resolver-no-child-')
+    const broken = makeTemp('lofibot-eval-pack-resolver-no-child-')
     writeFiles(broken, {
       'src/evolution/score.ts': '// score',
       'src/evolution/strategy-gate.ts': '// gate',

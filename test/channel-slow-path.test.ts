@@ -33,7 +33,7 @@ afterEach(() => {
 })
 
 function makeRuntime(slowPath?: SlowPathOptions): Runtime {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-channel-slow-path-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-channel-slow-path-'))
   dirs.push(home)
   const runtime = Runtime.create({
     home,
@@ -53,7 +53,7 @@ function request(id: string): Trigger {
   return imTrigger({
     id,
     thread: 'topic/channel-slow-path',
-    text: '@ds-agent please fix the login timeout',
+    text: '@lofibot please fix the login timeout',
   })
 }
 

@@ -9,7 +9,7 @@ import { ScriptedModel } from '../scripted-model.ts'
 
 const home = process.argv[2]
 if (!home) {
-  console.error('recovery-os-child: missing DS_AGENT_HOME argument')
+  console.error('recovery-os-child: missing LOFIBOT_HOME argument')
   process.exit(2)
 }
 
@@ -53,7 +53,7 @@ const runtime = Runtime.create({
 })
 
 try {
-  const mode = process.env.DS_AGENT_RECOVERY_CHILD_MODE
+  const mode = process.env.LOFIBOT_RECOVERY_CHILD_MODE
   if (mode === 'seed') {
     runtime.store.putDoc('ticket', 'ticket_os_fault', runningTicket('ticket_os_fault'))
   }

@@ -30,15 +30,15 @@ export async function runWatchdogDemo() {
     runtime.start()
 
     const issue = await github.createIssue({
-      title: `[ds-agent demo ${ctx.runId}] watchdog stall`,
+      title: `[lofibot demo ${ctx.runId}] watchdog stall`,
       body: [
-        '@ds-agent Watchdog demo: reproduce the reported billing-worker hang.',
+        '@lofibot Watchdog demo: reproduce the reported billing-worker hang.',
         'First call bash exactly once with command "sleep 60" and wait for it to return.',
         'Do not call report_to_router before bash returns.',
         'After bash returns, call report_to_router with kind=ready, deliver=false.',
         'Do not call start_job and do not ask questions.',
       ].join('\n'),
-      labels: ['ds-agent-demo'],
+      labels: ['lofibot-demo'],
     })
     runtime.log.info(`[github] created real issue #${issue.number} ${issue.html_url ?? ''}`)
 

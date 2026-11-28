@@ -1,5 +1,5 @@
 /**
- * Opt-in inbound Feishu poll loop for `ds-agent serve --feishu`.
+ * Opt-in inbound Feishu poll loop for `lofibot serve --feishu`.
  *
  * Configuration is resolved before `Runtime.create` so a missing app
  * credential or chat id fails before SQLite is opened and before any Feishu

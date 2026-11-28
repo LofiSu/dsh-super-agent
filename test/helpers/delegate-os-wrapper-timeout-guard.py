@@ -147,9 +147,9 @@ def main():
     enable_subreaper()
     preflight_rescue_capabilities()
     env = os.environ.copy()
-    env['DS_AGENT_TEST_FIXTURE_START_DELAY_MS'] = delay
+    env['LOFIBOT_TEST_FIXTURE_START_DELAY_MS'] = delay
     command = [
-        os.environ.get('DS_AGENT_NODE', 'node'), '--import', 'tsx',
+        os.environ.get('LOFIBOT_NODE', 'node'), '--import', 'tsx',
         str(Path(root) / 'test/helpers/delegate-os-wrapper-timeout-child.ts'), home,
     ]
     child = subprocess.Popen(
@@ -188,7 +188,7 @@ def main():
         for entry in rescues
     )
     supervisor_report = None
-    report_path = os.environ.get('DS_AGENT_TEST_SUPERVISOR_REPORT_FILE')
+    report_path = os.environ.get('LOFIBOT_TEST_SUPERVISOR_REPORT_FILE')
     if report_path:
         try:
             supervisor_report = json.loads(Path(report_path).read_text())

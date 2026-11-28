@@ -32,7 +32,7 @@ describe('channel-resident-gate', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
     })
     rt.start()
     let release!: () => void
@@ -60,7 +60,7 @@ describe('channel-resident-gate', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
     })
     rt.start()
     let ingestedIds: string[] = []
@@ -97,7 +97,7 @@ describe('channel-resident-gate', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
     })
     rt.start()
     let calls = 0
@@ -121,7 +121,7 @@ describe('channel-resident-gate', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
     })
     rt.start()
     let release!: () => void
@@ -155,7 +155,7 @@ describe('channel-resident-gate', () => {
       model: new MockModel(),
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
     })
     rt.start()
     let release!: () => void
@@ -183,17 +183,17 @@ describe('channel-resident-gate', () => {
   })
 
   it('documents limit 0 as explicit unbounded opt-out', () => {
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '0' })).toBe(0)
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '8' })).toBe(8)
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '256' })).toBe(
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '0' })).toBe(0)
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '8' })).toBe(8)
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '256' })).toBe(
       DEFAULT_RESIDENT_INGRESS_LIMIT,
     )
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '  0  ' })).toBe(0)
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '  0  ' })).toBe(0)
     expect(residentIngressLimitFromEnv({})).toBeGreaterThan(0)
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '' })).toBe(
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '' })).toBe(
       DEFAULT_RESIDENT_INGRESS_LIMIT,
     )
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '   ' })).toBe(
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '   ' })).toBe(
       DEFAULT_RESIDENT_INGRESS_LIMIT,
     )
   })
@@ -203,14 +203,14 @@ describe('channel-resident-gate', () => {
     // a typo must never shrink or remove the backpressure bound. Only "0"
     // requests the unbounded opt-out.
     for (const raw of ['0abc', '0x10', '1e3', '7.5', '1_000', '+8', '-0', '0.0', '256abc', 'abc', '-1']) {
-      expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: raw }), raw).toBe(
+      expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: raw }), raw).toBe(
         DEFAULT_RESIDENT_INGRESS_LIMIT,
       )
     }
   })
 
   it('accepts leading zeros on a true decimal without treating them as octal', () => {
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '08' })).toBe(8)
-    expect(residentIngressLimitFromEnv({ DS_AGENT_RESIDENT_INGRESS_LIMIT: '000' })).toBe(0)
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '08' })).toBe(8)
+    expect(residentIngressLimitFromEnv({ LOFIBOT_RESIDENT_INGRESS_LIMIT: '000' })).toBe(0)
   })
 })

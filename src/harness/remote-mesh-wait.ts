@@ -18,7 +18,7 @@ export function remoteResultTimeoutMsFromEnv(
   if (override !== undefined && Number.isFinite(override) && override >= 0) {
     return clampRemoteResultTimeoutMs(override)
   }
-  const raw = env.DS_AGENT_REMOTE_RESULT_TIMEOUT_MS?.trim()
+  const raw = env.LOFIBOT_REMOTE_RESULT_TIMEOUT_MS?.trim()
   if (!raw) return DEFAULT_REMOTE_RESULT_TIMEOUT_MS
   const parsed = Number(raw)
   if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_REMOTE_RESULT_TIMEOUT_MS

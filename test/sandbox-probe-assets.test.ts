@@ -47,9 +47,9 @@ const probe = probeSandboxConfinement(
     runWrapped: (command, policy) => {
       if (command === 'true') return fake(0)
       if (command.includes('echo ok')) return fake(0)
-      if (command.includes('ds-agent-sandbox-negative-probe')) return fake(0)
+      if (command.includes('lofibot-sandbox-negative-probe')) return fake(0)
       if (command.includes('test -r')) return fake(1)
-      if (command.includes('fetch(')) return fake(policy.allowNetwork === true ? 0 : 1, 'ds-agent-network-probe-started\\n')
+      if (command.includes('fetch(')) return fake(policy.allowNetwork === true ? 0 : 1, 'lofibot-network-probe-started\\n')
       if (command === 'kill -0 $$') return fake(0)
       if (command.includes('kill -0')) return fake(1)
       return fake(0)
@@ -76,7 +76,7 @@ interface LayoutProbe {
 const roots: string[] = []
 
 function makeLayout(withFixtures: boolean): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ds-agent-probe-layout-'))
+  const dir = mkdtempSync(path.join(tmpdir(), 'lofibot-probe-layout-'))
   roots.push(dir)
   for (const file of LAYOUT_FILES) {
     if (!withFixtures && file.includes('/fixtures/')) continue
@@ -105,7 +105,7 @@ function delayFixtureWrites(dir: string, delayMs: number): void {
  * builds): it runs, exits nonzero, and prints nothing.
  */
 function makeFailingPsStub(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ds-agent-failing-ps-'))
+  const dir = mkdtempSync(path.join(tmpdir(), 'lofibot-failing-ps-'))
   roots.push(dir)
   writeFileSync(path.join(dir, 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
   return dir

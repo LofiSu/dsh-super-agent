@@ -3,15 +3,15 @@ import { runDelegateOsSupervisor } from './delegate-os-supervisor.ts'
 const home = process.argv[2]
 if (!home) throw new Error('missing isolated test home')
 
-const injectedHangMs = Number(process.env.DS_AGENT_TEST_WRAPPER_CHILD_HANG_MS ?? 0)
+const injectedHangMs = Number(process.env.LOFIBOT_TEST_WRAPPER_CHILD_HANG_MS ?? 0)
 if (Number.isFinite(injectedHangMs) && injectedHangMs > 0) {
   await new Promise(resolve => setTimeout(resolve, injectedHangMs))
 }
 
 try {
-  const mode = process.env.DS_AGENT_TEST_SUPERVISOR_MODE === 'prepublish-kill'
+  const mode = process.env.LOFIBOT_TEST_SUPERVISOR_MODE === 'prepublish-kill'
     ? 'prepublish-kill'
-    : process.env.DS_AGENT_TEST_SUPERVISOR_MODE === 'prepublish-timeout'
+    : process.env.LOFIBOT_TEST_SUPERVISOR_MODE === 'prepublish-timeout'
       ? 'prepublish-timeout'
       : 'wrapper-timeout-probe'
   const report = await runDelegateOsSupervisor(mode, home, 'pre-pid-timeout', 1_500)

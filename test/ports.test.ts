@@ -77,7 +77,7 @@ describe('worker cannot reply', () => {
     const trigger = imTrigger({
       id: 'trg_reply',
       thread: 'topic/reply',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     })
     expect(runtime.engine.receive(trigger)).toBe('stored')
     const [decision] = runtime.engine.evaluateDue()
@@ -92,7 +92,7 @@ describe('worker cannot reply', () => {
     expect(() => (worker as unknown as RouterPorts).receive(imTrigger({
       id: 'trg_sneaky',
       thread: 'topic/sneaky',
-      text: '@ds-agent please sneak a trigger in',
+      text: '@lofibot please sneak a trigger in',
     }))).toThrow(/worker cannot receive/)
     expect(() => (watchdog as unknown as RouterPorts).reply(ticketId, stolen, 'result')).toThrow(/watchdog cannot reply/)
 
@@ -103,7 +103,7 @@ describe('worker cannot reply', () => {
       expect(() => runtime!.engine.receive(imTrigger({
         id: 'trg_sneaky_turn',
         thread: 'topic/sneaky',
-        text: '@ds-agent please sneak a trigger in',
+        text: '@lofibot please sneak a trigger in',
       }))).toThrow(/worker cannot receive/)
       const reported = runtime!.engine.report(ticketId, { kind: 'progress', text: 'still working', deliver: false })
       expect(reported.surfaced).toBe(false)
@@ -124,7 +124,7 @@ describe('worker cannot reply', () => {
     const trigger = imTrigger({
       id: 'trg_nest',
       thread: 'topic/nest',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     })
     runtime.engine.receive(trigger)
     const ticketId = runtime.engine.evaluateDue()[0]?.ticketId
@@ -150,7 +150,7 @@ describe('worker cannot reply', () => {
     const trigger = imTrigger({
       id: 'trg_tool',
       thread: 'topic/tool',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     })
     runtime.engine.receive(trigger)
     const ticketId = runtime.engine.evaluateDue()[0]?.ticketId
@@ -186,7 +186,7 @@ describe('worker cannot reply', () => {
     runtime.ingest(imTrigger({
       id: 'trg_session',
       thread: 'topic/session',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.drain()
     const replies = runtime.store.listReplies().map(reply => reply.text).join('\n')
@@ -237,7 +237,7 @@ describe('worker cannot reply', () => {
     runtime.ingest(imTrigger({
       id: 'trg_happy',
       thread: 'topic/happy',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await runtime.drain()
     expect(runtime.store.listReplies().some(reply => reply.purpose === 'result')).toBe(true)
@@ -249,7 +249,7 @@ describe('worker cannot reply', () => {
     const trigger = imTrigger({
       id: 'trg_ignore',
       thread: 'topic/ignore',
-      text: '@ds-agent please hold this for the router',
+      text: '@lofibot please hold this for the router',
     })
     expect(runtime.engine.receive(trigger)).toBe('stored')
     const decision = runtime.engine.decide(trigger.id, { kind: 'ignore', reason: 'not actionable' })
@@ -266,7 +266,7 @@ describe('worker cannot reply', () => {
       runtime.engine.receive(imTrigger({
         id,
         thread,
-        text: `@ds-agent please fix the login timeout in ${thread}`,
+        text: `@lofibot please fix the login timeout in ${thread}`,
       }))
     }
     const decisions = runtime.engine.evaluateDue()
@@ -301,7 +301,7 @@ describe('worker cannot reply', () => {
     runtime.engine.receive(imTrigger({
       id: 'trg_fail',
       thread: 'topic/fail',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     const ticketId = runtime.engine.evaluateDue()[0]?.ticketId
     if (!ticketId) throw new Error('expected a ticket')

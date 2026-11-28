@@ -427,16 +427,16 @@ export const PROMPT_FILES: Record<PromptFileKey, string> = {
  * four have a useful default that a container can set without a writable home.
  */
 export const PROMPT_ENV: Partial<Record<PromptFileKey, string>> = {
-  soul: 'DS_AGENT_SOUL',
-  identity: 'DS_AGENT_IDENTITY',
-  user: 'DS_AGENT_OWNER',
-  instructions: 'DS_AGENT_INSTRUCTIONS',
+  soul: 'LOFIBOT_SOUL',
+  identity: 'LOFIBOT_IDENTITY',
+  user: 'LOFIBOT_OWNER',
+  instructions: 'LOFIBOT_INSTRUCTIONS',
 }
 
 /** @deprecated old name for the soul file. */
 export const LEGACY_PROMPT_FILE = { soul: 'PERSONA.md' } as const
 /** @deprecated old seed for the soul file. */
-export const LEGACY_PROMPT_ENV = { soul: 'DS_AGENT_PERSONA' } as const
+export const LEGACY_PROMPT_ENV = { soul: 'LOFIBOT_PERSONA' } as const
 
 const CANONICAL_KEYS: readonly PromptFileKey[] = [
   'soul',
@@ -474,7 +474,7 @@ function readPromptFile(home: string, name: string): string | undefined {
  * Read the owner-editable files, falling back to deployer seeds in the
  * environment. A file always wins over the matching seed. Missing, blank,
  * unreadable, or non-regular files are ignored rather than failing the runtime.
- * `PERSONA.md` and `DS_AGENT_PERSONA` still supply the soul, with a warning.
+ * `PERSONA.md` and `LOFIBOT_PERSONA` still supply the soul, with a warning.
  */
 export function loadPrompts(
   home: string,

@@ -302,6 +302,6 @@ export function migrate(
 function newerVersionError(current: number, latest: number): UserError {
   return new UserError(
     `database schema version ${current} is newer than this build supports (${latest}); ` +
-    'upgrade ds-agent before opening this store',
+    'upgrade lofibot before opening this store',
   )
 }

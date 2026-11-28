@@ -21,9 +21,9 @@
   <a class="skip" href="#content">{% if lang == 'zh-CN' %}跳到正文{% else %}Skip to content{% endif %}</a>
   <header class="site-header">
     <a class="brand" href="{% if lang == 'zh-CN' %}{{ '/zh/' | relative_url }}{% else %}{{ '/' | relative_url }}{% endif %}">
-      <span class="brand-lab">ds-agent</span>
+      <span class="brand-lab">lofibot</span>
       <span class="brand-slash" aria-hidden="true">/</span>
-      <span class="brand-name">deepseek-super-agent</span>
+      <span class="brand-name">LofiBot</span>
     </a>
     <p class="tagline">{% if lang == 'zh-CN' %}{{ site.tagline_zh }}{% else %}{{ site.tagline_en }}{% endif %}</p>
     {% assign other = page.alt | default: '/' %}
@@ -48,7 +48,7 @@
   <main id="content">
     {% if page.home %}
     <figure class="banner">
-      <img src="{{ '/assets/ds-agent-banner.png' | relative_url }}" alt="{% if lang == 'zh-CN' %}DeepSeek Super Agent，独立实现{% else %}DeepSeek Super Agent, independently implemented{% endif %}">
+      <img src="{{ '/assets/lofibot-banner.png' | relative_url }}" alt="{% if lang == 'zh-CN' %}LofiBot 横幅{% else %}LofiBot banner{% endif %}">
     </figure>
     {% endif %}
     {{ content }}

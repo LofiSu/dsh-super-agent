@@ -16,14 +16,14 @@ import { Watchdog } from '../src/watchdog/watchdog.ts'
 import { tempHome } from './fixtures.ts'
 
 const OFFLINE_KEYS = [
-  'DS_AGENT_API_BASE',
-  'DS_AGENT_API_KEY',
-  'DS_AGENT_API_MODEL',
-  'DS_AGENT_API_TIMEOUT_MS',
-  'DS_AGENT_PROVIDER',
-  'DS_AGENT_GATEWAY_URL',
-  'DS_AGENT_GATEWAY_TOKEN',
-  'DS_AGENT_GATEWAY_MODEL',
+  'LOFIBOT_API_BASE',
+  'LOFIBOT_API_KEY',
+  'LOFIBOT_API_MODEL',
+  'LOFIBOT_API_TIMEOUT_MS',
+  'LOFIBOT_PROVIDER',
+  'LOFIBOT_GATEWAY_URL',
+  'LOFIBOT_GATEWAY_TOKEN',
+  'LOFIBOT_GATEWAY_MODEL',
   'DEEPSEEK_API_KEY',
   'OPENAI_API_KEY',
   'OPENROUTER_API_KEY',
@@ -115,7 +115,7 @@ afterAll(async () => {
 function offlineEnv(home: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    DS_AGENT_HOME: home,
+    LOFIBOT_HOME: home,
     NODE_NO_WARNINGS: '1',
     ...extra,
   }
@@ -152,10 +152,10 @@ function runCli(home: string, args: string[], extra: NodeJS.ProcessEnv = {}): Pr
 
 function liveModelEnv(): NodeJS.ProcessEnv {
   return {
-    DS_AGENT_API_BASE: modelBase,
-    DS_AGENT_API_KEY: 'test-key',
-    DS_AGENT_API_MODEL: 'fake',
-    DS_AGENT_API_TIMEOUT_MS: '20000',
+    LOFIBOT_API_BASE: modelBase,
+    LOFIBOT_API_KEY: 'test-key',
+    LOFIBOT_API_MODEL: 'fake',
+    LOFIBOT_API_TIMEOUT_MS: '20000',
   }
 }
 

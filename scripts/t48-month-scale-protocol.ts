@@ -293,7 +293,7 @@ function verifyReopen(home: string, firstRunIds: Map<string, string[]>): boolean
  */
 export function runT48MonthScaleProtocol(options: { home?: string } = {}): T48ProtocolReport {
   const ownsHome = options.home == null
-  const home = options.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-t48-'))
+  const home = options.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-t48-'))
   try {
     const measured = measure(home)
     const deterministicAfterReopen = verifyReopen(home, measured.firstRunIds)

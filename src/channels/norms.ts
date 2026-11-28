@@ -10,7 +10,7 @@ export function renderOutbound(channel: string, text: string, ticketId: string):
   // iMessage is still a chat bubble, not a report: keep it to a short paragraph.
   if (channel === 'imessage') return truncateWords(text, 120)
   if (channel === 'github') {
-    return [`ds-agent note`, `ticket: ${ticketId}`, '', truncateWords(text, 80)].join('\n')
+    return [`LofiBot note`, `ticket: ${ticketId}`, '', truncateWords(text, 80)].join('\n')
   }
   return truncateWords(text, 200)
 }

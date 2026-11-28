@@ -15,7 +15,7 @@ function setup(options: { redact?: (text: string) => string; now?: () => Date } 
   store: Store
   index: ConnectorIndex
 } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-connectors-index-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-connectors-index-'))
   homes.push(home)
   const store = new Store(home)
   stores.push(store)

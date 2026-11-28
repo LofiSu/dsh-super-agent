@@ -4,7 +4,7 @@ DeepSeek Super Agent has one stable system prompt, composed from ordered
 sections, plus five turn layers that change every turn. The design follows the
 Muse agent workspace: a long system prompt with a fixed section order, and a
 small set of owner-written runtime files injected into named sections. The
-structure is borrowed; the text is ds-agent's own.
+structure is borrowed; the text is lofibot's own.
 
 This document describes the sections, the runtime files, the budget, the
 legacy fallback, and what the owner may change.
@@ -71,7 +71,7 @@ so the prefix is byte-identical across turns and across calls.
 | 18 | `contextual-awareness` | built-in | No clock is supplied; do not assert the time or a weekday. |
 | 19 | `conversation-context` | built-in | Bounded journal replay; older turns stay on disk. |
 | 20 | `writing-style` | built-in | Answer first, plain prose, match the owner's language, no em dashes. |
-| 21 | `environment` | built-in | The install, `DS_AGENT_HOME`, and where work happens. |
+| 21 | `environment` | built-in | The install, `LOFIBOT_HOME`, and where work happens. |
 | 22 | `tools` | built-in | How to choose and trust tools. |
 | 23 | `tools-notes` | `TOOLS.md` | Installation-specific notes. Cannot grant a tool. |
 | 24 | `team` | built-in; ids from `local-agents.json` | Workers plus named local specialists, by id and description only. |
@@ -132,25 +132,25 @@ Deployers can seed four files without a writable home:
 
 | Environment variable | File it seeds |
 |---|---|
-| `DS_AGENT_SOUL` | `SOUL.md` |
-| `DS_AGENT_IDENTITY` | `IDENTITY.md` |
-| `DS_AGENT_OWNER` | `USER.md` |
-| `DS_AGENT_INSTRUCTIONS` | `INSTRUCTIONS.md` |
+| `LOFIBOT_SOUL` | `SOUL.md` |
+| `LOFIBOT_IDENTITY` | `IDENTITY.md` |
+| `LOFIBOT_OWNER` | `USER.md` |
+| `LOFIBOT_INSTRUCTIONS` | `INSTRUCTIONS.md` |
 
 A file always wins over its seed. `AGENTS.md`, `MEMORY.md`, `TOOLS.md`,
 `HEARTBEAT.md`, and `PROACTIVE_PREFERENCES.md` are file-only.
 
 ### Legacy fallback
 
-Older installs used `PERSONA.md` / `DS_AGENT_PERSONA` for voice and
-`AGENTS.md` / `DS_AGENT_INSTRUCTIONS` for standing rules. The old names still
+Older installs used `PERSONA.md` / `LOFIBOT_PERSONA` for voice and
+`AGENTS.md` / `LOFIBOT_INSTRUCTIONS` for standing rules. The old names still
 load:
 
-- If neither `SOUL.md` nor `DS_AGENT_SOUL` supplies a soul, `PERSONA.md` is
+- If neither `SOUL.md` nor `LOFIBOT_SOUL` supplies a soul, `PERSONA.md` is
   read, with `[prompt] PERSONA.md is deprecated; rename it to SOUL.md`.
-- If that is absent too, `DS_AGENT_PERSONA` is read, with
-  `[prompt] DS_AGENT_PERSONA is deprecated; use DS_AGENT_SOUL`.
-- Standing rules now live in `INSTRUCTIONS.md`; `DS_AGENT_INSTRUCTIONS` seeds
+- If that is absent too, `LOFIBOT_PERSONA` is read, with
+  `[prompt] LOFIBOT_PERSONA is deprecated; use LOFIBOT_SOUL`.
+- Standing rules now live in `INSTRUCTIONS.md`; `LOFIBOT_INSTRUCTIONS` seeds
   that file. `AGENTS.md` is the workspace operating notes section and no longer
   holds standing rules.
 
@@ -213,15 +213,15 @@ and the prompt treats everyone but the owner as a non-principal.
 ## Inspecting the prompt
 
 ```bash
-pnpm ds-agent prompt                       # full Router system prompt
-pnpm ds-agent prompt --role worker         # the Worker contract
-pnpm ds-agent prompt --layers              # id, length, and source per section
-pnpm ds-agent prompt --layers --json       # the same sections as data
+pnpm lofibot prompt                       # full Router system prompt
+pnpm lofibot prompt --role worker         # the Worker contract
+pnpm lofibot prompt --layers              # id, length, and source per section
+pnpm lofibot prompt --layers --json       # the same sections as data
 ```
 
 `--layers` prints `id  <n> chars  <source>`. Sources are `built-in`,
-`<home>/SOUL.md`, `env:DS_AGENT_SOUL`, `<home>/PERSONA.md (deprecated
-fallback)`, `env:DS_AGENT_PERSONA (deprecated fallback)`, `provided`, or the
+`<home>/SOUL.md`, `env:LOFIBOT_SOUL`, `<home>/PERSONA.md (deprecated
+fallback)`, `env:LOFIBOT_PERSONA (deprecated fallback)`, `provided`, or the
 skills/local-agents source. Output passes through the same secret redactor as
 the runtime, including configured MCP server environment values.
 
@@ -245,7 +245,7 @@ parsing one large string. `describePromptLayers` remains as a deprecated alias.
   under pressure, and the core sections always fit.
 - **No prompt-side write path.** The Router and Worker cannot edit the runtime
   files; a configured specialist is a separate process under its own policy.
-- **One owner.** ds-agent currently has a single owner. Group participants and
+- **One owner.** lofibot currently has a single owner. Group participants and
   other actors are not principals yet; when a `principal` layer is wired into
   the turn, it must follow the same tier discipline as Instinct rather than
   treating any sender as the owner.

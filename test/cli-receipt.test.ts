@@ -12,7 +12,7 @@ import { Store } from '../src/store/sqlite.ts'
 const homes: string[] = []
 
 function tempHome(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-receipt-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-receipt-'))
   homes.push(dir)
   return dir
 }
@@ -30,8 +30,8 @@ function runReceipt(home: string, ticketId: string, json = true) {
       encoding: 'utf8',
       env: {
         ...process.env,
-        DS_AGENT_HOME: home,
-        DS_AGENT_API_KEY: 'receipt-must-not-show-this-api-key',
+        LOFIBOT_HOME: home,
+        LOFIBOT_API_KEY: 'receipt-must-not-show-this-api-key',
         NODE_NO_WARNINGS: '1',
       },
     },
@@ -102,7 +102,7 @@ function addOutbound(store: Store, ticketId: string, status: 'pending' | 'sendin
   if (status === 'failed') store.markOutboxFailed(id, 'private-error-secret')
 }
 
-describe('ds-agent receipt', () => {
+describe('lofibot receipt', () => {
   it('queries persisted evidence after restart without exposing bodies or another ticket', () => {
     const home = tempHome()
     const store = new Store(home)
@@ -255,7 +255,7 @@ describe('ds-agent receipt', () => {
     const newerHome = tempHome()
     const newerStore = new Store(newerHome)
     newerStore.close()
-    const newerDb = new DatabaseSync(path.join(newerHome, 'ds-agent.db'))
+    const newerDb = new DatabaseSync(path.join(newerHome, 'lofibot.db'))
     newerDb.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
       .run(LATEST_SCHEMA_VERSION + 1, '2026-11-19T12:00:00.000Z')
     newerDb.close()
@@ -269,7 +269,7 @@ describe('ds-agent receipt', () => {
     const emptyHome = tempHome()
     const emptyStore = new Store(emptyHome)
     emptyStore.close()
-    const emptyDb = new DatabaseSync(path.join(emptyHome, 'ds-agent.db'))
+    const emptyDb = new DatabaseSync(path.join(emptyHome, 'lofibot.db'))
     emptyDb.exec('DELETE FROM schema_migrations')
     emptyDb.close()
 
@@ -280,7 +280,7 @@ describe('ds-agent receipt', () => {
     const malformedHome = tempHome()
     const malformedStore = new Store(malformedHome)
     malformedStore.close()
-    const malformedDb = new DatabaseSync(path.join(malformedHome, 'ds-agent.db'))
+    const malformedDb = new DatabaseSync(path.join(malformedHome, 'lofibot.db'))
     malformedDb.exec('DROP TABLE schema_migrations; CREATE TABLE schema_migrations (broken TEXT)')
     malformedDb.close()
 
@@ -296,7 +296,7 @@ describe('ds-agent receipt', () => {
       const store = new Store(home)
       store.close()
       const sentinel = 'receipt-json-private-sentinel-7f31'
-      const raw = new DatabaseSync(path.join(home, 'ds-agent.db'))
+      const raw = new DatabaseSync(path.join(home, 'lofibot.db'))
       raw.prepare('INSERT INTO documents(kind, id, payload) VALUES(?, ?, ?)')
         .run('ticket', id, '{"body":"' + sentinel + '", broken')
       raw.close()
@@ -314,12 +314,12 @@ describe('ds-agent receipt', () => {
     const home = tempHome()
     const store = new Store(home)
     store.close()
-    const db = new DatabaseSync(path.join(home, 'ds-agent.db'))
+    const db = new DatabaseSync(path.join(home, 'lofibot.db'))
     db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)')
       .run(0, '2026-11-19T12:00:00.000Z')
     db.close()
 
-    const dbPath = path.join(home, 'ds-agent.db')
+    const dbPath = path.join(home, 'lofibot.db')
     const databaseBefore = fs.readFileSync(dbPath)
     const receipt = runReceipt(home, 'ticket_1')
     expect(receipt.status).not.toBe(0)
@@ -353,7 +353,7 @@ describe('ds-agent receipt', () => {
     store.close()
 
     // Leave a v4 store so an ordinary writable opener would run the v5 index migration.
-    const dbPath = path.join(home, 'ds-agent.db')
+    const dbPath = path.join(home, 'lofibot.db')
     const legacy = new DatabaseSync(dbPath)
     legacy.exec(`
 DROP INDEX IF EXISTS replies_ticket_id_idx;
@@ -378,7 +378,7 @@ DELETE FROM schema_migrations WHERE version = 5;
     store.close()
 
     // The prefix lookup must not parse unrelated Ticket payloads.
-    const raw = new DatabaseSync(path.join(home, 'ds-agent.db'))
+    const raw = new DatabaseSync(path.join(home, 'lofibot.db'))
     raw.prepare('INSERT INTO documents(kind, id, payload) VALUES(?, ?, ?)')
       .run('ticket', 'ticket_unrelated', '{invalid json')
     raw.close()
@@ -410,7 +410,7 @@ DELETE FROM schema_migrations WHERE version = 5;
 
     const result = runReceipt(home, ticket.id, false)
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toContain('ds-agent execution receipt')
+    expect(result.stdout).toContain('lofibot execution receipt')
     expect(result.stdout).toContain('status: unknown')
     expect(result.stdout).toContain('ticket_5')
     expect(result.stdout).not.toContain('private-input-body')

@@ -165,7 +165,7 @@ function negativeWriteProbeCommand(forbiddenFile: string): string {
     // not because the sandbox denied the write. Require the parent to be visible.
     `test -d ${parentDir} || exit ${EXIT_FORBIDDEN_PARENT_INVISIBLE}`,
     `rm -f ${target}`,
-    `if (echo ds-agent-sandbox-negative-probe > ${target}) 2>/dev/null; then`,
+    `if (echo lofibot-sandbox-negative-probe > ${target}) 2>/dev/null; then`,
     `  if test -f ${target}; then exit ${EXIT_WRITE_SUCCEEDED_OUTSIDE}; fi`,
     `fi`,
     'exit 0',
@@ -216,7 +216,7 @@ const LOOPBACK_FIXTURE = join(import.meta.dirname, 'fixtures', 'sandbox-loopback
 const EXTERNAL_PID_FIXTURE = join(import.meta.dirname, 'fixtures', 'sandbox-external-pid-fixture.mjs')
 
 const FIXTURE_DEADLINE_MS = 8_000
-const NETWORK_PROBE_STARTED = 'ds-agent-network-probe-started'
+const NETWORK_PROBE_STARTED = 'lofibot-network-probe-started'
 /** First liveness check; an immediate module-not-found exit is caught here. */
 const FIXTURE_FIRST_LIVENESS_CHECK_MS = 100
 const FIXTURE_LIVENESS_INTERVAL_MS = 1_000
@@ -307,7 +307,7 @@ function withLoopbackFixture<T>(
   fn: (port: number) => T,
 ): T {
   if (hooks.loopbackPort !== undefined) return fn(hooks.loopbackPort)
-  const portFile = join(tmpdir(), `ds-agent-sandbox-net-${process.pid}-${Date.now()}.port`)
+  const portFile = join(tmpdir(), `lofibot-sandbox-net-${process.pid}-${Date.now()}.port`)
   rmSync(portFile, { force: true })
   // Loopback fixture runs on the real host Node, not a synthetic probe execPath (e.g. unit tests).
   const child = spawn(process.execPath, [LOOPBACK_FIXTURE, portFile], {
@@ -361,13 +361,13 @@ function probeNetworkIsolation(
 }
 
 function parseRequiredDimensionsEnv(env: NodeJS.ProcessEnv = process.env): Set<SandboxRequiredDimension> {
-  const raw = env.DS_AGENT_SANDBOX_REQUIRED?.trim()
+  const raw = env.LOFIBOT_SANDBOX_REQUIRED?.trim()
   if (raw === undefined || raw === '') return new Set()
   const out = new Set<SandboxRequiredDimension>()
   for (const token of raw.split(',').map(t => t.trim()).filter(Boolean)) {
     if (!REQUIRED_DIMENSIONS.has(token as SandboxRequiredDimension)) {
       throw new UserError(
-        `invalid DS_AGENT_SANDBOX_REQUIRED token "${token}" (expected write, read, network, process)`,
+        `invalid LOFIBOT_SANDBOX_REQUIRED token "${token}" (expected write, read, network, process)`,
       )
     }
     out.add(token as SandboxRequiredDimension)
@@ -387,7 +387,7 @@ function isDimensionSatisfied(
 }
 
 /**
- * Fail closed when the operator listed dimensions in `DS_AGENT_SANDBOX_REQUIRED`
+ * Fail closed when the operator listed dimensions in `LOFIBOT_SANDBOX_REQUIRED`
  * and the latest host probe did not show enforcement for each one under `effectivePolicy`
  * (the same policy LocalEnv will use for worker bash — not a stricter probe-only profile).
  * Default (unset env): write must be `enforced` only; `not_enforced`, `unsupported`,
@@ -474,7 +474,7 @@ function probeProcessIsolation(
   const selfAlive = runner('kill -0 $$', policy, system)
   if (spawnFailed(selfAlive) || selfAlive.status !== 0) return 'probe_failed'
 
-  const pidFile = join(tmpdir(), `ds-agent-sandbox-extpid-${process.pid}-${Date.now()}.json`)
+  const pidFile = join(tmpdir(), `lofibot-sandbox-extpid-${process.pid}-${Date.now()}.json`)
   rmSync(pidFile, { force: true })
   let child: ReturnType<typeof spawn> | undefined
   try {
@@ -543,7 +543,7 @@ export function probeSandboxConfinement(
     }
   }
 
-  const parent = mkdtempSync(join(tmpdir(), 'ds-agent-sandbox-probe-'))
+  const parent = mkdtempSync(join(tmpdir(), 'lofibot-sandbox-probe-'))
   const workspace = join(parent, 'allowed')
   const forbiddenDir = join(parent, 'forbidden')
   mkdirSync(workspace, { recursive: true })
@@ -622,7 +622,7 @@ export function probeSandboxConfinement(
         : 'probe_failed'
 
     try {
-      writeFileSync(forbiddenFile, 'ds-agent-read-canary')
+      writeFileSync(forbiddenFile, 'lofibot-read-canary')
     } catch {
       // Leave the canary missing: the read probe's positive control then fails
       // closed without changing the already-computed write dimension.

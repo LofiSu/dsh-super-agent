@@ -40,11 +40,11 @@ export interface WallClockObservationState {
 }
 
 function statePath(home: string): string {
-  return path.join(home, '.ds-agent/measurement/t48-wall-clock-state.json')
+  return path.join(home, '.lofibot/measurement/t48-wall-clock-state.json')
 }
 
 function lockPath(home: string): string {
-  return path.join(home, '.ds-agent/measurement/t48-wall-clock.lock')
+  return path.join(home, '.lofibot/measurement/t48-wall-clock.lock')
 }
 
 export function readWallClockState(home: string): WallClockObservationState | undefined {
@@ -153,7 +153,7 @@ export function runT48WallClockObservation(options: {
     const pending = prior?.pending
     const journalPath = pending?.journalPath ?? options.journalPath ?? resolveT48JournalPath({
       ...(options.env ?? process.env),
-      DS_AGENT_HOME: options.home,
+      LOFIBOT_HOME: options.home,
     })
     if (
       !pending
@@ -219,12 +219,12 @@ export function runT48WallClockObservation(options: {
 }
 
 function main(): void {
-  const home = process.env.DS_AGENT_HOME?.trim()
+  const home = process.env.LOFIBOT_HOME?.trim()
   if (!home) {
-    console.error('t48:observe requires DS_AGENT_HOME (persistent copy, not ephemeral)')
+    console.error('t48:observe requires LOFIBOT_HOME (persistent copy, not ephemeral)')
     process.exit(2)
   }
-  const force = process.env.DS_AGENT_T48_OBSERVE_FORCE === '1'
+  const force = process.env.LOFIBOT_T48_OBSERVE_FORCE === '1'
   const { action, reason, state } = runT48WallClockObservation({ home, force })
   console.log('T48 wall-clock observation — synthetic fixture workload, real elapsed retention clock')
   console.log('NOT calendar-month T48 acceptance (T48 remains [~])')

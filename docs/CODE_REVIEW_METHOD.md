@@ -1,6 +1,6 @@
 # Code review method for this repo
 
-This maps [How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/) (Addy Osmani, Morgan Westlee Lunt, Qing Wang, 15 Oct 2026) onto `ds-agent`. The article describes a monorepo-scale pipeline: machine review before a person looks, risk-based human approval, a merge queue, flags, and rollback. This repository is a single TypeScript package with no CI workflows, no `CODEOWNERS`, no feature flags, and no incident dashboard. The mapping below keeps the article's decisions and drops the machinery this repo does not have.
+This maps [How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/) (Addy Osmani, Morgan Westlee Lunt, Qing Wang, 15 Oct 2026) onto `lofibot`. The article describes a monorepo-scale pipeline: machine review before a person looks, risk-based human approval, a merge queue, flags, and rollback. This repository is a single TypeScript package with no CI workflows, no `CODEOWNERS`, no feature flags, and no incident dashboard. The mapping below keeps the article's decisions and drops the machinery this repo does not have.
 
 The behavior contract people reach for is [`PLAN.md`](../PLAN.md). It has drifted from `src/`. [`ARCHITECTURE_REVIEW.zh.md`](./ARCHITECTURE_REVIEW.zh.md) is the current explainer of that drift (4 high, 10 medium, 5 low). A review that treats PLAN or a README checkbox as proof of behavior repeats the failure that review already records.
 
@@ -23,7 +23,7 @@ pnpm typecheck
 pnpm demo
 ```
 
-There is no `.github/` workflow. A green local run is not a hosted check. The PR body still has to say which of these ran and the result. `pnpm demo` defaults to `MockModel`. A live `DS_AGENT_API_*` run uses `LIVE_DEMO_PROOFS` and skips the scripted Mock needles (`spill`, `deliver=true`, watchdog session text, and others). Say which mode ran.
+There is no `.github/` workflow. A green local run is not a hosted check. The PR body still has to say which of these ran and the result. `pnpm demo` defaults to `MockModel`. A live `LOFIBOT_API_*` run uses `LIVE_DEMO_PROOFS` and skips the scripted Mock needles (`spill`, `deliver=true`, watchdog session text, and others). Say which mode ran.
 
 Demo proofs are substring checks on log lines (`src/cli/demo.ts`). `Evals.batch` is logged for a batch of one. `[watchdog] tick` is logged on an idle timer. `deliver=true` is logged because the mock worker's second report sets that flag. A review of batching, watchdog action, or the speculative discard path has to point at a branch in `src/` or a new assertion. A passing demo is not that evidence.
 
@@ -49,7 +49,7 @@ Severity uses the same three words as the architecture review:
 |------|--------------------|----------|
 | 高 | A control action or safety boundary the change relies on does not run, or the change opens one | Eval always accepting; watchdog tick that only logs; speculative tickets staying visible and undiscarded; tool output or prompts carrying credential values; a new writer of tickets outside `Engine` |
 | 中 | The skeleton is real and the control flow, model split, or contract text will mislead the next change | Batching, `roleModels`, rule-based slow path, spill without locality, `started` not ending the turn, ack sent from `Tickets.create`, subscription predicates, `meta.admitted`, PLAN/README status lines |
-| 低 | Names, layout, templates, and items PLAN marks as later extensions | Node engine line, `ds-agent.db`, email formatting, missing event names, T09/T45–T50 before they were wired |
+| 低 | Names, layout, templates, and items PLAN marks as later extensions | Node engine line, `lofibot.db`, email formatting, missing event names, T09/T45–T50 before they were wired |
 
 Drop findings that are only style, diagnostics, or drive-by cleanup. The article's tags map as: Important → 高 or 中 that this PR introduced; Nit → do not post; Pre-existing → already listed in the architecture review, or present on the base branch and untouched by the diff.
 
@@ -59,7 +59,7 @@ Each posted 高 or 中 finding has to be fixed or the thread closed with a reaso
 
 The article gives security its own blocking pass. This repo's blocking bar is the one PLAN already states and does not enforce (architecture review H4):
 
-- `DS_AGENT_API_KEY` and other secret values stay out of system prompts, tool results, the session journal, spill bodies, and demo logs.
+- `LOFIBOT_API_KEY` and other secret values stay out of system prompts, tool results, the session journal, spill bodies, and demo logs.
 - A check that only confirms the key is sent as an `Authorization` header is not enough. `bash` stdout is copied into the journal today.
 - Worker sessions do not gain `reply_user`. Domain ticket/decision writes stay inside `Engine` transactions.
 - `Trigger.meta` is caller-controlled. `meta.admitted === true` currently skips the engine filter. A change that lets an external payload set that flag is 高.
@@ -98,7 +98,7 @@ Only loosen a tier after a revert or a missed bug shows the old tier was heavier
 
 ### 6. Merge, flags, gradual release
 
-The article re-runs checks in a merge queue and ships behavior behind a flag to employees first. This package has one entry point, `pnpm demo` / `pnpm ds-agent`, and no flag helper. Do not add a queue or a flag framework as part of an unrelated change.
+The article re-runs checks in a merge queue and ships behavior behind a flag to employees first. This package has one entry point, `pnpm demo` / `pnpm lofibot`, and no flag helper. Do not add a queue or a flag framework as part of an unrelated change.
 
 The substitute is small diffs, MockModel as the default so a demo does not call the network, and revert as the undo. A change that alters admission, fan-out, or delivery should land with a test that fails if the new branch is removed.
 
