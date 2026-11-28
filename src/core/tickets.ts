@@ -54,6 +54,7 @@ export class Tickets {
         rules: input.rules,
       },
       threadKeys,
+      memoryThreadKeys: [...threadKeys],
       channels,
       inputs: input.triggers.map(trigger => ({
         id: this.host.repo.nextId('input'),
@@ -184,6 +185,7 @@ export class Tickets {
       ticket.contextOnlyThreads = (ticket.contextOnlyThreads ?? []).filter(item => item !== key)
     }
     if (!ticket.threadKeys.includes(key)) ticket.threadKeys.push(key)
+    if (ticket.memoryThreadKeys && !ticket.memoryThreadKeys.includes(key)) ticket.memoryThreadKeys.push(key)
     this.host.repo.putDoc('thread', key, thread)
     this.host.repo.putDoc('ticket', ticketId, ticket)
     this.host.repo.addSubscription(key, ticketId, this.host.now())

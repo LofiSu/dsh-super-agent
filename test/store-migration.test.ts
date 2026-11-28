@@ -403,7 +403,7 @@ describe('store schema migrations', () => {
 
     const upgraded = new Store(home)
     try {
-      expect(upgraded.schemaVersion).toBe(7)
+      expect(upgraded.schemaVersion).toBe(LATEST_SCHEMA_VERSION)
       expect(upgraded.listPublishAdmissions('ticket_v5')).toEqual([{
         ticketId: 'ticket_v5',
         approvalId: 'approval_v5',

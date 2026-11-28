@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS events (
 `
 
 /** The schema version this build writes and understands. */
-export const LATEST_SCHEMA_VERSION = 7
+export const LATEST_SCHEMA_VERSION = 8
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -120,7 +120,8 @@ function ensureColumn(db: DatabaseSync, table: string, column: string, ddl: stri
  * adds the outbox columns that earlier builds created with `ensureColumn`;
  * version 3 adds the durable lifecycle-event log, version 4 adds spill refs,
  * versions 5 and 6 add the publish-approval admission ledger and its durable
- * observation columns, and version 7 indexes per-Ticket receipt lookups.
+ * observation columns, version 7 indexes per-Ticket receipt lookups, and
+ * version 8 indexes scoped transcript pagination.
  * Add new steps here and bump `LATEST_SCHEMA_VERSION`; never edit an applied
  * step in place.
  */
@@ -188,6 +189,12 @@ CREATE TABLE IF NOT EXISTS publish_approval_admissions (
 CREATE INDEX IF NOT EXISTS replies_ticket_id_idx ON replies(ticket_id);
 CREATE INDEX IF NOT EXISTS outbox_ticket_id_idx ON outbox(ticket_id);
 `),
+  },
+  {
+    version: 8,
+    up: db => db.exec(
+      'CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages(session_id, id)',
+    ),
   },
 ]
 

@@ -30,6 +30,8 @@ import { aggregateReportOf, describeTopologyOf, type TeamRecord } from '../harne
 import { formatMetricsJson, Metrics } from '../metrics/metrics.ts'
 import { executionReceipt, formatExecutionReceipt } from '../core/receipt.ts'
 import type { A2AEnvelope } from '../channels/a2a.ts'
+import { dreamMemory } from '../memory/dream.ts'
+import { SessionMemory, supportsSessionMemory } from '../memory/tools.ts'
 import type { LongTermMemoryEntry } from '../memory/long-term.ts'
 import { Runtime } from '../runtime.ts'
 import { visibleTickets } from '../speculate/index.ts'
@@ -201,6 +203,7 @@ function help(): void {
   pnpm ds-agent emit github --pr 42 --text "CI failed on auth test"
   pnpm ds-agent metrics
   pnpm ds-agent memory [--limit 10]   # persisted cross-ticket memories
+  pnpm ds-agent memory dream --session <id>  # consolidate notes for one session
   pnpm ds-agent a2a [--limit 10]      # persisted A2A envelopes
   pnpm ds-agent prompt [--role router|worker|watchdog] [--layers] [--json]
                             # the layered system prompt and where each layer comes from
@@ -623,6 +626,27 @@ async function main(): Promise<void> {
   }
   if (cmd === 'metrics') {
     console.log(formatMetricsJson(home))
+    return
+  }
+  if (cmd === 'memory' && sub === 'dream') {
+    const sessionId = option('session')
+    if (!sessionId || sessionId.startsWith('--')) throw new Error('memory dream requires --session <id>')
+    const store = new Store(home)
+    try {
+      const session = store.listSessions().find(row => row.id === sessionId)
+      if (!session || !supportsSessionMemory(session.role, session.id)) {
+        throw new Error('No direct-chat Router or Worker session with that ID')
+      }
+      const redact = promptRedactor(process.env)
+      const memory = new SessionMemory(store, redact)
+      try {
+        console.log(JSON.stringify(await dreamMemory(requireLiveModelFromEnv(), memory, session, redact), null, 2))
+      } catch (error) {
+        throw new Error(redact(error instanceof Error ? error.message : String(error)))
+      }
+    } finally {
+      store.close()
+    }
     return
   }
   if (cmd === 'memory' || cmd === 'a2a') {

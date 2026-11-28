@@ -930,6 +930,21 @@ export class Store {
     return rows.map(row => ({ sessionId: row.session_id, role: row.role, body: row.body }))
   }
 
+  /** Recent evidence candidates. A row id remains stable across appends and reopen. */
+  listTranscriptPage(
+    sessionId: string,
+    before: number,
+    limit: number,
+  ): { id: number; role: string; body: string | null; createdAt: string }[] {
+    return this.db.prepare(`
+      SELECT id, role, created_at AS createdAt,
+        CASE WHEN length(CAST(body AS BLOB)) <= 65536 THEN body END AS body
+      FROM messages
+      WHERE session_id = ? AND id < ? AND role IN ('user', 'assistant')
+      ORDER BY id DESC LIMIT ?
+    `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
+  }
+
   addArtifact(ticketId: string, filePath: string): string {
     this.assertWritable()
     const id = this.nextId('art')

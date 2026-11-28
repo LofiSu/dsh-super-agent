@@ -302,6 +302,8 @@ export interface Ticket {
   conversation?: boolean
   mandate: Mandate
   threadKeys: string[]
+  /** Monotonic record of Worker thread exposure for cross-ticket memory. */
+  memoryThreadKeys?: string[]
   /** Subset of threadKeys whose messages are context-only for this Ticket. */
   contextOnlyThreads?: string[]
   channels: ChannelRef[]
