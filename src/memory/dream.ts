@@ -1,3 +1,4 @@
+import { SavedMemoryIndexOverflow } from './notes.ts'
 import { redactRecord } from '../env/sanitize.ts'
 import type { Model, ModelMessage } from '../harness/model.ts'
 import type { SessionRow } from '../shared/types.ts'
@@ -77,6 +78,7 @@ export async function dreamMemory(
           throw new Error('Unknown memory consolidation tool')
         }
       } catch (error) {
+        if (error instanceof SavedMemoryIndexOverflow) writes++
         output = { error: error instanceof Error ? error.message : String(error) }
       }
       messages.push({

@@ -12,7 +12,9 @@ const MAX_SCOPE_BYTES = 512 * 1024
 const MAX_FILE_BYTES = 64 * 1024
 const MAX_LINE_BYTES = 4 * 1024
 const MAX_VIEW_CHARS = 16_000
-const MAX_INDEX_CHARS = 2_000
+const MAX_INDEX_LINES = 200
+const MAX_INDEX_BYTES = 25 * 1024
+const INDEX_LIMIT_DESCRIPTION = 'the injection limit (200 lines or 25 KiB)'
 
 export interface Note {
   path: string
@@ -21,6 +23,17 @@ export interface Note {
 
 interface NotesDocument {
   files: Note[]
+}
+
+export class SavedMemoryIndexOverflow extends UserError {}
+
+export function memoryNoteResult(outcome: { result: string; overflow?: boolean }): string {
+  if (outcome.overflow) {
+    throw new SavedMemoryIndexOverflow(
+      `MEMORY.md was saved but exceeds ${INDEX_LIMIT_DESCRIPTION}. Please shorten it by moving details to topic notes.`,
+    )
+  }
+  return outcome.result
 }
 
 /** Host-owned scopes expose virtual text paths only. No command touches host filesystem paths. */
@@ -33,8 +46,7 @@ export class MemoryNotes {
     const consolidated = files.find(file => file.path === CONSOLIDATED_MEMORY_PATH)?.text
     const pointer = consolidated ? `Background-consolidated knowledge: ${CONSOLIDATED_MEMORY_PATH}` : ''
     if (!index && !pointer) return undefined
-    const text = this.redact([pointer, index?.text].filter(Boolean).join('\n')).slice(0, MAX_INDEX_CHARS)
-    return text.replace(/[\uD800-\uDBFF]$/, '')
+    return [pointer, index && indexPrefix(this.redact(index.text))].filter(Boolean).join('\n')
   }
 
   readConsolidated(scope: string): string | undefined {
@@ -67,20 +79,29 @@ export class MemoryNotes {
   }
 
   execute(scope: string, args: Record<string, unknown>): string {
+    return memoryNoteResult(this.executeWithFeedback(scope, args))
+  }
+
+  executeWithFeedback(scope: string, args: Record<string, unknown>): { result: string; overflow?: boolean } {
     const id = scopeId(scope)
     if (args.command === 'view') {
       const path = this.path(args.path)
-      return view(this.load(id), path, args.view_range, this.redact)
+      return { result: view(this.load(id), path, args.view_range, this.redact) }
     }
 
-    return this.store.atomic(() => {
+    const { result, index } = this.store.atomic(() => {
       const files = this.load(id)
+      const oldIndex = files.find(file => file.path === INDEX_PATH)?.text
       const result = this.mutate(files, args)
       validateLimits(files)
       if (files.length === 0) this.store.deleteDoc(DOCUMENT_KIND, id)
       else this.store.putDoc(DOCUMENT_KIND, id, { files })
-      return result
+      const index = files.find(file => file.path === INDEX_PATH)?.text
+      return { result, index: index === oldIndex ? undefined : index }
     })
+    if (index === undefined) return { result }
+    if (indexPrefix(index) !== index) return { result, overflow: true }
+    return { result: result + indexWriteReminder(index) }
   }
 
   private load(id: string): Note[] {
@@ -166,6 +187,24 @@ export class MemoryNotes {
         throw new UserError('Unsupported memory command')
     }
   }
+}
+
+function indexPrefix(text: string): string {
+  const lines = fileLines(text)
+  const limited = lines.length > MAX_INDEX_LINES ? lines.slice(0, MAX_INDEX_LINES).join('\n') : text
+  const bytes = Buffer.from(limited)
+  if (bytes.length <= MAX_INDEX_BYTES) return limited
+
+  let end = MAX_INDEX_BYTES
+  while ((bytes[end]! & 0xc0) === 0x80) end--
+  return bytes.subarray(0, end).toString('utf8')
+}
+
+function indexWriteReminder(text: string): string {
+  if (fileLines(text).length >= MAX_INDEX_LINES * 0.9 || Buffer.byteLength(text) >= MAX_INDEX_BYTES * 0.9) {
+    return `\nMEMORY.md is approaching ${INDEX_LIMIT_DESCRIPTION}. Keep one line per entry and move details to topic notes.`
+  }
+  return ''
 }
 
 function scopeId(scope: string): string {

@@ -46,7 +46,31 @@ describe('memory notes', () => {
     expect(memory.readIndex('owner-a')).toBeUndefined()
     execute('create', { path: '/memories/MEMORY.md', file_text: 'test-secret ' + 'a'.repeat(2500) })
     expect(memory.readIndex('owner-b')).toBeUndefined()
-    expect(memory.readIndex('owner-a')).toBe(('[redacted] ' + 'a'.repeat(2500)).slice(0, 2000))
+    expect(memory.readIndex('owner-a')).toBe('[redacted] ' + 'a'.repeat(2500))
+  })
+
+  it('retains oversized index writes and loads only the first 200 lines or 25 KiB', () => {
+    const path = '/memories/MEMORY.md'
+    const lines = Array.from({ length: 201 }, (_, i) => 'Entry ' + (i + 1))
+    expect(() => execute('create', { path, file_text: lines.join('\n') })).toThrow(/was saved.*shorten/)
+    expect(memory.readIndex('owner-a')).toBe(lines.slice(0, 200).join('\n'))
+    expect(execute('view', { path, view_range: [201, 201] })).toContain('Entry 201')
+
+    const large = Array.from({ length: 9 }, () => '😀'.repeat(900)).join('\n')
+    expect(execute('create', { path: '/memories/large.md', file_text: large })).not.toMatch(/shorten/)
+    execute('delete', { path })
+    expect(() => execute('rename', { old_path: '/memories/large.md', new_path: path })).toThrow(/was saved.*shorten/)
+    const loaded = memory.readIndex('owner-a')!
+    expect(Buffer.byteLength(loaded)).toBeLessThanOrEqual(25 * 1024)
+    expect(Buffer.byteLength(loaded)).toBeGreaterThan(25 * 1024 - 4)
+    expect(loaded).not.toContain('�')
+  })
+
+  it('reminds the agent to keep an index near its limit concise', () => {
+    const path = '/memories/MEMORY.md'
+    const lines = Array.from({ length: 180 }, () => 'entry').join('\n')
+    expect(execute('create', { path, file_text: lines })).toContain('approaching')
+    expect(memory.readIndex('owner-a')).toBe(lines)
   })
 
   it('replaces literally and inserts at the beginning or after an existing line', () => {
