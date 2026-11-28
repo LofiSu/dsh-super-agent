@@ -484,6 +484,48 @@ describe('worker mandate scope', () => {
     expect(runtime.log.text()).toContain('kept ticket open for revised mandate')
   })
 
+  it('does not relaunch locally after a remote assignment turn has settled', async () => {
+    const prompts: string[] = []
+    let releaseWorker!: () => void
+    const gate = new Promise<void>(resolve => { releaseWorker = resolve })
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, gate, () => scope, redispatch, undefined, true, false), {
+      DS_AGENT_REMOTE_MESH: JSON.stringify([{
+        id: 'remote-test-node',
+        url: 'http://127.0.0.1:9',
+        peerId: 'peer-test',
+        secret: 'x'.repeat(32),
+      }]),
+    })
+    runtime.ingest(directTrigger('trg_remote_settled_scope'))
+    await vi.waitFor(() => expect(prompts.some(p => p.startsWith('TASK'))).toBe(true))
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const work = runtime.store.listDocs<Ticket>('ticket').find(t => !isConversationTicket(t))!
+    const assignment = work.assignments.at(-1)!
+    assignment.node = 'remote-test-node'
+    assignment.state = 'running'
+    runtime.store.putDoc('ticket', work.id, work)
+
+    releaseWorker()
+    await runtime.jobsSettled()
+    await vi.waitFor(() => expect(runtime.harness.workerActive(work.id)).toBe(false))
+    expect(runtime.harness.launchInFlight(work.id)).toBe(false)
+    expect(runtime.store.getDoc<Ticket>('ticket', work.id)?.ended).toBeUndefined()
+
+    scope = scopeB
+    await dispatchAgain(runtime, 'trg_remote_settled_scope', envelope.id, redispatch)
+    await runtime.jobsSettled()
+
+    expect(prompts.filter(p => p.startsWith('FOLLOWUP'))).toHaveLength(0)
+    expect(prompts.filter(p => p.startsWith('TASK'))).toHaveLength(1)
+    expect(runtime.log.text().match(/ExecutorSession start session=worker_/g) ?? []).toHaveLength(1)
+    expect(runtime.store.getDoc<Ticket>('ticket', work.id)?.ended).toBeUndefined()
+    const latestAssignment = runtime.store.getDoc<Ticket>('ticket', work.id)?.assignments.at(-1)
+    expect(latestAssignment).toMatchObject({ node: 'remote-test-node', state: 'running' })
+    expect(latestAssignment?.id).toBe(assignment.id)
+  })
+
   it('a revised remote-owned assignment does not start a local FOLLOWUP', async () => {
     const prompts: string[] = []
     let releaseWorker!: () => void

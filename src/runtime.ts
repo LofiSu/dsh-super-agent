@@ -1906,6 +1906,7 @@ export class Runtime {
         if (!ticket || ticket.ended || isConversationTicket(ticket)) return
         const assignment = ticket.assignments.at(-1)
         const remoteOwned = assignment?.node !== undefined && assignment.node !== instanceId
+        if (remoteOwned && assignment.state === 'running') return
         const localWorkerActive = late.harness.workerActive(ticketId)
         if (mandateChanged && !remoteOwned && localWorkerActive) {
           const trigger = store.getDoc<Trigger>('trigger', ticket.originTriggerId)
