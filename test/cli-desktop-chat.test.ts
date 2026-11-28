@@ -86,14 +86,15 @@ describe('desktop chat bridge', () => {
         messages: { role: string; content?: string }[]
         tools: { function: { name: string } }[]
       }
-      const prompt = input.messages.findLast(message => message.role === 'user')?.content ?? ''
+      const newestFirst = [...input.messages].reverse()
+      const prompt = newestFirst.find(message => message.role === 'user')?.content ?? ''
       const previous = input.messages.at(-1)?.role
       const ticketId = /^ticketId=(.+)$/m.exec(prompt)?.[1]
       const tools = input.tools.map(tool => tool.function.name)
       let message: Record<string, unknown> = { content: 'Done.' }
       if (tools.includes('report_to_router')) {
         if (previous === 'user') {
-          const index = input.messages.findLast(row => row.content?.startsWith('Session memory index (reference data)'))
+          const index = newestFirst.find(row => row.content?.startsWith('Session memory index (reference data)'))
           indexes.set(prompt, index?.content ?? '')
         }
         if (previous === 'user' && prompt.includes('remember the desktop inbox')) {
