@@ -19,6 +19,7 @@ import { redactUnknown } from '../env/sanitize.ts'
 import type { LocalAgentRegistry } from '../env/local-agents.ts'
 import type { FeaturePrPublisher } from '../env/git-publish.ts'
 import type { SkillRegistry } from '../env/skills.ts'
+import { memorySpec, supportsSessionMemory, transcriptSpec, type SessionMemory } from '../memory/tools.ts'
 import { readObjectFor } from '../memory/acl.ts'
 import type { Metrics } from '../metrics/metrics.ts'
 import { UserError } from '../shared/errors.ts'
@@ -48,6 +49,7 @@ export type ToolContext = {
 }[Role]
 
 export interface ToolDeps {
+  memory?: SessionMemory
   store: Store
   ports: RolePorts
   env: EnvPort
@@ -128,12 +130,17 @@ export class ToolRegistry {
     ]
   }
 
-  async specsFor(role: Role): Promise<ToolSpec[]> {
+  memoryIndex(session: ToolSession): string | undefined {
+    return this.memoryFor(session.role, session.sessionId)?.index(session)
+  }
+
+  async specsFor(role: Role, sessionId?: string): Promise<ToolSpec[]> {
     const specs = this.tools.filter(tool => tool.roles.includes(role)).map(({ name, description, parameters }) => ({
       name,
       description,
       parameters,
     }))
+    if (this.memoryFor(role, sessionId)) specs.push(memorySpec, transcriptSpec)
     // MCP tools are external capabilities for Workers. The Router decides and
     // the Watchdog fails stuck work; neither may reach a third-party server.
     if (role === 'worker' && this.deps.mcp) specs.push(...await this.deps.mcp.specs())
@@ -141,6 +148,14 @@ export class ToolRegistry {
   }
 
   async invoke(call: ToolCall, session: ToolSession): Promise<unknown> {
+    if (call.name === memorySpec.name || call.name === transcriptSpec.name) {
+      const memory = this.memoryFor(session.role, session.sessionId)
+      if (!memory) throw new UserError(`tool ${call.name} is not available to ${session.role} in this session`)
+      const result = call.name === memorySpec.name
+        ? memory.execute(session, call.args)
+        : memory.transcript(session.sessionId, call.args)
+      return redactUnknown(result, this.redact)
+    }
     if (call.name.startsWith('mcp__')) {
       if (session.role !== 'worker' || !this.deps.mcp) {
         throw new UserError(`tool ${call.name} is not available to ${session.role}`)
@@ -163,6 +178,10 @@ export class ToolRegistry {
     if (session.role === 'router') return { ...session, role: 'router', ports: this.deps.ports.router }
     if (session.role === 'worker') return { ...session, role: 'worker', ports: this.deps.ports.worker }
     return { ...session, role: 'watchdog', ports: this.deps.ports.watchdog }
+  }
+
+  private memoryFor(role: Role, sessionId?: string): SessionMemory | undefined {
+    return supportsSessionMemory(role, sessionId) ? this.deps.memory : undefined
   }
 }
 

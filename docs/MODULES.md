@@ -227,6 +227,21 @@ bypass. `tickets.ts` owns `subscribe`/`hide` and `Engine.subscribe`.
 
 ## M6 — memory
 
+Direct-chat Router sessions and Workers can use the `memory` tool to manage
+text notes in a virtual `/memories` directory backed by SQLite. Router scopes
+follow the direct-chat shard. A Worker can reuse notes from other tickets
+with the same thread set while its historical and current scopes agree.
+Speculative Workers can't write persistent notes. `memory_transcript`
+pages through the current session's redacted user and assistant messages,
+with stable evidence IDs.
+
+A short `/memories/MEMORY.md` index is loaded as reference data before the
+current prompt. Topic pages under `/memories/wiki/` are loaded on demand.
+Run `pnpm ds-agent memory dream --session <id>` to review a session's notes
+against its transcript using the configured live model. The pass has only
+memory and transcript tools, requires user evidence before edits, and holds
+no background schedule. See [Anthropic memory design](ANTHROPIC_AGENT_MEMORY.md).
+
 `src/connectors/index-store.ts` keeps connector source records under the
 separate `connector` document kind. It is a queryable index, not long-term
 memory: indexing a Gmail message, calendar event, or document never writes an

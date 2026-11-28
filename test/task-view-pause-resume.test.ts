@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Engine } from '../src/core/engine.ts'
 import type { Host } from '../src/core/host.ts'
+import { gatewayConfigPath } from '../src/gateway/config-file.ts'
+import { readMemoryTranscript } from '../src/memory/transcript.ts'
 import { SessionJournal } from '../src/harness/session.ts'
 import { Metrics } from '../src/metrics/metrics.ts'
 import type { OutboxRow, Ticket } from '../src/shared/types.ts'
@@ -381,6 +384,22 @@ describe('task view, pause, and resume', () => {
     settle(home, 'ticket_live')
     settle(home, 'ticket_blocked')
 
+    const guidance = 'Use pnpm for the reproduction'
+    const correction = await runCli(home, ['intervene', 'ticket_pause', guidance])
+    expect(correction.status, correction.stderr).toBe(0)
+    const followup = 'Reproduce only with the staging database'
+    const inputStore = new Store(home)
+    try {
+      const current = inputStore.getDoc<Ticket>('ticket', 'ticket_pause')!
+      const at = new Date().toISOString()
+      current.inputs.push(
+        { id: 'human-followup', kind: 'text', at, human: true, text: followup },
+        { id: 'scheduler-followup', kind: 'job', at, human: false, text: 'scheduler update' },
+      )
+      inputStore.putDoc('ticket', current.id, current)
+    } finally {
+      inputStore.close()
+    }
     const resumed = await runCli(home, ['resume', 'ticket_pause', '--reason', 'human verified'], liveModelEnv())
     expect(resumed.status, `${resumed.stderr}\n${resumed.stdout}`).toBe(0)
     expect(resumed.stdout).toContain('resumed ticket_pause "fix the login timeout" — human verified')
@@ -392,6 +411,30 @@ describe('task view, pause, and resume', () => {
     expect(afterPanel.stdout).toContain('ticket_pause\tworking\tfix the login timeout')
     expect(afterPanel.stdout).toContain(`report: progress — ${RESUME_REPORT}`)
     expect(afterPanel.stdout).not.toContain('ticket_pause\tpaused\t')
+    const evidenceStore = new Store(home)
+    try {
+      const evidence = readMemoryTranscript(evidenceStore, 'worker_ticket_pause', {}, text => text)
+      expect(evidence.entries).toContainEqual(expect.objectContaining({ role: 'user', text: [guidance, followup].join('\n') }))
+    } finally {
+      evidenceStore.close()
+    }
+  })
+
+  it('runs memory dream when only the embedded gateway is configured', async () => {
+    const home = tempHome()
+    const sessionId = 'router:thread:fixture'
+    const at = '2026-01-01T00:00:00.000Z'
+    const store = new Store(home)
+    store.upsertSession({ id: sessionId, role: 'router', status: 'idle', heartbeat: at, createdAt: at })
+    store.close()
+    writeFileSync(gatewayConfigPath(home), JSON.stringify({
+      defaultModel: 'fixture',
+      providers: [{ id: 'local', baseUrl: modelBase, apiKey: '', models: ['fixture'] }],
+    }))
+
+    const result = await runCli(home, ['memory', 'dream', '--session', sessionId])
+    expect(result.status, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({ summary: 'idle', writes: 0, limitReached: false })
   })
 
   it('reports an unknown ticket and leaves the existing ticket unchanged', async () => {

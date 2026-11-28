@@ -51,6 +51,7 @@ export class RouterShardRegistry {
 
   register(shard: RouterShard): void {
     if (!shard.id.trim()) throw new Error('Router shard id must not be empty')
+    if (shard.id.startsWith('thread:')) throw new Error('Router shard prefix thread: is reserved for direct chats')
     if (shard.filter !== undefined && shard.filters !== undefined) {
       throw new Error(`Router shard ${shard.id} cannot set both filter and filters`)
     }
