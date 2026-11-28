@@ -387,6 +387,19 @@ describe('task view, pause, and resume', () => {
     const guidance = 'Use pnpm for the reproduction'
     const correction = await runCli(home, ['intervene', 'ticket_pause', guidance])
     expect(correction.status, correction.stderr).toBe(0)
+    const followup = 'Reproduce only with the staging database'
+    const inputStore = new Store(home)
+    try {
+      const current = inputStore.getDoc<Ticket>('ticket', 'ticket_pause')!
+      const at = new Date().toISOString()
+      current.inputs.push(
+        { id: 'human-followup', kind: 'text', at, human: true, text: followup },
+        { id: 'scheduler-followup', kind: 'job', at, human: false, text: 'scheduler update' },
+      )
+      inputStore.putDoc('ticket', current.id, current)
+    } finally {
+      inputStore.close()
+    }
     const resumed = await runCli(home, ['resume', 'ticket_pause', '--reason', 'human verified'], liveModelEnv())
     expect(resumed.status, `${resumed.stderr}\n${resumed.stdout}`).toBe(0)
     expect(resumed.stdout).toContain('resumed ticket_pause "fix the login timeout" — human verified')
@@ -401,7 +414,7 @@ describe('task view, pause, and resume', () => {
     const evidenceStore = new Store(home)
     try {
       const evidence = readMemoryTranscript(evidenceStore, 'worker_ticket_pause', {}, text => text)
-      expect(evidence.entries).toContainEqual(expect.objectContaining({ role: 'user', text: guidance }))
+      expect(evidence.entries).toContainEqual(expect.objectContaining({ role: 'user', text: [guidance, followup].join('\n') }))
     } finally {
       evidenceStore.close()
     }

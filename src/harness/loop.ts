@@ -749,8 +749,13 @@ export class Harness {
         return Promise.resolve()
       }
       const guidance = this.opts.takeGuidance?.(ticket.id, role) ?? []
-      const evidence = guidance.length ? guidance.join('\n') : undefined
-      return this.run(session, role, role === 'worker' ? ticket.id : undefined, build(guidance), evidence)
+      const evidence = [...guidance]
+      if (role === 'worker') {
+        for (const input of pending) {
+          if (input.human === true && input.text) evidence.push(input.text)
+        }
+      }
+      return this.run(session, role, role === 'worker' ? ticket.id : undefined, build(guidance), evidence.join('\n') || undefined)
     }
 
     let chain: Promise<void> = Promise.resolve()
