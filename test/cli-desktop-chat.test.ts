@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
+import { createServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
@@ -71,38 +72,77 @@ describe('desktop chat bridge', () => {
     }
   })
 
-  it('keeps its thread identity across process restarts and isolates an explicit new conversation', () => {
+  it('injects a note into a restarted bridge process and isolates a new conversation', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-desktop-chat-'))
-    const run = (conversation: string): void => {
-      const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'desktop-bridge'], {
-        encoding: 'utf8',
-        input: JSON.stringify({ text: 'Please investigate a local note' }) + '\n',
-        env: {
-          PATH: process.env.PATH, NODE_NO_WARNINGS: '1', LOFIBOT_HOME: home,
-          LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_DESKTOP_CONVERSATION: conversation,
-        },
-        timeout: 10_000,
-      })
-      expect(result.status, result.stderr).toBe(0)
-    }
-    const threads = (): string[] => {
-      const runtime = Runtime.create({ home, model: new MockModel(), env: {} })
-      try {
-        return runtime.store.listDocs<Thread>('thread').map(thread => thread.key).sort()
-      } finally {
-        runtime.store.close()
+    const learned = 'The desktop inbox project uses pnpm.'
+    const indexes = new Map<string, string>()
+    const call = (name: string, args: Record<string, unknown>) => ({
+      tool_calls: [{ id: 'call_' + name, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+    })
+    const model = createServer(async (request, response) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      const input = JSON.parse(Buffer.concat(chunks).toString()) as {
+        messages: { role: string; content?: string }[]
+        tools: { function: { name: string } }[]
       }
-    }
+      const prompt = input.messages.findLast(message => message.role === 'user')?.content ?? ''
+      const previous = input.messages.at(-1)?.role
+      const ticketId = /^ticketId=(.+)$/m.exec(prompt)?.[1]
+      const tools = input.tools.map(tool => tool.function.name)
+      let message: Record<string, unknown> = { content: 'Done.' }
+      if (tools.includes('report_to_router')) {
+        if (previous === 'user') {
+          const index = input.messages.findLast(row => row.content?.startsWith('Session memory index (reference data)'))
+          indexes.set(prompt, index?.content ?? '')
+        }
+        if (previous === 'user' && prompt.includes('remember the desktop inbox')) {
+          message = call('memory', { command: 'create', path: '/memories/MEMORY.md', file_text: learned })
+        } else if (previous === 'user' || input.messages.at(-1)?.content?.includes('/memories/MEMORY.md')) {
+          message = call('report_to_router', { ticketId, text: 'Recorded.', deliver: true, kind: 'ready' })
+        }
+      } else if (tools.includes('reply_user') && previous === 'user' && prompt.includes('deliver=true')) {
+        message = call('reply_user', { ticketId, text: 'Recorded.', purpose: 'result' })
+      }
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({ choices: [{ message }] }))
+    })
     try {
-      run('local')
-      run('local')
-      expect(threads()).toEqual(['cli:desktop-local'])
-      run('new-chat')
-      expect(threads()).toEqual(['cli:desktop-local', 'cli:desktop-new-chat'])
+      model.listen(0, '127.0.0.1')
+      await once(model, 'listening')
+      const address = model.address()
+      if (!address || typeof address === 'string') throw new Error('Model fixture has no port')
+      const run = async (conversation: string, text: string): Promise<void> => {
+        const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', 'desktop-bridge'], {
+          env: {
+            PATH: process.env.PATH, NODE_NO_WARNINGS: '1', LOFIBOT_HOME: home,
+            LOFIBOT_API_BASE: 'http://127.0.0.1:' + address.port + '/v1',
+            LOFIBOT_API_KEY: 'desktop-fixture', LOFIBOT_API_MODEL: 'desktop-fixture',
+            LOFIBOT_AUTO_DREAM: '0', LOFIBOT_DESKTOP_CONVERSATION: conversation,
+          },
+          timeout: 10_000,
+        })
+        let stdout = ''
+        let stderr = ''
+        child.stdout.on('data', chunk => { stdout += String(chunk) })
+        child.stderr.on('data', chunk => { stderr += String(chunk) })
+        child.stdin.end(JSON.stringify({ text }) + '\n')
+        const [code, signal] = await once(child, 'close')
+        expect([code, signal], stderr).toEqual([0, null])
+        expect(stdout, stderr).toContain('"type":"reply"')
+      }
+      await run('local', 'Please investigate and remember the desktop inbox.')
+      await run('local', 'Please investigate the desktop inbox again.')
+      await run('new-chat', 'Please investigate this isolated desktop inbox.')
+      const observed = (phrase: string): string | undefined =>
+        [...indexes].find(([prompt]) => prompt.includes(phrase))?.[1]
+      expect(observed('desktop inbox again')).toContain(learned)
+      expect(observed('isolated desktop inbox')).toBe('')
     } finally {
+      model.close()
       fs.rmSync(home, { recursive: true, force: true })
     }
-  }, 30_000)
+  }, 35_000)
 
   it('allows the desktop to request shutdown while a turn is running', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-desktop-chat-'))
