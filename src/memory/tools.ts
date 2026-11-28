@@ -35,7 +35,8 @@ export const transcriptSpec: ToolSpec = {
   name: 'memory_transcript',
   description: 'Read original conversation evidence in this session, newest first. '
     + 'Use scope: memory to browse or search human evidence in authorized sibling conversations. '
-    + 'Pass a returned ref to retrieve a single source. Use before for older evidence. Assistant statements may be unverified.',
+    + 'Pass a returned ref or an Evidence rows number as ref.id to retrieve a source. '
+    + 'Use before for older evidence. Assistant statements may be unverified.',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -43,7 +44,7 @@ export const transcriptSpec: ToolSpec = {
       scope: { type: 'string', enum: ['memory'] },
       query: { type: 'string', maxLength: 240 },
       ref: {
-        type: 'object', required: ['sessionId', 'id'], additionalProperties: false,
+        type: 'object', required: ['id'], additionalProperties: false,
         properties: {
           sessionId: { type: 'string', maxLength: 512 },
           id: { type: 'integer', minimum: 1 },
@@ -93,12 +94,13 @@ export class SessionMemory {
   }
 
   private noteScope(session: MemorySession, ticket: Ticket | undefined): string {
-    if (ticket?.memoryThreadKeys?.length && !ticket.speculative && !ticket.ended?.silent) {
+    if (ticket && Array.isArray(ticket.memoryThreadKeys) && ticket.memoryThreadKeys.length
+      && Array.isArray(ticket.threadKeys) && !ticket.speculative && !ticket.ended?.silent) {
       const exposed = [...new Set(ticket.memoryThreadKeys)].sort()
       const current = new Set(ticket.threadKeys)
       // Legacy tickets and tickets that dropped a source stay ticket-local.
       // Their journal can still contain evidence from the removed source.
-      if (exposed.length === current.size && exposed.every(key => current.has(key))) {
+      if (exposed.length === current.size && exposed.every(key => typeof key === 'string' && current.has(key))) {
         return workerThreadScope(exposed)
       }
     }

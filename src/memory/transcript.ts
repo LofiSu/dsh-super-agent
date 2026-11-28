@@ -10,7 +10,7 @@ const MAX_QUERY_CHARS = 240
 const MAX_REFERENCE_SESSION_CHARS = 512
 
 export interface MemoryEvidenceRef {
-  sessionId: string
+  sessionId?: string
   id: number
 }
 
@@ -81,7 +81,7 @@ export function readMemoryTranscript(
   return evidencePage(store.listTranscriptPage(sessionId, before, MAX_CANDIDATES + 1), limit, redact)
 }
 
-type EvidenceRow = ReturnType<Store['listTranscriptPage']>[number] & { sessionId?: string }
+type EvidenceRow = ReturnType<Store['listTranscriptPage']>[number] & { ref?: MemoryEvidenceRef }
 
 function evidencePage(
   rows: EvidenceRow[], limit: number, redact: (text: string) => string, query?: string, authoredOnly = false,
@@ -101,7 +101,7 @@ function evidencePage(
           role,
           at: row.createdAt,
           text: text.slice(0, MAX_ENTRY_CHARS),
-          ...(row.sessionId ? { ref: { sessionId: row.sessionId, id: row.id } } : {}),
+          ...(row.ref ? { ref: row.ref } : {}),
         }
         if (text.length > entry.text.length) entry.truncated = true
         let entryChars = JSON.stringify(entry).length + 1
@@ -136,18 +136,21 @@ export function readScopedMemoryTranscript(
 ): TranscriptPage {
   if (Object.hasOwn(args, 'ref')) {
     const ref = args.ref as Partial<MemoryEvidenceRef> | undefined
-    if (Object.keys(args).length !== 1 || !ref || typeof ref !== 'object' || Object.keys(ref).length !== 2
-      || typeof ref.sessionId !== 'string' || !ref.sessionId.length || ref.sessionId.length > MAX_REFERENCE_SESSION_CHARS) {
-      throw new UserError('ref must contain only a sessionId and an id')
+    if (Object.keys(args).length !== 1 || !ref || typeof ref !== 'object'
+      || Object.keys(ref).some(key => key !== 'id' && key !== 'sessionId')
+      || (ref.sessionId !== undefined
+        && (typeof ref.sessionId !== 'string' || !ref.sessionId.length || ref.sessionId.length > MAX_REFERENCE_SESSION_CHARS))) {
+      throw new UserError('ref must contain an id and can include a sessionId')
     }
     const id = integer(ref.id, Number.MAX_SAFE_INTEGER, 'ref.id')
-    if (ref.sessionId === sessionId) {
+    const reference = ref.sessionId === undefined ? { id } : { id, sessionId: ref.sessionId }
+    if (ref.sessionId === undefined || ref.sessionId === sessionId) {
       const row = store.getTranscriptEvidence(sessionId, id)
-      return evidencePage(row ? [{ ...row, sessionId }] : [], 1, redact)
+      if (row) return evidencePage([{ ...row, ref: reference }], 1, redact)
     }
     if (!sharedThreads) return { entries: [] }
-    const rows = store.listSharedTranscriptPage(sessionId, sharedThreads, Number.MAX_SAFE_INTEGER, 1, { sessionId: ref.sessionId, id })
-    return evidencePage(rows, 1, redact, undefined, true)
+    const [row] = store.listSharedTranscriptPage(sessionId, sharedThreads, Number.MAX_SAFE_INTEGER, 1, reference)
+    return evidencePage(row ? [{ ...row, ref: reference }] : [], 1, redact, undefined, true)
   }
   if (args.scope !== 'memory' || Object.keys(args).some(key => !['scope', 'query', 'before', 'limit'].includes(key))) {
     throw new UserError('transcript search accepts scope: memory, query, before and limit')
@@ -164,7 +167,9 @@ export function readScopedMemoryTranscript(
   const rows = sharedThreads
     ? store.listSharedTranscriptPage(sessionId, sharedThreads, before, MAX_CANDIDATES + 1)
     : store.listTranscriptPage(sessionId, before, MAX_CANDIDATES + 1).map(row => ({ ...row, sessionId }))
-  return evidencePage(rows, limit, redact, query, true)
+  return evidencePage(
+    rows.map(row => ({ ...row, ref: { id: row.id, sessionId: row.sessionId } })), limit, redact, query, true,
+  )
 }
 
 /** Only user evidence contributes to unattended writes. Scan in journal order. */

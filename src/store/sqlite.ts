@@ -988,11 +988,12 @@ export class Store {
     threadKeys: string[],
     before: number,
     limit: number,
-    ref?: { sessionId: string; id: number },
+    ref?: { sessionId?: string; id: number },
   ): { sessionId: string; id: number; role: string; body: string | null; createdAt: string }[] {
     const keys = JSON.stringify(threadKeys)
-    const filter = ref ? 'AND message.session_id = ? AND message.id = ?' : 'AND message.id < ?'
-    const bounds = ref ? [ref.sessionId, ref.id] : [before]
+    const filter = ref ? 'AND message.id = ?' : 'AND message.id < ?'
+    const source = ref?.sessionId === undefined ? '' : 'AND message.session_id = ?'
+    const bounds = ref?.sessionId === undefined ? [ref?.id ?? before] : [ref.id, ref.sessionId]
     return this.db.prepare(`
       WITH eligible AS (
         SELECT session.id
@@ -1001,6 +1002,8 @@ export class Store {
         WHERE session.role = 'worker' AND session.id = 'worker_' || session.ticket_id
           AND COALESCE(json_extract(ticket.payload, '$.speculative'), 0) = 0
           AND COALESCE(json_extract(ticket.payload, '$.ended.silent'), 0) = 0
+          AND json_type(ticket.payload, '$.threadKeys') = 'array'
+          AND json_type(ticket.payload, '$.memoryThreadKeys') = 'array'
           AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.threadKeys')) = json_array_length(?)
           AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.memoryThreadKeys')) = json_array_length(?)
           AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.threadKeys') EXCEPT SELECT value FROM json_each(?))
@@ -1010,7 +1013,7 @@ export class Store {
         CASE WHEN length(CAST(message.body AS BLOB)) <= 65536 THEN message.body END AS body
       FROM messages AS message
       JOIN eligible AS author ON author.id = message.session_id
-      WHERE message.role = 'user' AND EXISTS (SELECT 1 FROM eligible WHERE id = ?) ${filter}
+      WHERE message.role = 'user' AND EXISTS (SELECT 1 FROM eligible WHERE id = ?) ${filter} ${source}
       ORDER BY message.id DESC LIMIT ?
     `).all(keys, keys, keys, keys, caller, ...bounds, limit) as {
       sessionId: string; id: number; role: string; body: string | null; createdAt: string;
