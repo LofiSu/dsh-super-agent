@@ -1505,6 +1505,18 @@ export class Runtime {
      * Extra pumps are harmless: `Harness.release` skips a ticket whose Worker
      * turn is still active, and `pump` reserves a slot before starting a turn.
      */
+    const isPendingSupersededReady = (
+      current: Ticket | undefined,
+      latest: Assignment | undefined,
+      predecessor: Assignment | undefined,
+    ): boolean => latest?.state === 'pending'
+      && predecessor?.state === 'ended'
+      && predecessor.report?.kind === 'ready'
+      && predecessor.mandateScopeAtStart !== undefined
+      && predecessor.mandateScopeAtStart !== current?.mandate.scope
+      && predecessor.node !== undefined
+      && placement.isRemote(predecessor.node)
+
     const releaseSlot = (ticketId: string): void => {
       try {
         const ticket = store.getDoc<Ticket>('ticket', ticketId)
@@ -1519,12 +1531,17 @@ export class Runtime {
           // Assignment is still the live running one (the Worker failed before
           // it started). A newer open Assignment alone is therefore not proof
           // of a replacement: require a prior ended Assignment it superseded.
+          // The one pending exception is a superseded-ready remote replacement:
+          // its held ready and changed scope identify it while Router turns run.
           const ended = ticket?.assignments.slice(0, -1).reverse().find(item => item.state === 'ended')
           const liveReplacement = ticket !== undefined
             && !ticket.ended
             && latest !== undefined
             && latest.state !== 'ended'
-            && (latest.state === 'running' || latest.node !== undefined || latest.startedAt !== undefined)
+            && (latest.state === 'running'
+              || latest.node !== undefined
+              || latest.startedAt !== undefined
+              || isPendingSupersededReady(ticket, latest, ended))
             && ended !== undefined
             && placement.remoteHasTicket(ticketId)
           if (liveReplacement && ended) {
@@ -1584,7 +1601,8 @@ export class Runtime {
           // Cancel without releasing, then decide after the send settles: a
           // blind `release` here would steal the slot the replacement now runs
           // on. Re-read the committed Ticket and apply the same live-replacement
-          // predicate as the synchronous keep-slot branch above.
+          // predicate as the synchronous keep-slot branch above, including the
+          // pending superseded-ready case held behind its Router turn.
           //
           // Cancel every Assignment that ran remotely and is being ended or
           // superseded. `latest` can be a not-yet-live pending replacement
@@ -1647,7 +1665,8 @@ export class Runtime {
               && currentLatest.state !== 'ended'
               && (currentLatest.state === 'running'
                 || currentLatest.node !== undefined
-                || currentLatest.startedAt !== undefined)
+                || currentLatest.startedAt !== undefined
+                || isPendingSupersededReady(current, currentLatest, superseded))
               && superseded !== undefined
               && placement.remoteHasTicket(ticketId)
             if (liveReplacement && superseded && currentLatest && current) {
