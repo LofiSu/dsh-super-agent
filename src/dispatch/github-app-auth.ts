@@ -33,6 +33,7 @@ export function redactGithubAuthSecret(text: string): string {
   out = out.replace(/ghs_[A-Za-z0-9_.-]+/gi, 'ghs_[REDACTED]')
   out = out.replace(/(Bearer|Basic)\s+[^\s"]+/gi, '$1 [REDACTED]')
   out = out.replace(/-----BEGIN ((?:[A-Z]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g, '[PEM REDACTED]')
+  out = out.replace(/-{0,5}BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}[\s\S]*?-{0,5}END (?:[A-Z0-9]+ )*PRIVATE KEY-{0,5}/g, '[PEM REDACTED]')
   out = out.replace(/x-access-token:[^@\s]+/gi, 'x-access-token:[REDACTED]')
   return out
 }
@@ -134,7 +135,7 @@ async function fetchGithubJson<T>(urlPath: string, opts: FetchJsonOpts): Promise
   const res = await fetch(url, { method: opts.method ?? 'GET', headers, body })
   const text = await res.text()
   if (!res.ok) {
-    throw safeUserError(redactGithubAuthSecret(`GitHub API ${res.status}: ${text.slice(0, 200)}`))
+    throw safeUserError(`GitHub API ${res.status}: ${redactGithubAuthSecret(text).slice(0, 200)}`)
   }
   if (!text.trim()) return undefined as T
   return JSON.parse(text) as T
@@ -248,6 +249,7 @@ export class GithubAppAuthService {
           ...process.env,
           GH_TOKEN: token,
           GH_CONFIG_DIR: ghConfigDir,
+          GH_HOST: 'github.com',
         }
         delete childEnv.GITHUB_TOKEN
         delete childEnv.GH_ENTERPRISE_TOKEN
@@ -270,7 +272,7 @@ export class GithubAppAuthService {
             resolve(stdout)
             return
           }
-          reject(safeUserError(`gh failed (exit ${code}): ${(stderr || stdout).trim().slice(0, 400)}`))
+          reject(safeUserError(`gh failed (exit ${code}): ${redactGithubAuthSecret((stderr || stdout).trim()).slice(0, 400)}`))
         })
         child.stdin.end(input ?? '')
       })().catch(reject)
@@ -282,30 +284,79 @@ export class GithubAppAuthService {
     const service = this
     return (args, opts) => new Promise((resolve, reject) => {
       void (async () => {
-        const token = await service.getInstallationToken()
-        const encoded = Buffer.from(`x-access-token:${token}`).toString('base64')
-        const childEnv: NodeJS.ProcessEnv = {
-          ...process.env,
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-          GIT_CONFIG_VALUE_0: `Authorization: Basic ${encoded}`,
-          GIT_CONFIG_NOSYSTEM: '1',
-          GIT_CONFIG_GLOBAL: '/dev/null',
-          GIT_TERMINAL_PROMPT: '0',
-        }
-        delete childEnv.GITHUB_TOKEN
-        delete childEnv.GH_TOKEN
-        delete childEnv.GH_ENTERPRISE_TOKEN
-        delete childEnv.GITHUB_ENTERPRISE_TOKEN
-        delete childEnv.GIT_CONFIG_PARAMETERS
-        const redact = (text: string) => redactGithubAuthSecret(text.replaceAll(encoded, '[REDACTED]'))
-        const child = spawn('git', [
+        const isolatedEnv: NodeJS.ProcessEnv = { ...process.env }
+        delete isolatedEnv.GIT_CONFIG_PARAMETERS
+        delete isolatedEnv.GITHUB_TOKEN
+        delete isolatedEnv.GH_TOKEN
+        delete isolatedEnv.GH_ENTERPRISE_TOKEN
+        delete isolatedEnv.GITHUB_ENTERPRISE_TOKEN
+        isolatedEnv.GIT_CONFIG_GLOBAL = '/dev/null'
+        isolatedEnv.GIT_CONFIG_NOSYSTEM = '1'
+        isolatedEnv.GIT_TERMINAL_PROMPT = '0'
+        isolatedEnv.GIT_CONFIG_COUNT = '0'
+
+        const gitIsolations = [
           '-c', 'core.hooksPath=/dev/null',
           '-c', 'core.fsmonitor=false',
           '-c', 'uploadpack.packObjectsHook=',
           '-c', 'credential.helper=',
-          ...args,
-        ], {
+        ]
+        const preflight = await new Promise<{ code: number | null; stdout: string }>(preflightResolve => {
+          let stdout = ''
+          let failed = false
+          let child
+          try {
+            child = spawn('git', [
+              ...gitIsolations,
+              'config', '--list', '--show-origin', '--show-scope',
+            ], {
+              cwd: opts.cwd,
+              stdio: ['ignore', 'pipe', 'ignore'],
+              env: isolatedEnv,
+            })
+          } catch {
+            preflightResolve({ code: null, stdout })
+            return
+          }
+          child.stdout.on('data', (chunk: Buffer | string) => { stdout += String(chunk) })
+          child.on('error', () => {
+            failed = true
+          })
+          child.on('close', code => preflightResolve({
+            code: failed ? null : code,
+            stdout,
+          }))
+        })
+
+        const forbiddenConfig = /^(?:http\..*\.extraheader|url\..*\.(?:insteadof|pushinsteadof))=/i
+        const unsafeLocalConfig = preflight.code === 0 && preflight.stdout.split(/\r?\n/).some(line => {
+          if (!line) return false
+          const fields = line.split('\t')
+          if (fields.length < 3 || !fields[0] || !fields[1]) return true
+          const entry = fields.slice(2).join('\t')
+          return fields[0].toLowerCase() !== 'command' && forbiddenConfig.test(entry)
+        })
+        if (preflight.code !== 0 || unsafeLocalConfig) {
+          resolve({
+            code: 1,
+            stdout: '',
+            stderr: unsafeLocalConfig
+              ? 'github-app git refused: local HTTP extraheader or URL rewrite settings are not allowed'
+              : 'github-app git refused: unable to verify local Git transport settings',
+          })
+          return
+        }
+
+        const token = await service.getInstallationToken()
+        const encoded = Buffer.from(`x-access-token:${token}`).toString('base64')
+        const redact = (text: string) => redactGithubAuthSecret(text.replaceAll(encoded, '[REDACTED]'))
+        const childEnv: NodeJS.ProcessEnv = {
+          ...isolatedEnv,
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+          GIT_CONFIG_VALUE_0: `Authorization: Basic ${encoded}`,
+        }
+        const child = spawn('git', [...gitIsolations, ...args], {
           cwd: opts.cwd,
           stdio: ['ignore', 'pipe', 'pipe'],
           env: childEnv,

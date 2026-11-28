@@ -108,6 +108,48 @@ function seededHomeWithSnapshot(): { home: string; snapshot: string } {
   return { home, snapshot }
 }
 
+describe('ds-agent dispatch cancel wiring', () => {
+  it('cancels the requested job id and requires an id', () => {
+    const home = tempDir('ds-agent-wiring-dispatch-')
+    const init = runCli(home, ['init'])
+    expect(init.status, init.stderr).toBe(0)
+
+    const store = new Store(home)
+    try {
+      for (const id of ['job_cli_target', 'cancel']) {
+        store.putDoc('dispatch_job', id, {
+          id,
+          type: 'github_fix',
+          status: 'queued',
+          createdAt: '2026-11-27T00:00:00.000Z',
+          commentId: `comment-${id}`,
+        })
+      }
+    } finally {
+      store.close()
+    }
+
+    const cancelled = runCli(home, ['dispatch', 'cancel', 'job_cli_target'])
+    expect(cancelled.status, cancelled.stderr).toBe(0)
+    expect(cancelled.stdout).toContain('job_cli_target')
+    expect(cancelled.stdout).toContain('cancelled')
+    expect(cancelled.stdout).not.toContain('cancelled cancel')
+
+    const missing = runCli(home, ['dispatch', 'cancel'])
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toContain('ds-agent dispatch cancel <jobId>')
+    expect(missing.stderr).not.toContain('cannot cancel cancel')
+
+    const verification = new Store(home)
+    try {
+      expect(verification.getDoc<{ status: string }>('dispatch_job', 'job_cli_target')?.status).toBe('cancelled')
+      expect(verification.getDoc<{ status: string }>('dispatch_job', 'cancel')?.status).toBe('queued')
+    } finally {
+      verification.close()
+    }
+  })
+})
+
 describe('ds-agent ui / backup / restore wiring', () => {
   it('lists ui, backup, and restore in --help', () => {
     const result = runCli(tempDir('ds-agent-wiring-help-'), ['--help'])
