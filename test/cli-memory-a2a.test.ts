@@ -8,7 +8,7 @@ import { Store } from '../src/store/sqlite.ts'
 const homes: string[] = []
 
 function home(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-state-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-state-'))
   homes.push(dir)
   return dir
 }
@@ -27,7 +27,7 @@ function command(name: 'memory' | 'a2a' | 'status', env: NodeJS.ProcessEnv, ...a
   return result.stdout
 }
 
-describe('ds-agent memory / a2a', () => {
+describe('lofibot memory / a2a', () => {
   it('counts only visible tickets in status', () => {
     const dir = home()
     const store = new Store(dir)
@@ -35,7 +35,7 @@ describe('ds-agent memory / a2a', () => {
     store.putDoc('ticket', 'ticket_2', { id: 'ticket_2', speculative: true })
     store.close()
 
-    expect(command('status', { DS_AGENT_HOME: dir })).toContain('tickets 1')
+    expect(command('status', { LOFIBOT_HOME: dir })).toContain('tickets 1')
   })
 
   it('reports an empty memory index', () => {
@@ -43,8 +43,8 @@ describe('ds-agent memory / a2a', () => {
     const store = new Store(dir)
     store.close()
     const state = JSON.parse(command('memory', {
-      DS_AGENT_HOME: dir,
-      DS_AGENT_INSTANCE_ID: 'alpha',
+      LOFIBOT_HOME: dir,
+      LOFIBOT_INSTANCE_ID: 'alpha',
     })) as { instance: string; sessions: unknown[] }
     expect(state).toMatchObject({ instance: 'alpha', sessions: [] })
   })
@@ -68,7 +68,7 @@ describe('ds-agent memory / a2a', () => {
     })
     store.close()
 
-    const memory = JSON.parse(command('memory', { DS_AGENT_HOME: dir }, 'archive')) as {
+    const memory = JSON.parse(command('memory', { LOFIBOT_HOME: dir }, 'archive')) as {
       instance: string
       memories: number
       recent: { id: string }[]
@@ -76,7 +76,7 @@ describe('ds-agent memory / a2a', () => {
     expect(memory).toMatchObject({ instance: 'local', memories: 1 })
     expect(memory.recent[0]?.id).toBe('ltm_ticket_1')
 
-    const a2a = JSON.parse(command('a2a', { DS_AGENT_HOME: dir })) as {
+    const a2a = JSON.parse(command('a2a', { LOFIBOT_HOME: dir })) as {
       envelopes: number
       recent: { id: string; from: string; to: string }[]
     }

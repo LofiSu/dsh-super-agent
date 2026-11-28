@@ -282,13 +282,13 @@ export function ingestCompetitiveGapFromFile(
     if (cells.length < 6) continue
     const dimension = cells[0]?.replace(/\*\*/g, '').trim() ?? ''
     if (!dimension || /^dimension$/i.test(dimension)) continue
-    const dsAgent = cells[4] ?? ''
+    const lofibot = cells[4] ?? ''
     const verdict = cells[5] ?? ''
     if (!competitiveGapVerdictIsActionable(verdict)) continue
 
     const title = `Competitive gap: ${dimension}`
-    const description = `Verdict: ${stripMd(verdict)}. ds-agent: ${dsAgent.slice(0, 400)}`
-    const risk = classifyGapRisk(title, description, dsAgent)
+    const description = `Verdict: ${stripMd(verdict)}. lofibot: ${lofibot.slice(0, 400)}`
+    const risk = classifyGapRisk(title, description, lofibot)
     const acceptance = ''
     const dedupeKey = `competitive-gap:${dimension.slice(0, 80)}`
 

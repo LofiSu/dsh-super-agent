@@ -3,7 +3,7 @@ import path from 'node:path'
 import { DEFAULT_CURVE_SAMPLE_LIMIT, normalizeCurveSamples, recordLatencySample } from './curve.ts'
 
 /**
- * Blog §7 counters. Written to `<stateDir>/metrics.json` and printed by `ds-agent metrics`.
+ * Blog §7 counters. Written to `<stateDir>/metrics.json` and printed by `lofibot metrics`.
  * Model latency is milliseconds across Router, Worker, and Watchdog completions.
  */
 export const METRIC_NAMES = [

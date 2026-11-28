@@ -23,7 +23,7 @@ function controlledPath(which: WhichMode, home: string): string {
 }
 
 function emptyHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-os-import-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-os-import-'))
   tempHomes.push(home)
   return home
 }
@@ -122,7 +122,7 @@ describe.each([
         HOME: home,
         TMPDIR: home,
         CI: 'true',
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
         NODE_NO_WARNINGS: '1',
       },
       encoding: 'utf8',

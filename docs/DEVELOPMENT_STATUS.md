@@ -1,11 +1,11 @@
 # Development status
 
 > **Current checkpoint:** 2026-11-27 (Asia/Shanghai) · `main` = `840386ed1dfdb1445a0ae7a32e4ed39427c32de8`
-> Repo: `LofiSu/dsh-super-agent`. Source of truth: `git`, GitHub PRs/checks, and cited CI runs. Re-verify before relying on this file.
+> Repo: `LofiSu/LofiBot`. Source of truth: `git`, GitHub PRs/checks, and cited CI runs. Re-verify before relying on this file.
 
 ## Current integration checkpoint (2026-11-27)
 
-`main` is at **0.1.0** with no GitHub Release and no tag. The required **`typecheck and test`** run on this SHA was in progress when checked ([Actions run 45975345608](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975345608)). The previous main run failed in the detached supervisor tests ([run 45863781081](https://github.com/LofiSu/dsh-super-agent/actions/runs/45863781081)); #190 addresses those races. A separate [release-check run 45975425759](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975425759) was started to verify and package this SHA. The capabilities below have merged; **real channel, real Google, real browser/form, and real iMessage send remain operator-gated and largely unvalidated**.
+`main` is at **0.1.0** with no GitHub Release and no tag. The required **`typecheck and test`** run on this SHA was in progress when checked ([Actions run 45975345608](https://github.com/LofiSu/LofiBot/actions/runs/45975345608)). The previous main run failed in the detached supervisor tests ([run 45863781081](https://github.com/LofiSu/LofiBot/actions/runs/45863781081)); #190 addresses those races. A separate [release-check run 45975425759](https://github.com/LofiSu/LofiBot/actions/runs/45975425759) was started to verify and package this SHA. The capabilities below have merged; **real channel, real Google, real browser/form, and real iMessage send remain operator-gated and largely unvalidated**.
 
 | Field | Value |
 |-------|-------|
@@ -22,7 +22,7 @@
 - **#175** — Writable Peanut workspace; host may open/update `peanut/` branches and open PRs to `main` only (no merge, force-push, or tag; owner token not injected into sandbox).
 - **#174** — Owner-gated Google Workspace connectors (calendar/gmail/drive/docs/sheets/slides/tasks), connector index, event wake; **default off**; real Google OAuth/API not accepted.
 - **#173** — Three-answer approval cards (`approve` / `deny` / `dismiss`) with `actionId` bound to exact action text; fill-only credential/payment vault (no read-back; no payment capture). **CLI-only** — channel replies cannot approve. Real browser/form not validated.
-- **#182** — Local execution receipts (`pnpm ds-agent receipt`); read-only, redacted.
+- **#182** — Local execution receipts (`pnpm lofibot receipt`); read-only, redacted.
 - **#172** — Owner-gated browser errand adapter (local command or remote HTTP; not Instinct leased cloud browser); **default off**; real browser not validated.
 - **#168** — Native controlled evolution (deliver-gate strategy v1); **not** a full product RSI loop.
 - **#170** — Owner-gated idle self-wake; **default off**; live channel send waits on owner.
@@ -32,15 +32,15 @@
 - **#164** — Recovery boundaries.
 - **#163** — Sandbox wrapper health reporting.
 - **#176** — RSI / open-PR integration **plan documentation only** (not implemented RSI closure).
-- **Earlier `main`:** Router/Worker, CLI / GitHub / Feishu poll / iMessage / A2A, sandbox, routines, memory, read-only local UI (`ds-agent ui`, `docs/UI.md`).
+- **Earlier `main`:** Router/Worker, CLI / GitHub / Feishu poll / iMessage / A2A, sandbox, routines, memory, read-only local UI (`lofibot ui`, `docs/UI.md`).
 
 ### Not on `main` (do not treat as shipped)
 
 | Item | Notes |
 |------|--------|
-| [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) | Dispatch: ingest Instinct/competitive-gap RSI **proposals** + bounded scheduler tick. Pending integration at this checkpoint. The scheduler tick still needs production wiring. |
-| [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) | Owner GitHub issue polling, opt-in @ dispatch, and a holdout-gated implementer. Pending integration at this checkpoint. |
-| [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) | Dispatch: owner GitHub issue poll queue and bounded RSI — **OPEN**, **CONFLICTING**, stale base; do not treat as merge-ready. |
+| [#183](https://github.com/LofiSu/LofiBot/pull/183) | Dispatch: ingest Instinct/competitive-gap RSI **proposals** + bounded scheduler tick. Pending integration at this checkpoint. The scheduler tick still needs production wiring. |
+| [#187](https://github.com/LofiSu/LofiBot/pull/187) | Owner GitHub issue polling, opt-in @ dispatch, and a holdout-gated implementer. Pending integration at this checkpoint. |
+| [#177](https://github.com/LofiSu/LofiBot/pull/177) | Dispatch: owner GitHub issue poll queue and bounded RSI — **OPEN**, **CONFLICTING**, stale base; do not treat as merge-ready. |
 | Full RSI closure | No living gap list → evaluate conversations → land improvements on `main`. |
 | Standalone conversational desktop UI | The current local dashboard is read-only. |
 | Default GitHub @ dispatch / issue poll queue | The opt-in poll path is tracked in #187. Default @ dispatch remains unshipped. |
@@ -88,8 +88,8 @@ not missing implementation.
 
 - **Complete:** M0–M10 core, M11 CLI/demo, T01–T46, T49 (local UI),
   T50 (A2A plus authenticated HTTP transport), T51 (credential boundaries).
-- **Wired end-to-end:** model slow path (`DS_AGENT_SLOW_PATH=model`) reaches
-  iMessage/Feishu via `Runtime.ingestAsync`; `ds-agent ui`, `backup`, `restore`
+- **Wired end-to-end:** model slow path (`LOFIBOT_SLOW_PATH=model`) reaches
+  iMessage/Feishu via `Runtime.ingestAsync`; `lofibot ui`, `backup`, `restore`
   are registered; `serve --imessage --feishu` runs both loops over one Runtime.
 - **Partial by design:** T47 remote mesh has registry/heartbeat/dispatch and an
   authenticated handler, but no default Runtime listener; T48 has retention,
@@ -134,7 +134,7 @@ not missing implementation.
 
 The CI figures are the post-merge `main` run at `f6e5972` (run `41800320615`,
 `typecheck and test`). The local offline command is
-`CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run` with
+`CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run` with
 `test/{live-demo,live-e2e,live-modules,team-live,demos-real-channels}.test.ts`
 excluded. CI runs the full suite with the 15 live tests skipped when no provider
 credential is present. The last full live suite available at this checkpoint was

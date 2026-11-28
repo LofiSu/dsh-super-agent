@@ -100,7 +100,7 @@ export async function runFinalTestOnce(input: {
       abortFinalTestClaim(input.home, lockToken, message)
     }
 
-    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-finaltest-'))
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-finaltest-'))
     let score: SplitScore
     try {
       const result = await isolatedEvaluateSplit(

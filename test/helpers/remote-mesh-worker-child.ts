@@ -12,11 +12,11 @@ import { Runtime } from '../../src/runtime.ts'
 import { MockModel } from '../../src/harness/model.ts'
 
 const home = process.argv[2]
-const marker = process.env.DS_AGENT_MESH_WORKER_MARKER
-const hostResultUrl = process.env.DS_AGENT_MESH_HOST_RESULT_URL?.trim()
-const workerPeer = process.env.DS_AGENT_MESH_WORKER_PEER_ID?.trim() ?? 'worker-os'
-const hostPeer = process.env.DS_AGENT_MESH_HOST_PEER_ID?.trim() ?? 'router-os'
-const secret = process.env.DS_AGENT_MESH_SECRET?.trim()
+const marker = process.env.LOFIBOT_MESH_WORKER_MARKER
+const hostResultUrl = process.env.LOFIBOT_MESH_HOST_RESULT_URL?.trim()
+const workerPeer = process.env.LOFIBOT_MESH_WORKER_PEER_ID?.trim() ?? 'worker-os'
+const hostPeer = process.env.LOFIBOT_MESH_HOST_PEER_ID?.trim() ?? 'router-os'
+const secret = process.env.LOFIBOT_MESH_SECRET?.trim()
 
 if (!home || !marker || !hostResultUrl || !secret) {
   console.error('remote-mesh-worker-child: missing home, marker, host result url, or secret')
@@ -33,7 +33,7 @@ const runtime = Runtime.create({
   jobDelayMs: 0,
   watchdogIntervalMs: 600_000,
   stuckMs: 600_000,
-  env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1' },
+  env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1' },
 })
 
 let server: Server | undefined
@@ -54,7 +54,7 @@ function assignmentRecord(event: RemoteMeshAssignmentEvent): void {
   })
   runtime.log.info(`[mesh-worker] assignment ticketId=${event.ticketId} assignmentId=${assignmentId}`)
 
-  const mode = process.env.DS_AGENT_MESH_WORKER_MODE?.trim()
+  const mode = process.env.LOFIBOT_MESH_WORKER_MODE?.trim()
   if (mode === 'hang') return
   if (mode === 'no-result') return
 

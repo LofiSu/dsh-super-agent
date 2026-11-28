@@ -18,7 +18,7 @@ import {
 const dirs: string[] = []
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-curve-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-curve-'))
   dirs.push(dir)
   return dir
 }

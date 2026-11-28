@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 function tempEvolutionHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evolution-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evolution-home-'))
   homes.push(home)
   return home
 }

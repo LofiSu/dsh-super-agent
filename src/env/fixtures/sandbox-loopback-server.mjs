@@ -13,7 +13,7 @@ if (!portFile) {
 
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/plain' })
-  res.end('ds-agent-sandbox-net-ok')
+  res.end('lofibot-sandbox-net-ok')
 })
 
 function shutdown() {

@@ -10,9 +10,9 @@ that make a personal agent worth talking to and worth delegating work to.
 
 ## Scorecard
 
-| Dimension | Instinct / Open Instinct | Muse | Grok Bot | ds-agent now | Verdict |
+| Dimension | Instinct / Open Instinct | Muse | Grok Bot | lofibot now | Verdict |
 |---|---|---|---|---|---|
-| **Prompt stack** | Rebuilt each run: identity, instructions, owner, principal, channel, reach, setup, rules, memory, skills, approvals, long tasks, now | One long prompt plus injected workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`, `MEMORY.md`, `TOOLS.md`, `HEARTBEAT.md`, `PROACTIVE_PREFERENCES.md`) | Persistent Bot instructions plus skills, routines, integrations, memory | 33 ordered sections + per-turn task and recall data; nine runtime files (#171); `ds-agent prompt --layers` | **Parity on structure**, still behind on per-principal layers |
+| **Prompt stack** | Rebuilt each run: identity, instructions, owner, principal, channel, reach, setup, rules, memory, skills, approvals, long tasks, now | One long prompt plus injected workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`, `MEMORY.md`, `TOOLS.md`, `HEARTBEAT.md`, `PROACTIVE_PREFERENCES.md`) | Persistent Bot instructions plus skills, routines, integrations, memory | 33 ordered sections + per-turn task and recall data; nine runtime files (#171); `lofibot prompt --layers` | **Parity on structure**, still behind on per-principal layers |
 | **Voice / personality** | `PERSONA.md`, owner-owned, about 30 lines | `SOUL.md` + `IDENTITY.md`, written and refined by the agent and owner | Bot instructions, editable | Warm identity + `SOUL.md` + `IDENTITY.md` + built-in default voice + concrete voice examples (v2) | **Parity on intent**; needs real conversation evaluation, not just prompt shape |
 | **Owner model** | Principal tiers: owner, staff, partner, family, friend, contact, stranger | Single owner; other people are not principals | One owner | Single owner; ingress trust separates owner from group/other | **Behind** on tiers; ahead on a strict default-deny ingress |
 | **Local specialist agents** | Skills and subagents; MCP tools | Subagents and tools | Skills, routines, integrations | `delegate_agent` to owner-configured local CLIs; Workers only; no shell; bounded | **Newly at parity**, with a narrower trust surface than Muse/Instinct connectors |
@@ -24,18 +24,18 @@ that make a personal agent worth talking to and worth delegating work to.
 | **Approvals** | Dedicated approvals layer | Safety policy | Approval before send, publish, delete, spend | Worker `request_approval` → hold → Router asks → **CLI** `approve` / `deny` / **`dismiss`** (dismiss closes card, no consent) with `actionId` on exact action text → audited RESUME | **Parity on state machine + structured action id**; still **CLI-only** — channel reply cannot approve |
 | **Observability** | Layer inspection, logs | Workspace files are visible | Bot editor | Lifecycle bus, read-only token-gated UI, metrics, health, session journals, offline CLI inspection, execution receipts (#182) | **Ahead** |
 | **Safety / sandbox** | Rules layer, approvals | Safety and security policy last | Approval gates | Default-on fail-closed OS sandbox for bash, env allowlist, secret redaction sentinel, spill ACL, opt-in strict read isolation; fill-only vault (#173) with no read-back | **Ahead for its scope**; specialist CLIs and host reads remain trust boundaries |
-| **Self-improvement** | Editable persona, skills, memory, policy | Agent rewrites its workspace files | Instructions editor | #168 deliver-gate controlled evolution v1; deterministic eval suite — **no full RSI loop on `main`**; [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) open (proposal ingest only) | **Behind on productized RSI**; ahead on repeatable offline verification |
+| **Self-improvement** | Editable persona, skills, memory, policy | Agent rewrites its workspace files | Instructions editor | #168 deliver-gate controlled evolution v1; deterministic eval suite — **no full RSI loop on `main`**; [#183](https://github.com/LofiSu/LofiBot/pull/183) open (proposal ingest only) | **Behind on productized RSI**; ahead on repeatable offline verification |
 
 Legend: **Ahead** means a concrete capability the others do not document;
 **Parity** means the same job with a different design; **Partial** means the
 foundation exists but the owner-facing surface is missing; **Missing** means no
 implementation.
 
-## Where ds-agent is already ahead
+## Where lofibot is already ahead
 
 - **One runtime, many channels.** The same Engine, Store, Threads, Tickets, and
   Router serve IM, GitHub, A2A, CLI, and the gateway. Muse and Grok Bot are
-  product surfaces; Instinct is closer, but ds-agent keeps the channel adapters
+  product surfaces; Instinct is closer, but lofibot keeps the channel adapters
   behind one domain model.
 - **Deterministic offline verification.** The full suite runs without a live
   model. That makes every gap fix testable in CI, which is the precondition for
@@ -68,18 +68,18 @@ implementation.
    ("invoice" vs "billing"). Instinct and Muse use learned embeddings for that.
    The `EmbeddingPort` is where a local or hosted model plugs in; selecting and
    evaluating one is still open. There is also no owner-editable daily journal.
-5. **Principal tiers.** ds-agent is owner-only by design. Group participants are
-   not principals. Instinct's tier model is the reference if ds-agent ever
+5. **Principal tiers.** lofibot is owner-only by design. Group participants are
+   not principals. Instinct's tier model is the reference if lofibot ever
    supports staff or family.
 6. **Connectors.** Owner-gated Google Workspace (#174) and browser errands (#172) are on `main` but default off with no real-account/browser acceptance. **Email, payment capture, SMS/phone, and a standalone conversational desktop** remain gaps — the difference between "can operate a repo" and "can run errands" on live accounts.
-7. **Self-improvement as a product.** #168 is controlled evolution v1, not a loop that maintains this gap list, scores recent conversations, and lands improvements. [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) adds proposal ingest infrastructure but is **not on `main`**. This document is the inventory; the product RSI closure is still open.
+7. **Self-improvement as a product.** #168 is controlled evolution v1, not a loop that maintains this gap list, scores recent conversations, and lands improvements. [#183](https://github.com/LofiSu/LofiBot/pull/183) adds proposal ingest infrastructure but is **not on `main`**. This document is the inventory; the product RSI closure is still open.
 
 ## Next sequence
 
 | Priority | Work | Acceptance evidence |
 |---|---|---|
-| ~~P0~~ | ~~Skills loader and `read_skill`~~ — shipped in #149 | ✅ index injection, size caps, symlink/path rejection, role guards, `ds-agent skills`, docs |
-| ~~P0~~ | ~~Owner-defined routines / heartbeat~~ — shipped in #150 | ✅ fake-clock tests, persisted last-run, first-sight arming, gap fires once, ingress admission, `ds-agent routines`, docs |
+| ~~P0~~ | ~~Skills loader and `read_skill`~~ — shipped in #149 | ✅ index injection, size caps, symlink/path rejection, role guards, `lofibot skills`, docs |
+| ~~P0~~ | ~~Owner-defined routines / heartbeat~~ — shipped in #150 | ✅ fake-clock tests, persisted last-run, first-sight arming, gap fires once, ingress admission, `lofibot routines`, docs |
 | ~~P1~~ | ~~Interactive approval flow~~ — shipped in #151 | ✅ worker tool, approval hold, Router question, CLI approve/deny, guidance + audit, watchdog idle, tests |
 | ~~P1~~ | ~~Three-answer approval + exact `actionId`~~ — shipped in #173 | ✅ approve/deny/dismiss, action text binding, offline tests; channel approve still open |
 | ~~P1~~ | ~~Fill-only credential vault (no read-back)~~ — shipped in #173 | ✅ fill-only store, approval-gated fill tools; real form acceptance operator-gated |

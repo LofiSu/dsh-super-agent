@@ -210,7 +210,7 @@ async function runEvolutionLocked(
 
   const round = input.round ?? Math.max(1, experiment.seenDirections.length > 0 ? 2 : 1)
   const baseline = defaultBaselineStrategy()
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evolution-'))
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evolution-'))
   const archiveDir = evolutionArchiveRoot(input.home)
   const runsDir = evolutionRunsDir(input.home)
   fs.mkdirSync(archiveDir, { recursive: true })

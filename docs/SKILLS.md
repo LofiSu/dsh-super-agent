@@ -67,9 +67,9 @@ first and include the relevant steps.
 ## CLI
 
 ```bash
-ds-agent skills           # id and description, one per line
-ds-agent skills --json    # [{ "id": ..., "description": ... }]
-ds-agent prompt --layers  # confirm the skills layer and its source
+lofibot skills           # id and description, one per line
+lofibot skills --json    # [{ "id": ..., "description": ... }]
+lofibot prompt --layers  # confirm the skills layer and its source
 ```
 
 An invalid skill is skipped with a `[skill]` warning on stderr; one bad file

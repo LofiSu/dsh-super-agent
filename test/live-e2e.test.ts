@@ -16,9 +16,9 @@ function detectLive(): boolean {
   }
 }
 
-const forceOffline = process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
+const forceOffline = process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
 const hasLive = !forceOffline && detectLive()
-const logDir = '/tmp/ds-agent-live-e2e-logs'
+const logDir = '/tmp/lofibot-live-e2e-logs'
 fs.mkdirSync(logDir, { recursive: true })
 
 function writeLog(name: string, body: string): void {
@@ -45,7 +45,7 @@ describe.skipIf(!hasLive)('live Magpie DeepSeek E2E', () => {
     const status = runtime.ingest(imTrigger({
       id: 'e2e_dialog',
       thread: 'topic/e2e-dialog',
-      text: '@ds-agent please acknowledge the checkout login timeout bug in one short sentence',
+      text: '@lofibot please acknowledge the checkout login timeout bug in one short sentence',
       actor: 'alex',
     }))
     expect(status).toBe('stored')
@@ -67,7 +67,7 @@ describe.skipIf(!hasLive)('live Magpie DeepSeek E2E', () => {
     runtime.ingest(imTrigger({
       id: 'e2e_tools',
       thread: 'topic/e2e-tools',
-      text: '@ds-agent investigate login timeout: use tools if needed, then report. Prefer list_tasks or start_job.',
+      text: '@lofibot investigate login timeout: use tools if needed, then report. Prefer list_tasks or start_job.',
       actor: 'alex',
     }))
     await settleWithDeadline(runtime, 45_000)
@@ -84,13 +84,13 @@ describe.skipIf(!hasLive)('live Magpie DeepSeek E2E', () => {
     expect(runtime.ingest(imTrigger({
       id: 'e2e_sub_1',
       thread: 'topic/e2e-sub',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
       actor: 'alex',
     }))).toBe('stored')
     expect(runtime.ingest(imTrigger({
       id: 'e2e_sub_2',
       thread: 'topic/e2e-sub',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
       actor: 'alex',
     }))).toBe('stored')
     await settleWithDeadline(runtime, 45_000)

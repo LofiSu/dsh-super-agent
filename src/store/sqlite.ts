@@ -46,7 +46,7 @@ export interface ReadonlyPublishAdmissions {
  * journal-mode change, or checkpoint is run here.
  */
 export function readPublishAdmissionsReadOnly(home: string, ticketId: string): ReadonlyPublishAdmissions {
-  const dbPath = path.join(home, 'ds-agent.db')
+  const dbPath = path.join(home, 'lofibot.db')
   try {
     fs.statSync(dbPath)
   } catch (error) {
@@ -140,7 +140,7 @@ function readSchemaVersion(db: DatabaseSync): number {
   if (version > LATEST_SCHEMA_VERSION) {
     throw new UserError(
       `database schema version ${version} is newer than this build supports (${LATEST_SCHEMA_VERSION}); ` +
-      'upgrade ds-agent before opening this store',
+      'upgrade lofibot before opening this store',
     )
   }
   return version
@@ -190,7 +190,7 @@ export class Store {
   }
 
   constructor(home: string, options: { readOnly?: boolean } = {}) {
-    this.path = path.join(home, 'ds-agent.db')
+    this.path = path.join(home, 'lofibot.db')
     this.readOnly = options.readOnly === true
     if (this.readOnly) {
       if (!supportsReadOnlyDatabaseSync()) {

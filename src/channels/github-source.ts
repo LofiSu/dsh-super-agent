@@ -13,7 +13,7 @@ import type { OutboxRow } from '../shared/types.ts'
  * issue comment and records the provider comment id.
  */
 
-export const DEFAULT_GITHUB_REPO = 'LofiSu/deepseek-super-agent'
+export const DEFAULT_GITHUB_REPO = 'LofiSu/LofiBot'
 
 export interface GithubRepoRef {
   owner: string
@@ -28,7 +28,7 @@ export function parseRepo(full: string): GithubRepoRef {
 }
 
 export function githubRepoFromEnv(env: NodeJS.ProcessEnv = process.env): GithubRepoRef {
-  return parseRepo(env.DS_AGENT_GH_REPO?.trim() || DEFAULT_GITHUB_REPO)
+  return parseRepo(env.LOFIBOT_GH_REPO?.trim() || DEFAULT_GITHUB_REPO)
 }
 
 export interface GithubUser {
@@ -157,7 +157,7 @@ export function issueThread(number: number): string {
 }
 
 function addressedIn(text: string): 'mention' | undefined {
-  return /@ds-agent\b/i.test(text) ? 'mention' : undefined
+  return /@lofibot\b/i.test(text) ? 'mention' : undefined
 }
 
 function actorOf(user: GithubUser | null | undefined): { source: string; id: string } {

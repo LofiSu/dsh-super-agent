@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   const source = new FeishuSource(client, config.chatId, { sinceMs: Date.now() - 60_000, config })
   try {
     log(`[feishu] base=${config.baseUrl} chat=${config.chatId} runId=${runId}`)
-    const sent = await client.sendText(config.chatId, `ds-agent smoke ${runId}`)
+    const sent = await client.sendText(config.chatId, `lofibot smoke ${runId}`)
     log(`[feishu] sent message_id=${sent.message_id}`)
     await sleep(750)
     const triggers = await source.pull()
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       channel: 'im',
       thread: own.threads[0]?.id ?? '',
       target: own.channel?.address ?? {},
-      text: `ds-agent reply smoke ${runId}`,
+      text: `lofibot reply smoke ${runId}`,
       status: 'pending',
       createdAt: new Date().toISOString(),
     })

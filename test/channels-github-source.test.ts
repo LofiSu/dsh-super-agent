@@ -13,15 +13,15 @@ import {
 } from '../src/channels/github-source.ts'
 import type { OutboxRow } from '../src/shared/types.ts'
 
-const repo = parseRepo('LofiSu/deepseek-super-agent')
+const repo = parseRepo('LofiSu/LofiBot')
 
 const issue: GithubIssue = {
   id: 9001,
   number: 42,
   title: 'CI failed on auth test',
-  body: '@ds-agent please investigate the login timeout.',
+  body: '@lofibot please investigate the login timeout.',
   state: 'open',
-  html_url: 'https://github.com/LofiSu/deepseek-super-agent/issues/42',
+  html_url: 'https://github.com/LofiSu/LofiBot/issues/42',
   created_at: '2026-11-01T01:00:00Z',
   user: { id: 1, login: 'LofiSu', type: 'User' },
 }
@@ -30,14 +30,14 @@ const comments: GithubComment[] = [
   {
     id: 5002,
     body: 'follow-up without the agent mention',
-    html_url: 'https://github.com/LofiSu/deepseek-super-agent/issues/42#issuecomment-5002',
+    html_url: 'https://github.com/LofiSu/LofiBot/issues/42#issuecomment-5002',
     created_at: '2026-11-01T01:02:00Z',
     user: { id: 1, login: 'LofiSu', type: 'User' },
   },
   {
     id: 5001,
-    body: '@ds-agent login still 500',
-    html_url: 'https://github.com/LofiSu/deepseek-super-agent/issues/42#issuecomment-5001',
+    body: '@lofibot login still 500',
+    html_url: 'https://github.com/LofiSu/LofiBot/issues/42#issuecomment-5001',
     created_at: '2026-11-01T01:01:00Z',
     user: { id: 2, login: 'ci-bot', type: 'Bot' },
   },
@@ -78,7 +78,7 @@ function outboxRow(overrides: Partial<OutboxRow> = {}): OutboxRow {
     channel: 'github',
     thread: 'issue:42',
     target: { provider: 'github', repo: repo.full, issue: '42' },
-    text: 'ds-agent note\n\nticket: ticket_1',
+    text: 'lofibot note\n\nticket: ticket_1',
     status: 'pending',
     createdAt: new Date().toISOString(),
     ...overrides,
@@ -87,7 +87,7 @@ function outboxRow(overrides: Partial<OutboxRow> = {}): OutboxRow {
 
 describe('real GitHub source mapping', () => {
   it('parses owner/name and rejects malformed repos', () => {
-    expect(repo).toEqual({ owner: 'LofiSu', repo: 'deepseek-super-agent', full: 'LofiSu/deepseek-super-agent' })
+    expect(repo).toEqual({ owner: 'LofiSu', repo: 'LofiBot', full: 'LofiSu/LofiBot' })
     expect(() => parseRepo('not-a-repo')).toThrow(/owner\/name/)
   })
 
@@ -101,7 +101,7 @@ describe('real GitHub source mapping', () => {
     expect(trigger.addressed).toBe('mention')
     expect(trigger.at).toBe('2026-11-01T01:00:00Z')
     expect(trigger.text).toContain('CI failed on auth test')
-    expect(trigger.text).toContain('@ds-agent please investigate')
+    expect(trigger.text).toContain('@lofibot please investigate')
     expect(trigger.channel?.address).toMatchObject({ provider: 'github', repo: repo.full, issue: '42' })
     expect(trigger.meta).toMatchObject({ repo: repo.full, issue: 42, kind: 'issue' })
   })
@@ -111,7 +111,7 @@ describe('real GitHub source mapping', () => {
     expect(trigger.id).toBe('gh_comment_5001')
     expect(trigger.actor.id).toBe('ci-bot')
     expect(trigger.human).toBe(false)
-    expect(trigger.text).toBe('@ds-agent login still 500')
+    expect(trigger.text).toBe('@lofibot login still 500')
     expect(trigger.meta).toMatchObject({ commentId: 5001, kind: 'comment' })
   })
 
@@ -127,7 +127,7 @@ describe('real GitHub source mapping', () => {
     ])
     expect(pull.triggers.map(trigger => trigger.text)).toEqual([
       `${issue.title}\n\n${issue.body}`,
-      '@ds-agent login still 500',
+      '@lofibot login still 500',
       'follow-up without the agent mention',
     ])
   })
@@ -145,7 +145,7 @@ describe('real GitHub source mapping', () => {
     const adapter = new GithubOutboxAdapter(fake)
     const result = await adapter.send(outboxRow())
     expect(result.externalId).toBe('7777')
-    expect(fake.posted).toEqual([{ number: 42, body: 'ds-agent note\n\nticket: ticket_1' }])
+    expect(fake.posted).toEqual([{ number: 42, body: 'lofibot note\n\nticket: ticket_1' }])
   })
 
   it('refuses an outbox row without an issue target', async () => {

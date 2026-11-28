@@ -19,6 +19,7 @@ import { createModelFromEnv, requireLiveModelFromEnv, type Model } from '../harn
 import { buildSystemPrompt, describePromptSections, loadPrompts } from '../harness/prompts.ts'
 import { parseMcpServers } from '../harness/mcp-config.ts'
 import { redactSecrets, secretValues } from '../env/sanitize.ts'
+import { rejectLegacyConfig } from '../env/legacy-config.ts'
 import { LOCAL_AGENTS_FILE, loadLocalAgents } from '../env/local-agents.ts'
 import { SKILLS_DIR, SKILL_FILE, SkillRegistry } from '../env/skills.ts'
 import { loadRoutines, ROUTINES_ENV, ROUTINES_FILE } from '../harness/routines.ts'
@@ -73,7 +74,7 @@ function bare(start: number, valueFlags: readonly string[] = []): string[] {
 }
 
 function meshCapacity(): number {
-  const n = Number(process.env.DS_AGENT_MESH_CAPACITY)
+  const n = Number(process.env.LOFIBOT_MESH_CAPACITY)
   return Number.isSafeInteger(n) && n > 0 ? n : 4
 }
 
@@ -82,7 +83,7 @@ function openInspectStore(home: string): Store {
 }
 
 function assertDatabaseExists(home: string): void {
-  if (!fs.existsSync(path.join(home, 'ds-agent.db'))) {
+  if (!fs.existsSync(path.join(home, 'lofibot.db'))) {
     throw new Error('local state database does not exist')
   }
 }
@@ -145,7 +146,7 @@ function withEngine<T>(
  */
 function promptRedactor(env: NodeJS.ProcessEnv): (text: string) => string {
   let mcpEnvs: NodeJS.ProcessEnv[] = []
-  const raw = env.DS_AGENT_MCP_SERVERS?.trim()
+  const raw = env.LOFIBOT_MCP_SERVERS?.trim()
   if (raw) {
     try {
       mcpEnvs = parseMcpServers(JSON.parse(raw)).map(config => config.env)
@@ -161,83 +162,83 @@ function promptRedactor(env: NodeJS.ProcessEnv): (text: string) => string {
 }
 
 function help(): void {
-  console.log(`ds-agent — local super-agent demo (not an official DeepSeek product)
+  console.log(`LofiBot — local agent with proactive task execution
 
-  pnpm ds-agent --version   print the package version (also -V, version)
+  pnpm lofibot --version   print the package version (also -V, version)
   pnpm demo                 real GitHub issues/comments + live model (acceptance)
   pnpm demo -- --only watchdog
   pnpm demo:local           in-memory fixture baseline (not channel acceptance)
   pnpm demo:feishu          real Feishu message API smoke (needs app creds)
-  pnpm ds-agent init
-  pnpm ds-agent tasks
-  pnpm ds-agent panel            # Panel · Execution (tickets, mandate, executor, outbox)
-  pnpm ds-agent receipt <ticketId> [--json] # read-only execution evidence from local state
-  pnpm ds-agent retry <ticketId> # new Assignment on the same Ticket
-  pnpm ds-agent status
-  pnpm ds-agent health
-  pnpm ds-agent serve [--imessage] [--feishu] [--handle <id>] [--chat <id>]
+  pnpm lofibot init
+  pnpm lofibot tasks
+  pnpm lofibot panel            # Panel · Execution (tickets, mandate, executor, outbox)
+  pnpm lofibot receipt <ticketId> [--json] # read-only execution evidence from local state
+  pnpm lofibot retry <ticketId> # new Assignment on the same Ticket
+  pnpm lofibot status
+  pnpm lofibot health
+  pnpm lofibot serve [--imessage] [--feishu] [--handle <id>] [--chat <id>]
                             [--allow-any] [--allow-groups] [--interval <ms>]
                             [--since <epoch-ms>] [--once]
                             # daemon timer over persisted state; optional inbound iMessage
                             # and/or Feishu poll loop; the two loops share one Runtime but
                             # keep independent cursors, outboxes, and abort controllers
-  pnpm ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]
+  pnpm lofibot channels check [--imessage] [--feishu] [--network] [--check-chat]
                             # offline preflight: no model, no SQLite, no message send;
                             # --network checks token only; --check-chat implies it and reads chat metadata + one history item;
                             # send capability remains unverified
-  pnpm ds-agent chat "fix the login timeout"
-  pnpm ds-agent gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
-  pnpm ds-agent setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
-  pnpm ds-agent ui [--host 127.0.0.1] [--port <n>] [--token <token>]
+  pnpm lofibot chat "fix the login timeout"
+  pnpm lofibot gateway [--port 4319] [--host 127.0.0.1]  # local OpenAI-compatible model gateway
+  pnpm lofibot setup [--write] [--url http://host:port/v1]  # discover local LLMs, write gateway.config.json
+  pnpm lofibot ui [--host 127.0.0.1] [--port <n>] [--token <token>]
                             # read-only loopback dashboard over existing state; does not
-                            # create state; requires DS_AGENT_UI_TOKEN or --token (16+ chars)
-  pnpm ds-agent backup --out <file.db>  # WAL-safe snapshot of the SQLite store
-  pnpm ds-agent restore <file.db> [--force]
+                            # create state; requires LOFIBOT_UI_TOKEN or --token (16+ chars)
+  pnpm lofibot backup --out <file.db>  # WAL-safe snapshot of the SQLite store
+  pnpm lofibot restore <file.db> [--force]
                             # replace the store from a snapshot; --force is required
                             # when a store already exists (the old one is kept aside)
-  pnpm ds-agent imessage [--handle <id>] [--allow-any] [--allow-groups] [--once] [--interval 2000]
+  pnpm lofibot imessage [--handle <id>] [--allow-any] [--allow-groups] [--once] [--interval 2000]
                             # two-way iMessage channel; sender admission is default-deny
-  pnpm ds-agent wire <file> --set KEY=VALUE [--env]  # merge gateway settings into an agent config
-  pnpm ds-agent profile list|save <name>|use <name>|rm <name>  # gateway config profiles
-  pnpm ds-agent emit im --thread bug-login --text "login still 500"
-  pnpm ds-agent emit github --pr 42 --text "CI failed on auth test"
-  pnpm ds-agent metrics
-  pnpm ds-agent memory [--session <id>] [--limit 10]   # current memory scopes and index
-  pnpm ds-agent memory archive [--limit 10]  # old Ticket and Decision snapshots
-  pnpm ds-agent memory dream --session <id>  # consolidate notes for one session
-  pnpm ds-agent a2a [--limit 10]      # persisted A2A envelopes
-  pnpm ds-agent prompt [--role router|worker|watchdog] [--layers] [--json]
+  pnpm lofibot wire <file> --set KEY=VALUE [--env]  # merge gateway settings into an agent config
+  pnpm lofibot profile list|save <name>|use <name>|rm <name>  # gateway config profiles
+  pnpm lofibot emit im --thread bug-login --text "login still 500"
+  pnpm lofibot emit github --pr 42 --text "CI failed on auth test"
+  pnpm lofibot metrics
+  pnpm lofibot memory [--session <id>] [--limit 10]   # current memory scopes and index
+  pnpm lofibot memory archive [--limit 10]  # old Ticket and Decision snapshots
+  pnpm lofibot memory dream --session <id>  # consolidate notes for one session
+  pnpm lofibot a2a [--limit 10]      # persisted A2A envelopes
+  pnpm lofibot prompt [--role router|worker|watchdog] [--layers] [--json]
                             # the layered system prompt and where each layer comes from
-  pnpm ds-agent agents [--json]  # local specialist agents configured for delegation
-  pnpm ds-agent skills [--json]  # owner-authored playbooks the agent can load
-  pnpm ds-agent routines [--json]  # owner-defined recurring work and its channel
-  pnpm ds-agent evolution run|approve|rollback|status  # offline deliver-gate strategy evolution (fixture dataset)
-  pnpm ds-agent recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]
+  pnpm lofibot agents [--json]  # local specialist agents configured for delegation
+  pnpm lofibot skills [--json]  # owner-authored playbooks the agent can load
+  pnpm lofibot routines [--json]  # owner-defined recurring work and its channel
+  pnpm lofibot evolution run|approve|rollback|status  # offline deliver-gate strategy evolution (fixture dataset)
+  pnpm lofibot recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]
                             # inspect or resolve one uncertain external effect on an ended Ticket
-  pnpm ds-agent publish-outcome <ticketId> [--json]
+  pnpm lofibot publish-outcome <ticketId> [--json]
                             # read-only facts for consumed feature-PR approvals; never retries
-  pnpm ds-agent connectors [status] [--json]  # Google Workspace connector config and index stats
-  pnpm ds-agent connectors query "invoice" [--service gmail] [--kind message]
+  pnpm lofibot connectors [status] [--json]  # Google Workspace connector config and index stats
+  pnpm lofibot connectors query "invoice" [--service gmail] [--kind message]
                             [--since ISO] [--wake-only] [--limit 10] [--json]
                             # read the connector data index; separate from long-term memory
                             # connectors.json is absent/off by default; no network is used here
 
 Mid-task collaboration (persisted in SQLite):
-  pnpm ds-agent pause <ticketId> [--reason "waiting on staging"]
-  pnpm ds-agent stop <ticketId> [--reason "no longer needed"]
-  pnpm ds-agent intervene <ticketId> "use the staging db" [--no-pause]
-  pnpm ds-agent resume <ticketId> [--reason "human verified"]
-  pnpm ds-agent collab <ticketId>          # pause state + guidance audit
-  pnpm ds-agent approvals [--json]         # pending three-answer approval cards
-  pnpm ds-agent approve|deny|dismiss <ticketId> <approvalId>
+  pnpm lofibot pause <ticketId> [--reason "waiting on staging"]
+  pnpm lofibot stop <ticketId> [--reason "no longer needed"]
+  pnpm lofibot intervene <ticketId> "use the staging db" [--no-pause]
+  pnpm lofibot resume <ticketId> [--reason "human verified"]
+  pnpm lofibot collab <ticketId>          # pause state + guidance audit
+  pnpm lofibot approvals [--json]         # pending three-answer approval cards
+  pnpm lofibot approve|deny|dismiss <ticketId> <approvalId>
                             [--note "..."] [--action-id <id>]
   <ticketId> accepts an exact id, a unique prefix, or "latest".
   A card is bound to its exact action text; rewriting the action needs a new
   approval. The model can request a card, never answer it.
 
 Worker-internal teams (persisted in SQLite, offline reads):
-  pnpm ds-agent team <teamId|ticketId>     # topology, aggregate, member status
-  pnpm ds-agent teams [--ticket <id>] [--session <id>]  # list teams
+  pnpm lofibot team <teamId|ticketId>     # topology, aggregate, member status
+  pnpm lofibot teams [--ticket <id>] [--session <id>]  # list teams
   <teamId> accepts an exact id or a unique prefix.
 
 pause freezes Router/Worker turns, reports, and outbound replies.
@@ -249,7 +250,7 @@ panel prints Mandate, Executor Session, directory, report, and Outbox
 pending/sent/failed counts. A paused ticket is person/paused in tasks and
 paused in panel. The Watchdog does not nudge or fail it, and the pause is
 still there after a process restart. chat returns after its ticket ends, so
-pause an in-progress ticket from a second terminal that shares DS_AGENT_HOME.
+pause an in-progress ticket from a second terminal that shares LOFIBOT_HOME.
 Pausing an already-paused ticket prints "already paused" and keeps the
 original pause. Resuming a ticket that is not paused prints "not paused" and
 does not rewrite it. An unknown id exits with an error and leaves other
@@ -257,15 +258,15 @@ tickets unchanged.
 demo/retry/resume/approve/deny/dismiss need a live model; chat may use MockModel.
 pause/intervene/collab/team/teams/approvals are offline.
 
-imessage refuses to start (default-deny) without --handle/DS_AGENT_IMESSAGE_HANDLE
-or a non-empty DS_AGENT_ACTOR_ALLOWLIST. --allow-any is an explicit opt-out that
+imessage refuses to start (default-deny) without --handle/LOFIBOT_IMESSAGE_HANDLE
+or a non-empty LOFIBOT_ACTOR_ALLOWLIST. --allow-any is an explicit opt-out that
 accepts any 1:1 sender; --allow-groups opens group ingestion, and group messages
 are never marked direct.
 
 serve starts the in-process watchdog/daemon timer over persisted SQLite state. By
 default it has no inbound channel loop: triggers written by a separate emit/chat
 process are not picked up. Pass --imessage to run the same inbound iMessage poll
-loop as "ds-agent imessage" alongside the daemon; it uses that command's
+loop as "lofibot imessage" alongside the daemon; it uses that command's
 default-deny sender admission, cursor, and outbox, and refuses to start before
 chat.db is opened. --allow-groups opens group ingestion; group messages are never
 marked direct. Pass --feishu to poll one Feishu chat: it requires
@@ -274,8 +275,8 @@ before SQLite is opened, and stores its cursor in SQLite as
 { chatId, lastCreateTimeMs }. --since <epoch-ms> overrides the stored cursor for
 one start; otherwise the stored cursor for that chat seeds the poll, otherwise
 the source starts at now-5min. Feishu group messages keep the chat id in
-channel.address.group, so DS_AGENT_GROUP_ALLOWLIST admits by chat. Set
-DS_AGENT_FEISHU_P2P_DIRECT=1 to mark messages whose Feishu chat_mode is verified
+channel.address.group, so LOFIBOT_GROUP_ALLOWLIST admits by chat. Set
+LOFIBOT_FEISHU_P2P_DIRECT=1 to mark messages whose Feishu chat_mode is verified
 as p2p as direct, allowing short 1:1 messages through the noise filter; only a
 real bot mention otherwise sets addressed=mention. Connector wake polling requires
 im:chat:readonly to resolve trusted chat_mode (im:chat:read or im:chat also
@@ -301,7 +302,7 @@ The first SIGINT/SIGTERM aborts every inbound loop, waits for both drains, close
 the iMessage API, then drains through Runtime.finish() (assessments, jobs,
 daemon timer, SQLite), and exits 0; a second signal force-exits 1 if it hangs.
 
-Run "ds-agent channels check" before serve. It needs no model and opens no
+Run "lofibot channels check" before serve. It needs no model and opens no
 SQLite. For iMessage it opens chat.db read-only, checks the required columns,
 prints count/latest ROWID (never message text), reports admission and osascript
 presence, and prints the exact manual Automation command without running it. For
@@ -319,22 +320,22 @@ Automation.
 Feishu setup: create a custom app with the Bot capability, add scopes im:message,
 im:message:send_as_bot, im:message:readonly, im:message.group_msg (for group
 history), and im:chat:readonly (required for connector wake chat_mode lookup even
-when direct mode is off; im:chat:read or im:chat also work; DS_AGENT_FEISHU_P2P_DIRECT
+when direct mode is off; im:chat:read or im:chat also work; LOFIBOT_FEISHU_P2P_DIRECT
 also needs it to resolve chat_mode). Publish an app version, add the bot to exactly
 one target chat, copy its oc_... chat id, then set FEISHU_APP_ID, FEISHU_APP_SECRET,
 and FEISHU_CHAT_ID (or pass --chat). Inbound CLI delivery is one-chat polling only;
 webhook servers and long-connection/WebSocket delivery are not implemented.
 
-State lives in DS_AGENT_HOME or ./.ds-agent (SQLite).
+State lives in LOFIBOT_HOME or ./.lofibot (SQLite).
 Section 7 counters are written to <stateDir>/metrics.json and printed by metrics.
-Cloud model: DS_AGENT_API_BASE + DS_AGENT_API_KEY (optional DS_AGENT_API_MODEL),
+Cloud model: LOFIBOT_API_BASE + LOFIBOT_API_KEY (optional LOFIBOT_API_MODEL),
 or one provider key: DEEPSEEK_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY,
 XAI_API_KEY / GROK_API_KEY, MOONSHOT_API_KEY / KIMI_API_KEY, ZHIPU_API_KEY / GLM_API_KEY,
 GEMINI_API_KEY / GOOGLE_API_KEY, ANTHROPIC_API_KEY.
-Optional DS_AGENT_PROVIDER picks a preset when several keys are set.
+Optional LOFIBOT_PROVIDER picks a preset when several keys are set.
 pnpm demo always requires a live model and authenticated gh (MockModel/fake IM/GitHub forbidden).
-Real GitHub repo: DS_AGENT_GH_REPO (default LofiSu/deepseek-super-agent).
-A half-set DS_AGENT_API_BASE/KEY fails instead of falling back.`)
+Real GitHub repo: LOFIBOT_GH_REPO (default LofiSu/LofiBot).
+A half-set LOFIBOT_API_BASE/KEY fails instead of falling back.`)
 }
 
 async function withRuntime(
@@ -360,15 +361,15 @@ async function withRuntime(
 }
 
 /**
- * If a gateway.config.json exists and no DS_AGENT_GATEWAY_URL is set, start the
+ * If a gateway.config.json exists and no LOFIBOT_GATEWAY_URL is set, start the
  * gateway in-process for the duration of `run`, so chat/imessage need no
  * separate gateway process.
  */
 async function runWithEmbeddedGateway(home: string, run: () => Promise<void>): Promise<void> {
   const embedded = await startEmbeddedGateway(home)
   if (embedded) {
-    process.env.DS_AGENT_GATEWAY_URL = embedded.url
-    process.env.DS_AGENT_GATEWAY_TOKEN = embedded.token
+    process.env.LOFIBOT_GATEWAY_URL = embedded.url
+    process.env.LOFIBOT_GATEWAY_TOKEN = embedded.token
   }
   try {
     await run()
@@ -384,7 +385,7 @@ async function runWithEmbeddedGateway(home: string, run: () => Promise<void>): P
  * configured, assesses Gate-deferred threads already in SQLite at startup. By
  * default no inbound channel loop, so triggers written by a separate
  * `emit`/`chat` process are never picked up. With `--imessage` it also runs the
- * same inbound iMessage poll loop as `ds-agent imessage`, sharing that command's
+ * same inbound iMessage poll loop as `lofibot imessage`, sharing that command's
  * default-deny admission, cursor, and outbox. With `--feishu` it runs an
  * inbound Feishu poll loop over `FEISHU_CHAT_ID`/`--chat`, with a durable
  * `feishu_cursor` document. Both may run together: each config is validated
@@ -481,7 +482,7 @@ async function serve(home: string): Promise<void> {
     if (configs.imessage.allowAny) {
       runtime.log.info(
         '[imessage] WARNING: --allow-any is active; any sender in a 1:1 chat can trigger work. '
-        + 'Prefer --handle or DS_AGENT_ACTOR_ALLOWLIST unless this is intentional.',
+        + 'Prefer --handle or LOFIBOT_ACTOR_ALLOWLIST unless this is intentional.',
       )
     }
     if (configs.imessage.allowGroups) {
@@ -501,7 +502,7 @@ async function serve(home: string): Promise<void> {
       throw error
     }
   }
-  runtime.log.info(`ds-agent serve ready home=${home} pid=${process.pid} model=${runtime.model.name}`)
+  runtime.log.info(`lofibot serve ready home=${home} pid=${process.pid} model=${runtime.model.name}`)
   // Keep the CLI promise pending; the daemon timer keeps the process alive and a
   // signal handler exits after the drain.
   await new Promise<void>(() => undefined)
@@ -518,7 +519,6 @@ function getReceiptTicket(store: Store, id: string): ReceiptTicket | undefined {
 
 async function main(): Promise<void> {
   const [cmd, sub] = process.argv.slice(2)
-  const home = defaultHome()
   if (cmd === '--version' || cmd === '-V' || cmd === 'version') {
     console.log(readPackageVersion())
     return
@@ -527,6 +527,8 @@ async function main(): Promise<void> {
     help()
     return
   }
+  rejectLegacyConfig(process.env)
+  const home = defaultHome()
   if (cmd === 'demo') {
     // Legacy local fixture flow. `pnpm demo` is the real-channel acceptance runner.
     await runDemo(home)
@@ -559,7 +561,7 @@ async function main(): Promise<void> {
   if (cmd === 'receipt') {
     const refs = bare(3)
     if (refs.length !== 1) {
-      throw new Error('usage: ds-agent receipt <ticketId> [--json]')
+      throw new Error('usage: lofibot receipt <ticketId> [--json]')
     }
     const ticketRef = refs[0]!
     const store = Store.openReadOnly(home)
@@ -611,7 +613,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'channels') {
     if (sub !== 'check') {
-      throw new Error('channels needs "check": ds-agent channels check [--imessage] [--feishu] [--network] [--check-chat]')
+      throw new Error('channels needs "check": lofibot channels check [--imessage] [--feishu] [--network] [--check-chat]')
     }
     const report = await runChannelsCheck({
       network: process.argv.includes('--network'),
@@ -657,7 +659,7 @@ async function main(): Promise<void> {
     const limit = Math.max(1, Number(option('limit') ?? 10) || 10)
     const store = openInspectStore(home)
     try {
-      const instance = process.env.DS_AGENT_INSTANCE_ID ?? 'local'
+      const instance = process.env.LOFIBOT_INSTANCE_ID ?? 'local'
       if (cmd === 'memory' && sub !== 'archive') {
         const scopeId = option('session')
         const memory = new SessionMemory(store, promptRedactor(process.env))
@@ -733,7 +735,7 @@ async function main(): Promise<void> {
       }
       const byTicket = teams.filter(team => team.ticketId === ref || team.ticketId.startsWith(ref))
       if (byTicket.length === 0) {
-        console.log(`no team matches ${ref}; use "pnpm ds-agent teams" to list all teams`)
+        console.log(`no team matches ${ref}; use "pnpm lofibot teams" to list all teams`)
         return
       }
       console.log(`ticket ${ref}: ${byTicket.length} team(s)`)
@@ -809,7 +811,7 @@ async function main(): Promise<void> {
   }
   if (cmd === 'publish-outcome') {
     const [ticketId] = bare(3)
-    if (!ticketId) throw new Error('usage: ds-agent publish-outcome <ticketId> [--json]')
+    if (!ticketId) throw new Error('usage: lofibot publish-outcome <ticketId> [--json]')
     // Resolve directly against the immutable ledger key using SQLite read-only
     // open semantics. Do not construct Store, migrate, or derive identity from Ticket.
     const { admissions, admissionLedgerAvailable } = readPublishAdmissionsReadOnly(home, ticketId)
@@ -859,17 +861,17 @@ async function main(): Promise<void> {
   if (cmd === 'recovery-effects') {
     const [ticketRef, resolution, effectId] = bare(3)
     if (!ticketRef) {
-      throw new Error('usage: ds-agent recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]')
+      throw new Error('usage: lofibot recovery-effects <ticketId> [retry|acknowledge <effectId>] [--json]')
     }
     const resolving = resolution === 'retry' || resolution === 'acknowledge'
-    if (resolving && !fs.existsSync(path.join(home, 'ds-agent.db'))) {
+    if (resolving && !fs.existsSync(path.join(home, 'lofibot.db'))) {
       throw new Error('local state database does not exist')
     }
     const store = resolving ? new Store(home) : openInspectStore(home)
     try {
       const ticket = resolveTicket(store, ticketRef)
       if (!ticket.ended) {
-        throw new Error(`ticket ${ticket.id} is still live; decide its recovery approval with ds-agent approve or deny`)
+        throw new Error(`ticket ${ticket.id} is still live; decide its recovery approval with lofibot approve or deny`)
       }
       const effectIds = unknownEffectIds(ticket.id, store)
       if (!resolution) {
@@ -880,7 +882,7 @@ async function main(): Promise<void> {
         } else {
           console.log(`unknown effects for ended ticket ${ticket.id}:`)
           for (const id of effectIds) console.log(`  ${id}`)
-          console.log(`resolve one: pnpm ds-agent recovery-effects ${ticket.id} retry|acknowledge <effectId>`)
+          console.log(`resolve one: pnpm lofibot recovery-effects ${ticket.id} retry|acknowledge <effectId>`)
         }
         return
       }
@@ -888,7 +890,7 @@ async function main(): Promise<void> {
         throw new Error('recovery-effects action must be retry or acknowledge')
       }
       if (!effectId) {
-        throw new Error(`usage: ds-agent recovery-effects ${ticket.id} ${resolution} <effectId>`)
+        throw new Error(`usage: lofibot recovery-effects ${ticket.id} ${resolution} <effectId>`)
       }
       if (!effectIds.includes(effectId)) {
         throw new Error(`unknown uncertain effect ${effectId} on ended ticket ${ticket.id}`)
@@ -911,7 +913,7 @@ async function main(): Promise<void> {
     const ticketRef = rest[0]
     const approvalId = rest[1]
     if (!ticketRef || !approvalId) {
-      throw new Error(`usage: ds-agent ${cmd} <ticketId> <approvalId> [--note "..."] [--action-id <id>]`)
+      throw new Error(`usage: lofibot ${cmd} <ticketId> <approvalId> [--note "..."] [--action-id <id>]`)
     }
     const note = option('note')
     const expectedActionId = parseApprovalActionId(process.argv.slice(3))
@@ -951,7 +953,7 @@ async function main(): Promise<void> {
         console.log(`paused ${ticket.id} "${ticket.title}"${reason ? ` — ${reason}` : ''}`)
       }
       console.log(`  stage: ${ticketStage(outcome.ticket)}`)
-      console.log(`  next:  pnpm ds-agent resume ${ticket.id}`)
+      console.log(`  next:  pnpm lofibot resume ${ticket.id}`)
     }, { verbose: process.argv.includes('--verbose') })
     return
   }
@@ -959,7 +961,7 @@ async function main(): Promise<void> {
     const rest = bare(3, ['text', 'reason'])
     const ticketRef = rest[0]
     const text = option('text') ?? rest.slice(1).join(' ')
-    if (!text.trim()) throw new Error('intervene needs guidance text: ds-agent intervene <ticketId> "your note"')
+    if (!text.trim()) throw new Error('intervene needs guidance text: lofibot intervene <ticketId> "your note"')
     const noPause = process.argv.includes('--no-pause')
     withEngine((engine, store) => {
       const ticket = resolveTicket(store, ticketRef)
@@ -969,7 +971,7 @@ async function main(): Promise<void> {
       })
       console.log(`guidance ${outcome.guidance.id} added to ${ticket.id}: "${outcome.guidance.text}"`)
       if (outcome.paused) {
-        console.log(`  task is paused; resume with: pnpm ds-agent resume ${ticket.id}`)
+        console.log(`  task is paused; resume with: pnpm lofibot resume ${ticket.id}`)
       } else {
         console.log('  task is running; the next Router/Worker turn will include this guidance.')
       }
@@ -1070,7 +1072,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'ui') {
-    // Token enforcement (>=16 chars, --token or DS_AGENT_UI_TOKEN) and the
+    // Token enforcement (>=16 chars, --token or LOFIBOT_UI_TOKEN) and the
     // loopback-only bind stay in runUi; this dispatch only forwards options.
     const rawPort = option('port')
     const port = rawPort === undefined ? undefined : Number(rawPort)
@@ -1210,7 +1212,7 @@ async function main(): Promise<void> {
       return
     }
     if (!agents.length) {
-      console.log(`no local agents configured (${LOCAL_AGENTS_FILE} or DS_AGENT_LOCAL_AGENTS)`)
+      console.log(`no local agents configured (${LOCAL_AGENTS_FILE} or LOFIBOT_LOCAL_AGENTS)`)
       return
     }
     for (const agent of agents) {
@@ -1266,7 +1268,7 @@ function runConnectorsCommand(home: string, sub: string | undefined): void {
       return
     }
     if (sub !== undefined && sub !== 'status') {
-      throw new Error('connectors needs "status" or "query": ds-agent connectors [status] | query "text"')
+      throw new Error('connectors needs "status" or "query": lofibot connectors [status] | query "text"')
     }
     const stats = new ConnectorIndex(store).stats()
     const state = loadConnectorWakeState(store)

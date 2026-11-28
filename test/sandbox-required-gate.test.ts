@@ -24,14 +24,14 @@ function fakeEnforced(hooks?: Partial<SandboxConfinementProbeHooks>): SandboxCon
   const system = linuxBwrapSystem()
   return probeSandboxConfinement(system, {
     runWrapped: command => {
-      if (command.includes('probe-write.txt') && command.includes('ds-agent-sandbox-negative-probe')) {
+      if (command.includes('probe-write.txt') && command.includes('lofibot-sandbox-negative-probe')) {
         return { status: 0, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
       }
       if (command.includes('echo ok')) {
         return { status: 0, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
       }
       if (command.includes('fetch(')) {
-        return { status: 1, stdout: 'ds-agent-network-probe-started\n', stderr: '', pid: 0, output: [null, 'ds-agent-network-probe-started\n', ''], signal: null, error: undefined }
+        return { status: 1, stdout: 'lofibot-network-probe-started\n', stderr: '', pid: 0, output: [null, 'lofibot-network-probe-started\n', ''], signal: null, error: undefined }
       }
       if (command.includes('kill -0')) {
         if (command.includes('PPID')) return { status: 1, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
@@ -64,7 +64,7 @@ describe('required sandbox dimensions gate', () => {
       runWrapped: command => spawnSync('bash', ['--noprofile', '--norc', '-c', command], { encoding: 'utf8' }),
     })
     expect(probe.dimensions.write).toBe('not_enforced')
-    expect(() => assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'write' })).toThrow(UserError)
+    expect(() => assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'write' })).toThrow(UserError)
   })
 
   it('rejects when required process is not_enforced', () => {
@@ -79,7 +79,7 @@ describe('required sandbox dimensions gate', () => {
         }
         if (command.includes('fetch(')) {
           const status = command.includes('127.0.0.1') ? 0 : 1
-          return { status, stdout: 'ds-agent-network-probe-started\n', stderr: '', pid: 0, output: [null, 'ds-agent-network-probe-started\n', ''], signal: null, error: undefined }
+          return { status, stdout: 'lofibot-network-probe-started\n', stderr: '', pid: 0, output: [null, 'lofibot-network-probe-started\n', ''], signal: null, error: undefined }
         }
         if (command.includes('$PPID')) {
           return { status: 0, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
@@ -94,11 +94,11 @@ describe('required sandbox dimensions gate', () => {
     }, effective)
     expect(probe.dimensions.process).toBe('not_enforced')
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'process' }, effective),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'process' }, effective),
     ).toThrow(UserError)
   })
 
-  it('LocalEnv fails closed when DS_AGENT_SANDBOX_REQUIRED includes process and host probe is not enforced', () => {
+  it('LocalEnv fails closed when LOFIBOT_SANDBOX_REQUIRED includes process and host probe is not enforced', () => {
     const system: SandboxSystem = {
       platform: process.platform,
       available: bin => spawnSync('which', [bin], { stdio: 'ignore' }).status === 0,
@@ -109,13 +109,13 @@ describe('required sandbox dimensions gate', () => {
     const probe = probeSandboxConfinement(system, {}, effective)
     if (probe.dimensions.process === 'enforced') return
     const home = tempHome()
-    const prev = process.env.DS_AGENT_SANDBOX_REQUIRED
-    process.env.DS_AGENT_SANDBOX_REQUIRED = 'process'
+    const prev = process.env.LOFIBOT_SANDBOX_REQUIRED
+    process.env.LOFIBOT_SANDBOX_REQUIRED = 'process'
     try {
       expect(() => new LocalEnv(home)).toThrow(UserError)
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_SANDBOX_REQUIRED
-      else process.env.DS_AGENT_SANDBOX_REQUIRED = prev
+      if (prev === undefined) delete process.env.LOFIBOT_SANDBOX_REQUIRED
+      else process.env.LOFIBOT_SANDBOX_REQUIRED = prev
     }
   })
 
@@ -132,7 +132,7 @@ describe('required sandbox dimensions gate', () => {
     probe.dimensions.read = 'enforced'
     const lax: SandboxPolicy = { enabled: true, readIsolation: false }
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'read' }, lax),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'read' }, lax),
     ).toThrow(UserError)
   })
 
@@ -141,14 +141,14 @@ describe('required sandbox dimensions gate', () => {
     const lax: SandboxPolicy = { enabled: true, readIsolation: false }
     const probe = probeSandboxConfinement(system, {
       runWrapped: command => {
-        if (command.includes('probe-write.txt') && command.includes('ds-agent-sandbox-negative-probe')) {
+        if (command.includes('probe-write.txt') && command.includes('lofibot-sandbox-negative-probe')) {
           return { status: 0, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
         }
         if (command.includes('echo ok') || command === 'true') {
           return { status: 0, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
         }
         if (command.includes('fetch(')) {
-          return { status: 1, stdout: 'ds-agent-network-probe-started\n', stderr: '', pid: 0, output: [null, 'ds-agent-network-probe-started\n', ''], signal: null, error: undefined }
+          return { status: 1, stdout: 'lofibot-network-probe-started\n', stderr: '', pid: 0, output: [null, 'lofibot-network-probe-started\n', ''], signal: null, error: undefined }
         }
         if (command.includes('kill -0')) {
           if (command.includes('PPID')) return { status: 1, stdout: '', stderr: '', pid: 0, output: [null, '', ''], signal: null, error: undefined }
@@ -161,16 +161,16 @@ describe('required sandbox dimensions gate', () => {
     }, lax)
     expect(probe.dimensions.read).toBe('not_tested')
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'read' }, lax),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'read' }, lax),
     ).toThrow(/required dimension read/)
   })
 
-  it('LocalEnv refuses DS_AGENT_SANDBOX_REQUIRED read with lax readIsolation in options', () => {
+  it('LocalEnv refuses LOFIBOT_SANDBOX_REQUIRED read with lax readIsolation in options', () => {
     const home = tempHome()
-    const prev = process.env.DS_AGENT_SANDBOX_REQUIRED
-    const prevIso = process.env.DS_AGENT_SANDBOX_READ_ISOLATION
-    delete process.env.DS_AGENT_SANDBOX_READ_ISOLATION
-    process.env.DS_AGENT_SANDBOX_REQUIRED = 'read'
+    const prev = process.env.LOFIBOT_SANDBOX_REQUIRED
+    const prevIso = process.env.LOFIBOT_SANDBOX_READ_ISOLATION
+    delete process.env.LOFIBOT_SANDBOX_READ_ISOLATION
+    process.env.LOFIBOT_SANDBOX_REQUIRED = 'read'
     try {
       expect(() =>
         new LocalEnv(home, {
@@ -179,34 +179,34 @@ describe('required sandbox dimensions gate', () => {
         }),
       ).toThrow(UserError)
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_SANDBOX_REQUIRED
-      else process.env.DS_AGENT_SANDBOX_REQUIRED = prev
-      if (prevIso === undefined) delete process.env.DS_AGENT_SANDBOX_READ_ISOLATION
-      else process.env.DS_AGENT_SANDBOX_READ_ISOLATION = prevIso
+      if (prev === undefined) delete process.env.LOFIBOT_SANDBOX_REQUIRED
+      else process.env.LOFIBOT_SANDBOX_REQUIRED = prev
+      if (prevIso === undefined) delete process.env.LOFIBOT_SANDBOX_READ_ISOLATION
+      else process.env.LOFIBOT_SANDBOX_READ_ISOLATION = prevIso
     }
   })
 
-  it('refuses sandbox.enabled false with DS_AGENT_SANDBOX_REQUIRED set', () => {
+  it('refuses sandbox.enabled false with LOFIBOT_SANDBOX_REQUIRED set', () => {
     const home = tempHome()
     expect(() =>
       new LocalEnv(home, {
-        env: { DS_AGENT_SANDBOX_REQUIRED: 'write' },
+        env: { LOFIBOT_SANDBOX_REQUIRED: 'write' },
         sandbox: { enabled: false },
       }),
     ).toThrow(/sandbox is disabled/)
     expect(() =>
-      enforceRequiredSandbox({ DS_AGENT_SANDBOX_REQUIRED: 'write' }, { enabled: false }),
+      enforceRequiredSandbox({ LOFIBOT_SANDBOX_REQUIRED: 'write' }, { enabled: false }),
     ).toThrow(/sandbox is disabled/)
   })
 
-  it('does not run required gate when DS_AGENT_SANDBOX_REQUIRED is unset', () => {
+  it('does not run required gate when LOFIBOT_SANDBOX_REQUIRED is unset', () => {
     const home = tempHome()
-    const prev = process.env.DS_AGENT_SANDBOX_REQUIRED
-    delete process.env.DS_AGENT_SANDBOX_REQUIRED
+    const prev = process.env.LOFIBOT_SANDBOX_REQUIRED
+    delete process.env.LOFIBOT_SANDBOX_REQUIRED
     try {
       expect(() => new LocalEnv(home, { env: {}, sandbox: { enabled: true } })).not.toThrow()
     } finally {
-      if (prev !== undefined) process.env.DS_AGENT_SANDBOX_REQUIRED = prev
+      if (prev !== undefined) process.env.LOFIBOT_SANDBOX_REQUIRED = prev
     }
   })
 
@@ -217,15 +217,15 @@ describe('required sandbox dimensions gate', () => {
     probe.dimensions.read = 'not_tested'
     const strict: SandboxPolicy = { enabled: true, readIsolation: true }
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'read' }, strict),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'read' }, strict),
     ).toThrow(UserError)
     probe.dimensions.network = 'unsupported'
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'network' }, strict),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'network' }, strict),
     ).toThrow(UserError)
     probe.dimensions.network = 'probe_failed'
     expect(() =>
-      assertRequiredSandboxDimensions(probe, { DS_AGENT_SANDBOX_REQUIRED: 'network' }, strict),
+      assertRequiredSandboxDimensions(probe, { LOFIBOT_SANDBOX_REQUIRED: 'network' }, strict),
     ).toThrow(UserError)
   })
 })

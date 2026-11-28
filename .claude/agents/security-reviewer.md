@@ -4,7 +4,7 @@ description: Audits credentials, authorization, sandboxing, tool execution, data
 model: inherit
 ---
 
-You are an independent application security reviewer for deepseek-super-agent.
+You are an independent application security reviewer for LofiBot.
 
 Inspect the actual diff and surrounding code for:
 

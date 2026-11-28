@@ -6,13 +6,13 @@ import { requireLiveModelFromEnv } from '../harness/model.ts'
 import { compareBakeoff, type BakeoffSample } from '../metrics/bakeoff.ts'
 import { Runtime } from '../runtime.ts'
 
-const TEXT = '@ds-agent please fix the login timeout on checkout'
-const DEADLINE_MS = Number(process.env.DS_AGENT_BAKEOFF_DEADLINE_MS) > 0
-  ? Number(process.env.DS_AGENT_BAKEOFF_DEADLINE_MS)
+const TEXT = '@lofibot please fix the login timeout on checkout'
+const DEADLINE_MS = Number(process.env.LOFIBOT_BAKEOFF_DEADLINE_MS) > 0
+  ? Number(process.env.LOFIBOT_BAKEOFF_DEADLINE_MS)
   : 60_000
 
 async function run(mode: 'dual' | 'single'): Promise<BakeoffSample> {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), `ds-agent-bakeoff-${mode}-`))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), `lofibot-bakeoff-${mode}-`))
   const runtime = Runtime.create({
     home,
     model: requireLiveModelFromEnv(),

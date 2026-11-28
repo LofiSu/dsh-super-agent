@@ -1,6 +1,6 @@
-# Anthropic 的 Agent Memory 及其在 ds-agent 中的落地
+# Anthropic 的 Agent Memory 及其在 lofibot 中的落地
 
-Anthropic 的工程文章给出了跨会话记忆的结构与评估。Claude Platform 文档定义了模型如何请求应用读写记忆。前者回答信息应如何组织、校验与复用，后者回答应用应怎样执行一次具体操作。本文先解释两份资料，再把它们映射到 ds-agent 的 M6 Memory 和现有执行链路。[Agent memory 研究文章](https://www.anthropic.com/research/components-of-agent-memory) · [Memory tool 接口](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool)
+Anthropic 的工程文章给出了跨会话记忆的结构与评估。Claude Platform 文档定义了模型如何请求应用读写记忆。前者回答信息应如何组织、校验与复用，后者回答应用应怎样执行一次具体操作。本文先解释两份资料，再把它们映射到 lofibot 的 M6 Memory 和现有执行链路。[Agent memory 研究文章](https://www.anthropic.com/research/components-of-agent-memory) · [Memory tool 接口](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool)
 
 ## 1. 四层记忆与两条写入路径
 
@@ -24,8 +24,8 @@ Anthropic 的工程文章给出了跨会话记忆的结构与评估。Claude Pla
 - CL-Bench 1.0 的数据库任务给每道题开启一个新的会话，并让目录跨题保留。Opus 5 的平均奖励从 0.564 到 0.828，Sonnet 4.6 从 0.330 到 0.364。两组提升的差距说明工具接口之外，模型如何找回笔记、验证假设和修订规则也需要单独测量。[CL-Bench 实验](https://www.anthropic.com/research/components-of-agent-memory#memory-can-be-a-prediction-about-what-the-future-will-need)
 - Anthropic 用 Pokémon Red 观察信息筛选。Sonnet 3.7 的一次运行保存了 413 个文件，Fable 5 的一次运行保存了 10 个文件。后者使用顶层短导航和按主题拆分的策略笔记。这项观察给出了设计例子，文件数量本身无法衡量任务效果。[信息筛选实验](https://www.anthropic.com/research/components-of-agent-memory#claude-has-learned-to-judge-salience)
 - 在 Stainless 的 25 道语料题中，搜索单独得分 53%，成熟 Wiki 与搜索组合得分 61%。需要在多份资料间综合时，主题页能缩短探索路径。另一项任务的 Wiki 体积超过资料总量，说明要跟踪表示层规模、答案质量和命中成本。[Wiki 实验](https://www.anthropic.com/research/components-of-agent-memory#dreaming-can-build-new-memory-representations)
-- 合同实验暴露了并发覆盖及抽象损失。共享页保留了 57 条评分事实中的 41 条，按合同分配写入者并保留原文后能满足全部 57 项标准。ds-agent 可以据此采用独立来源页、版本检查和可回查引用，防止两个任务的修改互相覆盖。这是工程推导，原文数据来自 Anthropic 的特定实验。[目标导向的整理](https://www.anthropic.com/research/components-of-agent-memory#dreaming-can-focus-memory-on-a-specific-goal)
-- 自动注入带来固定上下文成本和错误传播风险。Claude Code 将入口限制为 `MEMORY.md` 前 200 行或 25 KB，详细内容通过链接访问。ds-agent 可以按自己的模型和现有提示预算设置更小的上限，并用相关性、稳定性及可复查性约束晋升。[注入上下文实验与示例](https://www.anthropic.com/research/components-of-agent-memory#dreaming-can-promote-notes-up-the-memory-hierarchy)
+- 合同实验暴露了并发覆盖及抽象损失。共享页保留了 57 条评分事实中的 41 条，按合同分配写入者并保留原文后能满足全部 57 项标准。lofibot 可以据此采用独立来源页、版本检查和可回查引用，防止两个任务的修改互相覆盖。这是工程推导，原文数据来自 Anthropic 的特定实验。[目标导向的整理](https://www.anthropic.com/research/components-of-agent-memory#dreaming-can-focus-memory-on-a-specific-goal)
+- 自动注入带来固定上下文成本和错误传播风险。Claude Code 将入口限制为 `MEMORY.md` 前 200 行或 25 KB，详细内容通过链接访问。lofibot 可以按自己的模型和现有提示预算设置更小的上限，并用相关性、稳定性及可复查性约束晋升。[注入上下文实验与示例](https://www.anthropic.com/research/components-of-agent-memory#dreaming-can-promote-notes-up-the-memory-hierarchy)
 
 ## 3. 客户端 Memory tool
 
@@ -40,9 +40,9 @@ Claude Messages API 的工具注册项为 `{"type":"memory_20250818","name":"mem
 | `delete` | `path` | 删除文件或递归删除目录，保护虚拟根。 |
 | `rename` | `old_path`，`new_path` | 移动文件或目录，拒绝覆盖已有目标并保护虚拟根。 |
 
-Claude API 为原生工具追加提示，要求开始时检查记忆目录并在工作中记录必要状态。ds-agent 在通用 function tool 上复用相同行为时，需要由 Harness 提示引导模型，并按自己的工具响应格式携带成功或失败。大文本支持有界返回和按行继续读取，工具调用失败应显式反馈，便于模型改正参数。[命令定义及提示](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool#tool-commands) · [错误返回](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool#error-handling)
+Claude API 为原生工具追加提示，要求开始时检查记忆目录并在工作中记录必要状态。lofibot 在通用 function tool 上复用相同行为时，需要由 Harness 提示引导模型，并按自己的工具响应格式携带成功或失败。大文本支持有界返回和按行继续读取，工具调用失败应显式反馈，便于模型改正参数。[命令定义及提示](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool#tool-commands) · [错误返回](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool#error-handling)
 
-## 4. ds-agent 的映射
+## 4. lofibot 的映射
 
 下表中的“落地点”描述工程设计。仓库现有的实际边界见 [M6 Memory](MODULES.md#m6--memory)。
 
@@ -86,12 +86,12 @@ flowchart TB
 
 ## 5. 验收如何证明记忆有效
 
-### ds-agent 的实现入口
+### lofibot 的实现入口
 
 ```bash
-pnpm ds-agent memory --limit 10
-pnpm ds-agent memory archive --limit 10
-pnpm ds-agent memory dream --session <id>
+pnpm lofibot memory --limit 10
+pnpm lofibot memory archive --limit 10
+pnpm lofibot memory dream --session <id>
 ```
 
 第一条显示当前会话记忆入口。第二条查看旧版快照归档。第三条使用当前配置的模型整理指定直聊 Router 或 Worker 会话的笔记。整理实例只获得笔记和原文工具，每次创建或局部编辑都需引用从上一步工具结果取得的证据行 ID，且至少一项来自用户。每轮整理最多 8 次模型调用，每次最多 4 个工具请求。工具写入逐条提交，命令输出成功写入次数。证据对结论的支持程度和页面链接质量由模型判断。运行时自动整理的触发和发布见下文。
@@ -110,14 +110,14 @@ Router 的存储域沿用直聊线程分片的会话 ID。共享 Router 会话�
 | 表示层与上下文预算 | 主题页链接可回查，目录和自动注入有界，少量相关笔记足以恢复任务 |
 | 任务质量 | 用同一组跨会话任务比较基线、按需记忆、整理后记忆，记录任务正确率、召回命中、输入 token 和维护耗时 |
 
-接口语义、权限和持久化可用离线测试覆盖。任务质量需要有标准答案或操作结果的案例。Anthropic 的实验指标用于确定评价维度，ds-agent 的实际收益需要独立测量。
+接口语义、权限和持久化可用离线测试覆盖。任务质量需要有标准答案或操作结果的案例。Anthropic 的实验指标用于确定评价维度，LofiBot 的实际收益需要独立测量。
 
 
 ## 自动 Dreaming
 
 Claude Code 的公开文档描述了自动记录笔记和启动时载入索引。公开文档没有给出本地 Auto Dream 的触发阈值。Managed Agents 的 Dreams 是由应用提交的异步整理任务。Anthropic 的 Cookbook 演示了定时自动提交的方式。[Claude Code Memory](https://code.claude.com/docs/en/memory) · [Dreams API](https://platform.claude.com/docs/en/managed-agents/dreams) · [官方定时示例](https://platform.claude.com/cookbook/managed-agents-cma-dreaming-with-a-dynamic-workflow)
 
-ds-agent 的常驻运行时使用已有 Daemon 心跳。配置可用模型时默认启用，设置 `DS_AGENT_AUTO_DREAM=0` 可关闭。直聊 Router 与符合授权条件的 Worker 会话闲置至少 30 秒后可以整理。每进程每分钟最多发起一次，每次向前处理最多八条用户日志。后台按角色沿用前台配置的模型。SQLite 记录处理游标和作用域租约，失败保留原游标并延迟重试。同一记忆域的证据行 ID 单调前进，迟到的旧会话不能覆盖新的纠正。提交前重新检查授权范围、会话状态和已有页面版本。停机中止请求并屏蔽迟到的结果。
+LofiBot 的常驻运行时使用已有 Daemon 心跳。配置可用模型时默认启用，设置 `LOFIBOT_AUTO_DREAM=0` 可关闭。直聊 Router 与符合授权条件的 Worker 会话闲置至少 30 秒后可以整理。每进程每分钟最多发起一次，每次向前处理最多八条用户日志。后台按角色沿用前台配置的模型。SQLite 记录处理游标和作用域租约，失败保留原游标并延迟重试。同一记忆域的证据行 ID 单调前进，迟到的旧会话不能覆盖新的纠正。提交前重新检查授权范围、会话状态和已有页面版本。停机中止请求并屏蔽迟到的结果。
 
 整理还可以用新证据修订本轮读取的短 Markdown 笔记。派生主题摘要写入同一记忆域下的 `/memories/wiki/runtime.md`。后续会话从短索引自动获得该页入口，手写的 `MEMORY.md` 仍可与入口一起注入。手动 `memory dream` 继续支持即时维护。短时 CLI 在退出前尝试一次最多 5 秒的整理，未完成的证据留给后续进程。
 

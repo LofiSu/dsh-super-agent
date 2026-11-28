@@ -2,7 +2,7 @@
 
 `src/gateway/` is a TypeScript re-implementation of the "Magpie" gateway role:
 **one local endpoint that fronts several upstream providers**, for any client
-that speaks OpenAI / Anthropic / Gemini style APIs. `ds-agent` (or any SDK) can
+that speaks OpenAI / Anthropic / Gemini style APIs. `lofibot` (or any SDK) can
 point at it and never talk to a provider directly.
 
 It is a **router / protocol adapter**, not a credential harvester. Every
@@ -39,12 +39,12 @@ accounts, or bypass provider quotas.
 
 ## Configure providers
 
-JSON array via `DS_AGENT_GATEWAY_PROVIDERS`. Each entry can reference a built-in
+JSON array via `LOFIBOT_GATEWAY_PROVIDERS`. Each entry can reference a built-in
 `preset` (`deepseek`, `openai`, `openrouter`, `xai`, `moonshot`, `zhipu`,
 `gemini`, `anthropic`) and pull the key from an env var — never committed:
 
 ```bash
-export DS_AGENT_GATEWAY_PROVIDERS='[
+export LOFIBOT_GATEWAY_PROVIDERS='[
   {"id":"deepseek","preset":"deepseek","apiKeyEnv":"DEEPSEEK_API_KEY","priority":10},
   {"id":"magpie","baseUrl":"http://127.0.0.1:3425/v1","apiKey":"magpie","models":["workbuddy/deepseek-v4.1-flash"],"priority":1},
   {"id":"acct","baseUrl":"https://some-subscription.example/v1","apiKeyEnv":"MY_SESSION_TOKEN","auth":"x-api-key","models":["their-model"]}
@@ -56,13 +56,13 @@ Full entry fields: `id`, `preset`, `baseUrl`, `apiKey` / `apiKeyEnv` / `apiKeys`
 `models`, `priority`, `headers`, `timeoutMs`.
 
 With no JSON it falls back to a single provider from
-`DS_AGENT_API_BASE` + `DS_AGENT_API_KEY` (+ optional `DS_AGENT_API_MODEL`), so it
+`LOFIBOT_API_BASE` + `LOFIBOT_API_KEY` (+ optional `LOFIBOT_API_MODEL`), so it
 can wrap the current upstream unchanged.
 
 ### Routing aliases
 
 ```bash
-export DS_AGENT_GATEWAY_ALIASES='{"auto":["deepseek/deepseek-flash","magpie/workbuddy/deepseek-v4.1-flash"]}'
+export LOFIBOT_GATEWAY_ALIASES='{"auto":["deepseek/deepseek-flash","magpie/workbuddy/deepseek-v4.1-flash"]}'
 ```
 
 A request with `model: "auto"` tries the alias entries in order (with failover).
@@ -75,7 +75,7 @@ hold, configure it explicitly — the gateway just forwards your credential:
 
 ```bash
 export MY_SESSION_TOKEN='paste-your-own-token-here'   # or store it in the vault
-export DS_AGENT_GATEWAY_PROVIDERS='[
+export LOFIBOT_GATEWAY_PROVIDERS='[
   {"id":"acct","baseUrl":"https://provider.example/v1","apiKeyEnv":"MY_SESSION_TOKEN","auth":"header","authHeader":"cookie","models":["m"]}
 ]'
 ```
@@ -87,36 +87,36 @@ complying with each provider's terms.
 ## Run it
 
 ```bash
-DS_AGENT_GATEWAY_PROVIDERS=... pnpm ds-agent gateway --port 4319
+LOFIBOT_GATEWAY_PROVIDERS=... pnpm lofibot gateway --port 4319
 # prints the URL; saves <stateDir>/gateway.json and <stateDir>/gateway.token (mode 0600)
 ```
 
-## Point ds-agent at it
+## Point lofibot at it
 
 ```bash
-export DS_AGENT_GATEWAY_URL=http://127.0.0.1:4319
-# token auto-read from DS_AGENT_GATEWAY_TOKEN or <stateDir>/gateway.token
-# model from DS_AGENT_GATEWAY_MODEL or DS_AGENT_API_MODEL (default "auto")
-pnpm ds-agent chat "fix the login timeout"
+export LOFIBOT_GATEWAY_URL=http://127.0.0.1:4319
+# token auto-read from LOFIBOT_GATEWAY_TOKEN or <stateDir>/gateway.token
+# model from LOFIBOT_GATEWAY_MODEL or LOFIBOT_API_MODEL (default "auto")
+pnpm lofibot chat "fix the login timeout"
 ```
 
 `createModelFromEnv()` / `requireLiveModelFromEnv()` prefer the gateway whenever
-`DS_AGENT_GATEWAY_URL` is set, and read the self-issued token automatically — no
+`LOFIBOT_GATEWAY_URL` is set, and read the self-issued token automatically — no
 manual key juggling.
 
-If `<stateDir>/gateway.config.json` exists and `DS_AGENT_GATEWAY_URL` is unset,
-`ds-agent chat` and `ds-agent imessage` start the gateway **in-process** on an
-ephemeral port for the duration of the command — no separate `ds-agent gateway`
+If `<stateDir>/gateway.config.json` exists and `LOFIBOT_GATEWAY_URL` is unset,
+`lofibot chat` and `lofibot imessage` start the gateway **in-process** on an
+ephemeral port for the duration of the command — no separate `lofibot gateway`
 process is needed.
 
 ## Wiring agents and profiles
 
-- `ds-agent wire <file> --set KEY=VALUE [--set ...] [--env]` merges gateway
+- `lofibot wire <file> --set KEY=VALUE [--set ...] [--env]` merges gateway
   settings into any agent's config file (JSON, or `KEY=VALUE` env style), keeping
   unrelated keys and writing atomically. `--env` puts JSON values under `env`
   (Claude Code's `settings.json` shape).
-- `ds-agent profile save <name>` snapshots `gateway.config.json`;
-  `ds-agent profile use <name>` applies it; `profile list` / `profile rm` manage
+- `lofibot profile save <name>` snapshots `gateway.config.json`;
+  `lofibot profile use <name>` applies it; `profile list` / `profile rm` manage
   them (stored in `<stateDir>/gateway.profiles.json`).
 
 ## Endpoints
@@ -144,7 +144,7 @@ process is needed.
   an upstream provider.
 - **Empty token**: the server refuses to start with an empty or whitespace-only
   token. Use the generated `<stateDir>/gateway.token` or pass `--token` /
-  `DS_AGENT_GATEWAY_TOKEN`. A *stale* empty token file is a separate failing
+  `LOFIBOT_GATEWAY_TOKEN`. A *stale* empty token file is a separate failing
   case; see [Token rotation and stale-token troubleshooting](#token-rotation-and-stale-token-troubleshooting).
 - **Token file**: `<stateDir>/gateway.token` is re-checked on every read and
   re-applied as mode `0600` if it was loosened. If the file cannot be secured,
@@ -153,7 +153,7 @@ process is needed.
   are refused. Mode enforcement is POSIX-only — Windows has no POSIX mode bits,
   so the `0600` check is skipped there, while the plain-file checks still run.
 - **Bind exposure**: the gateway listens on `127.0.0.1` by default. Passing a
-  non-loopback `--host` / `DS_AGENT_GATEWAY_HOST` (for example `0.0.0.0`) prints
+  non-loopback `--host` / `LOFIBOT_GATEWAY_HOST` (for example `0.0.0.0`) prints
   an explicit warning: `/health` and the dashboard are **unauthenticated** in
   that mode, so only bind beyond loopback on a trusted, firewalled network.
 - **Headers**: every response carries `X-Content-Type-Options: nosniff`;
@@ -193,12 +193,12 @@ rejected; that is the standing security invariant, not recovery. The server's
 empty-token guard (`src/gateway/server.ts`) is a second line of defense.
 
 The client read path also fails closed. An agent started with
-`DS_AGENT_GATEWAY_URL` set and an existing empty token file propagates the
+`LOFIBOT_GATEWAY_URL` set and an existing empty token file propagates the
 `GatewayTokenFileError` instead of silently falling back to another model
 source, so a truncated token cannot quietly bypass the gateway. An absent token
 file keeps the pre-ADR-009 behavior: gateway configuration is skipped and the
 normal provider resolution (including fallback) applies. An explicit
-`DS_AGENT_GATEWAY_TOKEN` still wins and is checked before the file. Recovery
+`LOFIBOT_GATEWAY_TOKEN` still wins and is checked before the file. Recovery
 must include restarting clients, not just the gateway.
 
 ### Recommended operator action (ADR-009)
@@ -220,12 +220,12 @@ keeps this fail-closed and makes recovery an explicit decision:
    copy, investigate, and rotate any upstream credentials before minting a new
    local token. Do not script unconditional deletion of empty token files.
 5. To start without touching the file, pass `--token` or set
-   `DS_AGENT_GATEWAY_TOKEN`. An explicit token wins and is not persisted
+   `LOFIBOT_GATEWAY_TOKEN`. An explicit token wins and is not persisted
    (`src/gateway/token.ts:162-163`); every client must then be configured with
    it explicitly.
 
 After recovery or rotation, restart clients (or update
-`DS_AGENT_GATEWAY_TOKEN`): a running gateway and a client holding the old token
+`LOFIBOT_GATEWAY_TOKEN`): a running gateway and a client holding the old token
 will get `401`.
 
 ### Rotation
@@ -239,7 +239,7 @@ default (ADR-009 follow-up).
 
 Mirrors Magpie's gateway middleware + router-strategy plugins.
 
-- **Privacy masking** (built-in `redact` plugin): set `DS_AGENT_GATEWAY_MASKING=1` or `"masking": true` in `gateway.config.json`. Secrets/personal data are replaced with stable `{{KIND_hash}}` placeholders before the request leaves this machine, and restored in the reply. Streaming replies are unmasked per SSE event; whole replies are restored as-is.
+- **Privacy masking** (built-in `redact` plugin): set `LOFIBOT_GATEWAY_MASKING=1` or `"masking": true` in `gateway.config.json`. Secrets/personal data are replaced with stable `{{KIND_hash}}` placeholders before the request leaves this machine, and restored in the reply. Streaming replies are unmasked per SSE event; whole replies are restored as-is.
 - **Your own plugins**: drop `.mjs`/`.js` modules in `<stateDir>/gateway-plugins/`; `<stateDir>/gateway.plugins.json` (`{ "plugins": [{ "id": "x", "enabled": true, "options": {} }] }`) selects them.
 - A plugin exports a default object: `{ id, onRequest?, onResponse?, strategies? }`. Hooks fail open (250 ms limit): a throw, a non-object return, or a timeout leaves the body as it was.
 - `strategies` are router orders: `(seats, options) => number[]`. Select one per request with header `X-Gateway-Routing: <name>`. The built-in `rotation` plugin provides `priority` / `smart` / `usage` (least-used first) / `free` (cheapest by provider `cost`) / `fast` (lowest observed latency) / `pace` (most allowance headroom first).

@@ -9,7 +9,7 @@ import { Store } from '../src/store/sqlite.ts'
 const homes: string[] = []
 
 function home(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-inspect-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-inspect-'))
   homes.push(dir)
   return dir
 }
@@ -25,18 +25,18 @@ function run(name: string, state: string, args: string[] = []) {
     {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: { ...process.env, DS_AGENT_HOME: state, NODE_NO_WARNINGS: '1' },
+      env: { ...process.env, LOFIBOT_HOME: state, NODE_NO_WARNINGS: '1' },
     },
   )
 }
 
 function databaseFiles(state: string): string[] {
-  return ['ds-agent.db', 'ds-agent.db-wal', 'ds-agent.db-shm']
+  return ['lofibot.db', 'lofibot.db-wal', 'lofibot.db-shm']
     .filter(file => fs.existsSync(path.join(state, file)))
 }
 
 function databaseHash(state: string): string {
-  return createHash('sha256').update(fs.readFileSync(path.join(state, 'ds-agent.db'))).digest('hex')
+  return createHash('sha256').update(fs.readFileSync(path.join(state, 'lofibot.db'))).digest('hex')
 }
 
 describe('read-only inspect commands', () => {
@@ -87,7 +87,7 @@ describe('read-only inspect commands', () => {
     const state = home()
     const result = run('init', state)
     expect(result.status, result.stderr).toBe(0)
-    expect(databaseFiles(state)).toContain('ds-agent.db')
+    expect(databaseFiles(state)).toContain('lofibot.db')
   })
 
   it('reads an initialized home across inspect commands without changing rows', () => {
@@ -127,7 +127,7 @@ describe('read-only inspect commands', () => {
       const result = run(command, state)
       expect(result.status, `${command}: ${result.stderr}`).toBe(0)
     }
-    expect(fs.existsSync(path.join(state, 'ds-agent.db'))).toBe(true)
+    expect(fs.existsSync(path.join(state, 'lofibot.db'))).toBe(true)
     expect(databaseHash(state)).toBe(before)
 
     const reader = Store.openReadOnly(state)

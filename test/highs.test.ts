@@ -68,13 +68,13 @@ describe('gate and assessment', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const original = runtime.store.listDocs<Ticket>('ticket')[0]!
     expect(runtime.ingest(imTrigger({
       id: 'trg_stop',
       thread: 'topic/bug-login',
-      text: '@ds-agent please stop',
+      text: '@lofibot please stop',
     }))).toBe('stored')
 
     const stopped = runtime.store.getDoc<Ticket>('ticket', original.id)!
@@ -109,7 +109,7 @@ describe('gate and assessment', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/empty',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     expect(runtime.store.listDocs<Ticket>('ticket')).toHaveLength(1)
     expect(runtime.store.listDocs<Decision>('decision').some(item => item.kind === 'accept')).toBe(true)
@@ -178,12 +178,12 @@ describe('spill ACL', () => {
     runtime.ingest(imTrigger({
       id: 'trg_owner',
       thread: 'topic/owner',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     runtime.ingest(imTrigger({
       id: 'trg_other',
       thread: 'topic/other',
-      text: '@ds-agent please fix the payment timeout on checkout',
+      text: '@lofibot please fix the payment timeout on checkout',
     }))
     const tickets = runtime.store.listDocs<Ticket>('ticket')
     const owner = tickets.find(ticket => ticket.originTriggerId === 'trg_owner')!

@@ -76,13 +76,13 @@ function chatDb(dir: string, text = 'TOP SECRET message body'): string {
   return dbPath
 }
 
-function runtime(home = tempDir('ds-agent-channels-home-')): Runtime {
+function runtime(home = tempDir('lofibot-channels-home-')): Runtime {
   const created = Runtime.create({
     home,
     model: new MockModel(),
     jobDelayMs: 0,
     watchdogIntervalMs: 60_000,
-    env: { ...process.env, DS_AGENT_GROUP_ALLOWLIST: 'oc_check' },
+    env: { ...process.env, LOFIBOT_GROUP_ALLOWLIST: 'oc_check' },
   })
   created.start()
   runtimes.push(created)
@@ -100,7 +100,7 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 function bothConfigs(dbPath: string) {
   return resolveServeChannelConfigs(
     [
-      'node', 'ds-agent', 'serve', '--imessage', '--feishu',
+      'node', 'lofibot', 'serve', '--imessage', '--feishu',
       '--handle', '+15550000000', '--db', dbPath, '--chat', 'oc_check', '--since', '1',
     ],
     baseEnv({
@@ -123,7 +123,7 @@ afterEach(async () => {
 
 describe('combined serve channels', () => {
   it('resolves both configurations and keeps independent failure isolation', async () => {
-    const dir = tempDir('ds-agent-channels-both-')
+    const dir = tempDir('lofibot-channels-both-')
     const configs = bothConfigs(path.join(dir, 'chat.db'))
     expect(configs.imessage?.handle).toBe('+15550000000')
     expect(configs.feishu?.chatId).toBe('oc_check')
@@ -182,12 +182,12 @@ describe('combined serve channels', () => {
 
   it('fails closed before Runtime/SQLite when either combined config is missing', () => {
     expect(() => resolveServeChannelConfigs(
-      ['node', 'ds-agent', 'serve', '--imessage', '--feishu', '--chat', 'oc_check'],
+      ['node', 'lofibot', 'serve', '--imessage', '--feishu', '--chat', 'oc_check'],
       baseEnv(),
     )).toThrow(/cannot start both inbound channels[\s\S]*iMessage:[\s\S]*Feishu:/)
 
     expect(() => resolveServeChannelConfigs(
-      ['node', 'ds-agent', 'serve', '--imessage', '--feishu', '--handle', '+15550000000'],
+      ['node', 'lofibot', 'serve', '--imessage', '--feishu', '--handle', '+15550000000'],
       baseEnv({
         FEISHU_APP_ID: 'app',
         FEISHU_APP_SECRET: 'secret',
@@ -196,7 +196,7 @@ describe('combined serve channels', () => {
 
     // A single missing channel keeps the historical, focused error text.
     expect(() => resolveServeChannelConfigs(
-      ['node', 'ds-agent', 'serve', '--imessage'],
+      ['node', 'lofibot', 'serve', '--imessage'],
       baseEnv(),
     )).toThrow(IMESSAGE_ADMISSION_ERROR)
   })
@@ -204,11 +204,11 @@ describe('combined serve channels', () => {
 
 describe('channels check preflight', () => {
   it('reports iMessage metadata, admission, and the manual Automation command without message text', () => {
-    const dir = tempDir('ds-agent-check-imessage-')
+    const dir = tempDir('lofibot-check-imessage-')
     const dbPath = chatDb(dir)
     const result = checkImessageChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--imessage', '--db', dbPath],
-      env: baseEnv({ DS_AGENT_IMESSAGE_HANDLE: '+15550000000' }),
+      argv: ['node', 'lofibot', 'channels', 'check', '--imessage', '--db', dbPath],
+      env: baseEnv({ LOFIBOT_IMESSAGE_HANDLE: '+15550000000' }),
       findExecutable: () => '/usr/bin/osascript',
     })
     const output = result.lines.join('\n')
@@ -223,12 +223,12 @@ describe('channels check preflight', () => {
   })
 
   it('maps a TCC denial to Full Disk Access guidance and never reports ready', () => {
-    const dir = tempDir('ds-agent-check-imessage-tcc-')
+    const dir = tempDir('lofibot-check-imessage-tcc-')
     const dbPath = path.join(dir, 'chat.db')
     fs.writeFileSync(dbPath, '')
     const result = checkImessageChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--imessage', '--db', dbPath],
-      env: baseEnv({ DS_AGENT_IMESSAGE_HANDLE: '+15550000000' }),
+      argv: ['node', 'lofibot', 'channels', 'check', '--imessage', '--db', dbPath],
+      env: baseEnv({ LOFIBOT_IMESSAGE_HANDLE: '+15550000000' }),
       findExecutable: () => '/usr/bin/osascript',
       openDatabase: () => { throw new Error('authorization denied') },
     })
@@ -243,7 +243,7 @@ describe('channels check preflight', () => {
   it('reports missing Feishu credentials without going online', async () => {
     let fetched = false
     const result = await checkFeishuChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--chat', 'oc_check'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--chat', 'oc_check'],
       env: baseEnv(),
       fetchImpl: async () => {
         fetched = true
@@ -261,7 +261,7 @@ describe('channels check preflight', () => {
   it('reports a ready offline Feishu config without printing the app secret', async () => {
     let fetched = false
     const result = await checkFeishuChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--chat', 'oc_check'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--chat', 'oc_check'],
       env: baseEnv({
         FEISHU_APP_ID: 'app',
         FEISHU_APP_SECRET: 'app-secret-value',
@@ -288,7 +288,7 @@ describe('channels check preflight', () => {
   it('checks Feishu credentials with an injected network call and hides the token', async () => {
     let calls = 0
     const result = await checkFeishuChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--chat', 'oc_check', '--network'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--chat', 'oc_check', '--network'],
       env: baseEnv({
         FEISHU_APP_ID: 'app',
         FEISHU_APP_SECRET: 'app-secret-value',
@@ -335,7 +335,7 @@ describe('channels check preflight', () => {
     }
     const env = baseEnv({ FEISHU_APP_ID: 'fixture-app', FEISHU_APP_SECRET: secret, FEISHU_CHAT_ID: chat })
     const tokenOnly = await checkFeishuChannel({
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu'],
       env,
       network: true,
       fetchImpl,
@@ -347,7 +347,7 @@ describe('channels check preflight', () => {
     calls.length = 0
     const probe = await runChannelsCheck({
       channels: ['feishu'],
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--check-chat'],
       env,
       fetchImpl,
     })
@@ -373,7 +373,7 @@ describe('channels check preflight', () => {
       if (input.includes('/im/v1/chats/')) return new Response(JSON.stringify({ code: 0, data: {} }))
       return new Response(JSON.stringify({ code: 0, data: { items: [], has_more: false } }))
     }
-    const base = ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat']
+    const base = ['node', 'lofibot', 'channels', 'check', '--feishu', '--check-chat']
     const empty = await checkFeishuChannel({
       argv: [...base, '--chat', 'oc_empty_fixture'],
       env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret' }),
@@ -400,7 +400,7 @@ describe('channels check preflight', () => {
     const secret = 'credential-fixture-secret'
     const chat = 'oc_error_fixture'
     const common = {
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat', '--chat', chat],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--check-chat', '--chat', chat],
       env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: secret }),
     }
     const tokenCalls: string[] = []
@@ -441,7 +441,7 @@ describe('channels check preflight', () => {
 
   it('reports history denial and bounded probe timeouts without exposing fixture data', async () => {
     const shared = {
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu', '--check-chat', '--chat', 'oc_history_fixture'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu', '--check-chat', '--chat', 'oc_history_fixture'],
       env: baseEnv({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret-fixture' }),
     }
     const denied = await checkFeishuChannel({
@@ -481,19 +481,19 @@ describe('channels check preflight', () => {
   }, 8_000)
 
   it('exits non-zero when any selected channel is not ready', async () => {
-    const dir = tempDir('ds-agent-check-code-')
+    const dir = tempDir('lofibot-check-code-')
     const dbPath = chatDb(dir)
     const ready = await runChannelsCheck({
       channels: ['imessage'],
-      argv: ['node', 'ds-agent', 'channels', 'check', '--imessage', '--db', dbPath],
-      env: baseEnv({ DS_AGENT_IMESSAGE_HANDLE: '+15550000000' }),
+      argv: ['node', 'lofibot', 'channels', 'check', '--imessage', '--db', dbPath],
+      env: baseEnv({ LOFIBOT_IMESSAGE_HANDLE: '+15550000000' }),
       findExecutable: () => '/usr/bin/osascript',
     })
     expect(ready.code).toBe(0)
 
     const notReady = await runChannelsCheck({
       channels: ['feishu'],
-      argv: ['node', 'ds-agent', 'channels', 'check', '--feishu'],
+      argv: ['node', 'lofibot', 'channels', 'check', '--feishu'],
       env: baseEnv(),
     })
     expect(notReady.code).toBe(1)
@@ -528,7 +528,7 @@ describe('channel docs and help', () => {
     const help = spawnSync(
       process.execPath,
       ['--import', 'tsx', 'src/cli/main.ts', '--help'],
-      { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, DS_AGENT_HOME: tempDir('ds-agent-help-') } },
+      { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, LOFIBOT_HOME: tempDir('lofibot-help-') } },
     )
     expect(help.status, help.stderr).toBe(0)
     expect(help.stdout).toContain('channels check')
@@ -542,7 +542,7 @@ describe('channel docs and help', () => {
     const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
     const realChannels = fs.readFileSync(path.join(process.cwd(), 'docs/REAL_CHANNELS.md'), 'utf8')
     const imessage = fs.readFileSync(path.join(process.cwd(), 'docs/IMESSAGE.md'), 'utf8')
-    expect(readme).toContain('ds-agent channels check')
+    expect(readme).toContain('lofibot channels check')
     expect(readme).toContain('serve --imessage --feishu')
     expect(realChannels).toContain('Inbound webhooks')
     expect(realChannels).toContain('long-connection')

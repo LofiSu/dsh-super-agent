@@ -8,7 +8,7 @@ import { LATEST_SCHEMA_VERSION } from '../src/store/schema.ts'
 import { Store } from '../src/store/sqlite.ts'
 import { tempHome } from './fixtures.ts'
 
-const READ_ISOLATION = 'DS_AGENT_SANDBOX_READ_ISOLATION'
+const READ_ISOLATION = 'LOFIBOT_SANDBOX_READ_ISOLATION'
 let previousReadIsolation: string | undefined
 
 describe('health probe', () => {
@@ -99,18 +99,18 @@ describe('health probe', () => {
   it('never serializes secret values from env or vault', () => {
     const home = tempHome()
     const store = new Store(home)
-    const previousKey = process.env.DS_AGENT_API_KEY
+    const previousKey = process.env.LOFIBOT_API_KEY
     const envSecret = 'health-env-sentinel-2f6b'
     const vaultSecret = 'health-vault-sentinel-9c1d'
     try {
-      process.env.DS_AGENT_API_KEY = envSecret
+      process.env.LOFIBOT_API_KEY = envSecret
       fs.writeFileSync(path.join(home, 'vault.json'), JSON.stringify({ TOKEN: vaultSecret }), { mode: 0o600 })
       const serialized = JSON.stringify(healthProbe(store, home))
       expect(serialized).not.toContain(envSecret)
       expect(serialized).not.toContain(vaultSecret)
     } finally {
-      if (previousKey === undefined) delete process.env.DS_AGENT_API_KEY
-      else process.env.DS_AGENT_API_KEY = previousKey
+      if (previousKey === undefined) delete process.env.LOFIBOT_API_KEY
+      else process.env.LOFIBOT_API_KEY = previousKey
       store.close()
     }
   })

@@ -43,17 +43,17 @@ function restArgvRunFiles(home: string): string[] {
 export async function runEvolutionCommand(home: string, argv: string[]): Promise<void> {
   const [sub, ...rest] = argv
   if (!sub || sub === 'help' || sub === '--help') {
-    console.log(`ds-agent evolution — offline controlled self-evolution (strategy tokens v2)
+    console.log(`lofibot evolution — offline controlled self-evolution (strategy tokens v2)
 
-  pnpm ds-agent evolution run [--home <dir>] [--dataset <dir>] [--selector kl-ucb|policy-memory|simplified-greedy]
+  pnpm lofibot evolution run [--home <dir>] [--dataset <dir>] [--selector kl-ucb|policy-memory|simplified-greedy]
     [--no-stop-on-success] [--max-candidates-this-run N]
     kl-ucb: statistical arms only, memory OFF | policy-memory: lesson-guided arms, KL OFF
     simplified-greedy: round-robin arms, memory OFF
-  pnpm ds-agent evolution freeze <candidateId> [--home <dir>] [--run <runId>]
-  pnpm ds-agent evolution finalize <candidateId> [--home <dir>] [--dataset <dir>]
-  pnpm ds-agent evolution approve <runId> <candidateId> [--artifact <path>] [--home <dir>]
-  pnpm ds-agent evolution rollback [--home <dir>]
-  pnpm ds-agent evolution status [--home <dir>]
+  pnpm lofibot evolution freeze <candidateId> [--home <dir>] [--run <runId>]
+  pnpm lofibot evolution finalize <candidateId> [--home <dir>] [--dataset <dir>]
+  pnpm lofibot evolution approve <runId> <candidateId> [--artifact <path>] [--home <dir>]
+  pnpm lofibot evolution rollback [--home <dir>]
+  pnpm lofibot evolution status [--home <dir>]
 
   LABEL: tiny fixture dataset; no general quality guarantee.
   Split C (finaltest) is one-shot sealed; never used during search.`)

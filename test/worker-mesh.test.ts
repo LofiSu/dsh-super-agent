@@ -94,14 +94,14 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
   function meshEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      DS_AGENT_MESH_CAPACITY: '1',
-      DS_AGENT_INSTANCE_ID: 'mesh-test',
+      LOFIBOT_MESH_CAPACITY: '1',
+      LOFIBOT_INSTANCE_ID: 'mesh-test',
       ...extra,
     }
-    delete env.DS_AGENT_ROUTER_MODEL
-    delete env.DS_AGENT_WORKER_MODEL
-    delete env.DS_AGENT_WATCHDOG_MODEL
-    delete env.DS_AGENT_SHARDS
+    delete env.LOFIBOT_ROUTER_MODEL
+    delete env.LOFIBOT_WORKER_MODEL
+    delete env.LOFIBOT_WATCHDOG_MODEL
+    delete env.LOFIBOT_SHARDS
     return env
   }
 
@@ -167,7 +167,7 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
     runtime.engine.receive(imTrigger({
       id: triggerId,
       thread: `topic/${triggerId}`,
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }), { shards: ['default'] })
     const decision = runtime.engine.evaluateDue()[0]
     if (!decision?.ticketId) throw new Error('expected a ticket')
@@ -246,7 +246,7 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
   ): Runtime {
     const runtime = freshRuntime({
       model: orderModel(events, held),
-      env: meshEnv({ DS_AGENT_MESH_CAPACITY: String(capacity) }),
+      env: meshEnv({ LOFIBOT_MESH_CAPACITY: String(capacity) }),
       singleSession: true,
       jobDelayMs: 0,
       watchdogIntervalMs: 60_000,
@@ -294,7 +294,7 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
     runtime.ingest(imTrigger({
       id: 'trg_order_followup',
       thread: 'topic/trg_order_b',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
 
     await expect(settlesWithin(queued, 2_000)).resolves.toBe(true)
@@ -339,7 +339,7 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
     const delivered = runtime.harness.deliver(b.ticketId, imTrigger({
       id: 'trg_direct_followup',
       thread: 'topic/trg_direct_b',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     await expect(settlesWithin(queued, 2_000)).resolves.toBe(true)
     await delivered
@@ -582,7 +582,7 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
   it('rejects a launch from a full queue without throwing or running the Worker', async () => {
     const events: string[] = []
     const held = new Map<string, Gate>()
-    const runtime = start(events, held, { DS_AGENT_MESH_QUEUE: '1' })
+    const runtime = start(events, held, { LOFIBOT_MESH_QUEUE: '1' })
     const a = createTicket(runtime, 'trg_full_a')
     const b = createTicket(runtime, 'trg_full_b')
     const c = createTicket(runtime, 'trg_full_c')

@@ -19,9 +19,9 @@ function prodLikeEnv(root: string, allowNetwork = false): LocalEnv {
     sandbox: { enabled: true, allowNetwork },
     env: {
       PATH: process.env.PATH,
-      DS_AGENT_BASH_ALLOW_NETWORK: allowNetwork ? '1' : '0',
+      LOFIBOT_BASH_ALLOW_NETWORK: allowNetwork ? '1' : '0',
     },
-    allowlist: ['PATH', 'HOME', 'TMPDIR', 'DS_AGENT_BASH_ALLOW_NETWORK'],
+    allowlist: ['PATH', 'HOME', 'TMPDIR', 'LOFIBOT_BASH_ALLOW_NETWORK'],
   })
 }
 
@@ -29,7 +29,7 @@ describe.skipIf(!HAS_BWRAP)('LocalEnv dev workspace (Linux bwrap)', () => {
   let outsideTmp: string
 
   beforeAll(() => {
-    outsideTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-outside-ro-'))
+    outsideTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-outside-ro-'))
   })
 
   it('sleep 8 succeeds with production-like timeout', async () => {

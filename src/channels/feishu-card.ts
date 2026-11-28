@@ -7,7 +7,7 @@ export interface FeishuCardRenderResult {
 }
 
 const TRUNCATION_MARKER = '\n\n---\n**内容已截断；完整记录：'
-const CARD_TITLE = 'ds-agent · 助手 🌱'
+const CARD_TITLE = 'LofiBot · 助手'
 
 /** Markdown structure supported by Feishu's lark_md card text element. */
 export function hasFeishuMarkdownStructure(text: string): boolean {

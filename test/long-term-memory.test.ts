@@ -332,20 +332,20 @@ describe('Long-term memory', () => {
     }
     expect(memoryRetentionFromEnv({})).toEqual(defaults)
     expect(memoryRetentionFromEnv({
-      DS_AGENT_MEMORY_MAX_ENTRIES: '',
-      DS_AGENT_MEMORY_MAX_AGE_DAYS: '  ',
+      LOFIBOT_MEMORY_MAX_ENTRIES: '',
+      LOFIBOT_MEMORY_MAX_AGE_DAYS: '  ',
     })).toEqual(defaults)
     expect(memoryRetentionFromEnv({
-      DS_AGENT_MEMORY_MAX_ENTRIES: 'not-a-number',
-      DS_AGENT_MEMORY_MAX_AGE_DAYS: '-3',
+      LOFIBOT_MEMORY_MAX_ENTRIES: 'not-a-number',
+      LOFIBOT_MEMORY_MAX_AGE_DAYS: '-3',
     })).toEqual(defaults)
-    expect(memoryRetentionFromEnv({ DS_AGENT_MEMORY_MAX_ENTRIES: '1.5' }))
+    expect(memoryRetentionFromEnv({ LOFIBOT_MEMORY_MAX_ENTRIES: '1.5' }))
       .toEqual(defaults)
     expect(memoryRetentionFromEnv({
-      DS_AGENT_MEMORY_MAX_ENTRIES: '0',
-      DS_AGENT_MEMORY_MAX_AGE_DAYS: '0',
-      DS_AGENT_MEMORY_COLD_MAX_ENTRIES: '0',
-      DS_AGENT_MEMORY_COLD_MAX_AGE_DAYS: '0',
+      LOFIBOT_MEMORY_MAX_ENTRIES: '0',
+      LOFIBOT_MEMORY_MAX_AGE_DAYS: '0',
+      LOFIBOT_MEMORY_COLD_MAX_ENTRIES: '0',
+      LOFIBOT_MEMORY_COLD_MAX_AGE_DAYS: '0',
     })).toEqual({ maxEntries: 0, maxAgeDays: 0, coldMaxEntries: 0, coldMaxAgeDays: 0 })
     expect(memoryRetentionFromEnv({}, { maxEntries: 7 }))
       .toEqual({ ...defaults, maxEntries: 7 })

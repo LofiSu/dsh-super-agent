@@ -86,7 +86,7 @@ export function runBatchingStress(
         // human:false keeps same-Thread follow-ups on the Eval queue instead of
         // the subscription bypass, so each round measures batching, not fan-out.
         engine.receive({
-          ...imTrigger({ id, thread, text: `@ds-agent stress request ${id}`, at: now() }),
+          ...imTrigger({ id, thread, text: `@lofibot stress request ${id}`, at: now() }),
           human: false,
         })
         submitted += 1

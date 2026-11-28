@@ -25,6 +25,7 @@ export function defaultCredentialHidePaths(home = os.homedir()): string[] {
     path.join(home, '.claude'),
     path.join(home, '.config', 'claude'),
     '/workspace/ds-agent-notify-secrets',
+    '/workspace/lofibot-notify-secrets',
   ]
 }
 

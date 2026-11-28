@@ -31,7 +31,7 @@ function placedRuntime(): { runtime: Runtime; ticketId: string; assignmentId: st
     instanceId: HOST,
     singleSession: true,
     jobDelayMs: 0,
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_INSTANCE_ID: HOST },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_INSTANCE_ID: HOST },
     model: silentModel(),
   })
   runtime.placement.registerRemoteNode({
@@ -45,7 +45,7 @@ function placedRuntime(): { runtime: Runtime; ticketId: string; assignmentId: st
   runtimes.push(runtime)
 
   runtime.engine.receive(
-    imTrigger({ id: 'trg_ended', thread: 'topic/trg_ended', text: '@ds-agent fix the checkout timeout' }),
+    imTrigger({ id: 'trg_ended', thread: 'topic/trg_ended', text: '@lofibot fix the checkout timeout' }),
     { shards: ['default'] },
   )
   const ticketId = runtime.engine.evaluateDue()[0]?.ticketId ?? ''

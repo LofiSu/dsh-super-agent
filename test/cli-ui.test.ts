@@ -48,16 +48,16 @@ afterEach(async () => {
 })
 
 function tempHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-ui-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-ui-'))
 }
 
 function databaseFiles(home: string): string[] {
-  return ['ds-agent.db', 'ds-agent.db-wal', 'ds-agent.db-shm']
+  return ['lofibot.db', 'lofibot.db-wal', 'lofibot.db-shm']
     .filter(file => fs.existsSync(path.join(home, file)))
 }
 
 function databaseHash(home: string): string {
-  return createHash('sha256').update(fs.readFileSync(path.join(home, 'ds-agent.db'))).digest('hex')
+  return createHash('sha256').update(fs.readFileSync(path.join(home, 'lofibot.db'))).digest('hex')
 }
 
 interface Response {
@@ -295,8 +295,8 @@ describe('local UI server', () => {
       cwd: process.cwd(),
       env: {
         ...process.env,
-        DS_AGENT_HOME: home,
-        DS_AGENT_UI_TOKEN: TOKEN,
+        LOFIBOT_HOME: home,
+        LOFIBOT_UI_TOKEN: TOKEN,
         NODE_NO_WARNINGS: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -340,7 +340,7 @@ describe('local UI server', () => {
     expect(response.headers['x-content-type-options']).toBe('nosniff')
     expect(String(response.headers['content-security-policy'])).toBe(HTML_CSP)
 
-    expect(response.body).toContain('ds-agent local ui')
+    expect(response.body).toContain('LofiBot Dashboard')
     expect(response.body).toContain('&lt;script&gt;alert(&quot;escaped&quot;)&lt;/script&gt; &amp; &quot;quoted&quot;')
     expect(response.body).not.toContain(TITLE)
     expect(response.body).toContain('tkt_ui_1')
@@ -716,7 +716,7 @@ describe('local UI server', () => {
       fs.rmSync(home, { recursive: true, force: true })
     })
 
-    vi.stubEnv('DS_AGENT_UI_TOKEN', '')
+    vi.stubEnv('LOFIBOT_UI_TOKEN', '')
     await expect(runUi(home, { token: '' })).rejects.toThrow(/requires a token/)
     await expect(runUi(home, { token: 'short-token' })).rejects.toThrow(/at least 16/)
     await expect(
@@ -744,10 +744,10 @@ describe('local UI server', () => {
     const before = databaseHash(home)
     cleanup.push(() => { fs.rmSync(home, { recursive: true, force: true }) })
     const entry = new URL('../src/cli/ui.ts', import.meta.url).href
-    const script = `import { runUi } from ${JSON.stringify(entry)}; await runUi(process.env.DS_AGENT_UI_HOME, { port: 0 })`
+    const script = `import { runUi } from ${JSON.stringify(entry)}; await runUi(process.env.LOFIBOT_UI_HOME, { port: 0 })`
     const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
       cwd: process.cwd(),
-      env: { ...process.env, DS_AGENT_UI_TOKEN: TOKEN, DS_AGENT_UI_HOME: home },
+      env: { ...process.env, LOFIBOT_UI_TOKEN: TOKEN, LOFIBOT_UI_HOME: home },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''

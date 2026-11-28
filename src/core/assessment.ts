@@ -8,9 +8,9 @@ export type AssessmentCommand = 'unavailable' | 'stop' | 'ignore'
  * Commands that must reach Eval even on a subscribed thread.
  * Anchored so a later "please fix" is not treated as a stop or an ignore.
  */
-const UNAVAILABLE = /^(?:@ds-agent\s+)?(?:please\s+)?(?:assessment unavailable|model unavailable|cannot assess)\b/i
-const STOP = /^(?:@ds-agent\s+)?(?:please\s+)?(?:stop|cancel|abort)\b/i
-const IGNORE = /^(?:@ds-agent\s+)?(?:please\s+)?(?:ignore this|no action needed|fyi only)\b/i
+const UNAVAILABLE = /^(?:@lofibot\s+)?(?:please\s+)?(?:assessment unavailable|model unavailable|cannot assess)\b/i
+const STOP = /^(?:@lofibot\s+)?(?:please\s+)?(?:stop|cancel|abort)\b/i
+const IGNORE = /^(?:@lofibot\s+)?(?:please\s+)?(?:ignore this|no action needed|fyi only)\b/i
 
 export function commandOf(text: string): AssessmentCommand | null {
   const line = text.trim()

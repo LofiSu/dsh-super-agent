@@ -1,6 +1,6 @@
 # 领域对齐：以《从零打造 Personal Agent（三）》为准
 
-本文记录本仓（`ds-agent` / `deepseek-super-agent`）相对该文的**命名与实现偏差**，以及已经落地的修正。文章的领域模型以 DeepSeek `dsh-superagent-prototype` 的公开文档为参照；本仓是独立 MIT 实现。
+本文记录本仓（`lofibot` / `LofiBot`）相对该文的**命名与实现偏差**，以及已经落地的修正。文章的领域模型以 DeepSeek `dsh-superagent-prototype` 的公开文档为参照；本仓是独立 MIT 实现。
 
 > 一句话：**计划里的 Harness / Store / Watchdog 骨架可以保留；但“谁研判、谁执行、订阅是什么、Ticket 什么时候结束”必须按这篇文章改。**
 
@@ -18,7 +18,7 @@
 | `Replies.send` 总是用 `ticket.channels[0]` | **Channel 是 Thread 的写入侧** | 回复可按 `threadKey` 选择正确 Channel |
 | failed report 直接结束 Ticket | **失败结束 Assignment，Ticket 可重试** | 已改为 failed/blocked/waiting 只结束 Assignment；新增 `retry` |
 | Outbox 失败即 `failed` | **保留结果、重试交付、幂等** | 已加 attempts / backoff / idempotencyKey / sending 恢复 |
-| 没有 Panel | **Panel + Execution** | 新增 `executionView()` 与 `ds-agent panel` |
+| 没有 Panel | **Panel + Execution** | 新增 `executionView()` 与 `lofibot panel` |
 | `tasks` 的状态字符串 | **Open/Pending/Working/Waiting for a Trigger/Ended…** | 新增 `executionState()` 作为规范状态 |
 
 ## 2. 文章要求 vs 修正前实现
@@ -90,12 +90,12 @@
 
 ### 2.7 缺少 Panel
 
-文章把 Panel/Execution 列为三件套之一。修正前只有 `ds-agent tasks` 的零星状态。
+文章把 Panel/Execution 列为三件套之一。修正前只有 `lofibot tasks` 的零星状态。
 
 现在：
 - `src/core/panel.ts` 的 `executionView()` 输出：Ticket、规范状态、Mandate、Executor Session、目录、最近 Report、订阅、Outbox 计数。
-- `ds-agent panel`（别名 `execution`）按“需要人处理优先”排序。
-- `ds-agent retry <ticketId>` 在同一个 Ticket 上创建新 Assignment。
+- `lofibot panel`（别名 `execution`）按“需要人处理优先”排序。
+- `lofibot retry <ticketId>` 在同一个 Ticket 上创建新 Assignment。
 
 ## 3. 仍然存在的缺口（不要当成已实现）
 
@@ -110,7 +110,7 @@
 
 ```bash
 pnpm typecheck
-DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run \
+LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run \
   test/domain-alignment.test.ts test/subscription.test.ts test/outbox.test.ts \
   test/highs.test.ts test/ports.test.ts test/router-sequence.test.ts
 ```

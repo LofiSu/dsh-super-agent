@@ -120,9 +120,9 @@ check(
   `compare ${distEvalChild}`,
 )
 
-const binTarget = pkg.bin?.['ds-agent']
+const binTarget = pkg.bin?.['lofibot']
 check(
-  'package.json bin.ds-agent targets dist/cli/main.js',
+  'package.json bin.lofibot targets dist/cli/main.js',
   binTarget === './dist/cli/main.js',
   `got ${JSON.stringify(binTarget)}`,
 )
@@ -132,7 +132,7 @@ const help = run('node', [distEntry, '--help'])
 check('node dist/cli/main.js --help exits 0', help.status === 0, help.output)
 check(
   'help prints usage text',
-  help.output.includes('ds-agent') && help.output.includes('ds-agent init'),
+  help.output.includes('lofibot') && help.output.includes('lofibot init'),
   help.output.slice(0, 200),
 )
 

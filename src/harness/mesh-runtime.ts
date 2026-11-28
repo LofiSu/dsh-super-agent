@@ -8,12 +8,12 @@ function parseCapabilitiesCsv(raw: string | undefined): string[] {
   return [...new Set(raw.split(',').map(s => s.trim()).filter(s => s.length > 0))]
 }
 
-/** Required remote worker capabilities for placement (`DS_AGENT_MESH_REQUIRED_CAPABILITIES`). */
+/** Required remote worker capabilities for placement (`LOFIBOT_MESH_REQUIRED_CAPABILITIES`). */
 export function requiredMeshCapabilities(env: NodeJS.ProcessEnv): string[] {
-  return parseCapabilitiesCsv(env.DS_AGENT_MESH_REQUIRED_CAPABILITIES)
+  return parseCapabilitiesCsv(env.LOFIBOT_MESH_REQUIRED_CAPABILITIES)
 }
 
-/** One remote peer from `DS_AGENT_REMOTE_MESH` JSON. Secrets stay env-local only. */
+/** One remote peer from `LOFIBOT_REMOTE_MESH` JSON. Secrets stay env-local only. */
 export interface RemoteMeshEnvNode {
   id: string
   url: string
@@ -27,9 +27,9 @@ function nonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-/** Parse `DS_AGENT_REMOTE_MESH` (JSON array). Malformed config logs and yields []. */
+/** Parse `LOFIBOT_REMOTE_MESH` (JSON array). Malformed config logs and yields []. */
 export function parseRemoteMeshNodesFromEnv(env: NodeJS.ProcessEnv): RemoteMeshEnvNode[] {
-  const raw = env.DS_AGENT_REMOTE_MESH?.trim()
+  const raw = env.LOFIBOT_REMOTE_MESH?.trim()
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as unknown

@@ -33,7 +33,7 @@ const T0 = Date.parse('2026-11-05T10:00:00.000Z')
 const MIN = 60_000
 
 function setup(): { home: string; store: Store; index: ConnectorIndex } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-connectors-wake-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-connectors-wake-'))
   homes.push(home)
   const store = new Store(home)
   stores.push(store)
@@ -187,7 +187,7 @@ async function seedFeishuPollTrigger(
             message_id: 'om_polled_owner',
             chat_id: 'oc_owner',
             msg_type: 'text',
-            body: { content: JSON.stringify({ text: '@ds-agent please investigate this issue' }) },
+            body: { content: JSON.stringify({ text: '@lofibot please investigate this issue' }) },
             create_time: String(T0 - 60 * MIN),
             sender: { id: options.actor ?? 'ou_owner', sender_type: 'user' },
           }],
@@ -204,8 +204,8 @@ async function seedFeishuPollTrigger(
   const [trigger] = await source.pull()
   if (!trigger) throw new Error('expected a Feishu poll trigger')
   const rules = admissionRulesFromEnv({
-    DS_AGENT_GROUP_ALLOWLIST: options.allowedGroup ?? 'oc_owner',
-    DS_AGENT_ACTOR_ALLOWLIST: options.allowedActor ?? 'ou_owner',
+    LOFIBOT_GROUP_ALLOWLIST: options.allowedGroup ?? 'oc_owner',
+    LOFIBOT_ACTOR_ALLOWLIST: options.allowedActor ?? 'ou_owner',
   })
   const verdict = filterTrigger(trigger, { name: 'test-rules', classify: ruleClassify }, rules)
   store.putDoc('trigger', trigger.id, trigger)
@@ -527,7 +527,7 @@ describe('connector wake scheduler', () => {
         store,
         index,
         api: fakeApi([event]),
-        env: directMode ? { DS_AGENT_FEISHU_P2P_DIRECT: '1' } : {},
+        env: directMode ? { LOFIBOT_FEISHU_P2P_DIRECT: '1' } : {},
         config: {
           google: { services: ['gmail'] },
           wake: {

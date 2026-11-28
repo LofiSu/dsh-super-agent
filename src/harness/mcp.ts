@@ -132,7 +132,7 @@ export class McpToolSource implements McpToolSourceLike {
 
   constructor(configs: McpServerConfig[], private readonly deps: McpToolSourceDeps) {
     for (const config of configs) {
-      const client = new Client({ name: `ds-agent-${config.name}`, version: '0.1.0' })
+      const client = new Client({ name: `lofibot-${config.name}`, version: '0.1.0' })
       this.connections.push({ config, client, ready: this.connect(config, client) })
     }
   }

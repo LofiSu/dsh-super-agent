@@ -1,6 +1,6 @@
 # Container profile for workers
 
-This document gives a **host-side** container profile for running ds-agent or
+This document gives a **host-side** container profile for running lofibot or
 its worker execution with a default-deny read surface. It is not a second
 sandbox implementation inside the product.
 
@@ -23,13 +23,13 @@ Every worker `bash` call is wrapped:
   worker workspace and `/tmp`, and denies network unless `allowNetwork` is
   set.
 - Linux: `bubblewrap` (`bwrap`). The compatibility profile uses
-  `--ro-bind / /`; `DS_AGENT_SANDBOX_READ_ISOLATION=strict` binds only system
+  `--ro-bind / /`; `LOFIBOT_SANDBOX_READ_ISOLATION=strict` binds only system
   roots, `/dev`, `/proc`, `/tmp`, and the worker workspace.
 - If the wrapper is missing, the call fails. There is no unsandboxed fallback.
 
-`DS_AGENT_SANDBOX_READ_ISOLATION=strict` is opt-in. It refuses `/` and an
+`LOFIBOT_SANDBOX_READ_ISOLATION=strict` is opt-in. It refuses `/` and an
 entire home directory as read roots. In strict mode a worker cannot read
-`<stateDir>/ds-agent.db`; in the default compatibility mode it can, because
+`<stateDir>/lofibot.db`; in the default compatibility mode it can, because
 both platforms still allow broad reads. That is exactly the gap this
 container profile closes at the host boundary.
 
@@ -57,17 +57,17 @@ RUN corepack enable && pnpm install --frozen-lockfile --prod=false
 COPY --chown=worker:worker dist ./dist
 
 USER 10001:10001
-ENV DS_AGENT_HOME=/state
+ENV LOFIBOT_HOME=/state
 ENTRYPOINT ["node", "dist/cli/main.js"]
 ```
 
 Run the agent with a read-only root filesystem and no network:
 
 ```bash
-docker volume create ds-agent-state
+docker volume create lofibot-state
 
 docker run --rm -it \
-  --name ds-agent-worker \
+  --name lofibot-worker \
   --user 10001:10001 \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
@@ -76,10 +76,10 @@ docker run --rm -it \
   --security-opt=no-new-privileges \
   --pids-limit=256 \
   --memory=1g \
-  --mount type=volume,src=ds-agent-state,dst=/state \
-  -e DS_AGENT_HOME=/state \
-  -e DS_AGENT_SANDBOX_READ_ISOLATION=strict \
-  ds-agent:local tasks
+  --mount type=volume,src=lofibot-state,dst=/state \
+  -e LOFIBOT_HOME=/state \
+  -e LOFIBOT_SANDBOX_READ_ISOLATION=strict \
+  lofibot:local tasks
 ```
 
 Properties:
@@ -122,7 +122,7 @@ Worker bash must find and be allowed to use bubblewrap:
 docker run --rm --network none --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,nodev \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  --user 10001:10001 ds-agent:local \
+  --user 10001:10001 lofibot:local \
   bwrap --ro-bind / / --unshare-net -- /bin/true
 ```
 
@@ -134,9 +134,9 @@ that permits `bwrap`, rather than disabling the per-command sandbox.
 Useful checks from the host:
 
 ```bash
-docker inspect ds-agent-worker --format '{{.HostConfig.ReadonlyRootfs}}'
-docker inspect ds-agent-worker --format '{{.HostConfig.NetworkMode}}'
-docker inspect ds-agent-worker --format '{{.Config.User}}'
+docker inspect lofibot-worker --format '{{.HostConfig.ReadonlyRootfs}}'
+docker inspect lofibot-worker --format '{{.HostConfig.NetworkMode}}'
+docker inspect lofibot-worker --format '{{.Config.User}}'
 ```
 
 Expected: `true`, `none`, and `10001:10001`.
@@ -151,6 +151,6 @@ Expected: `true`, `none`, and `10001:10001`.
 - A writable state volume contains prompts, messages, replies, and spill
   bodies. Back it up with the WAL-safe procedure in
   [UPGRADE.md](./UPGRADE.md), and treat the backup as sensitive data.
-- Without `DS_AGENT_SANDBOX_READ_ISOLATION=strict`, the in-process worker
+- Without `LOFIBOT_SANDBOX_READ_ISOLATION=strict`, the in-process worker
   sandbox still permits broad reads inside the container, including the state
   volume.

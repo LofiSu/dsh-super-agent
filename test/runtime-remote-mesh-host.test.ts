@@ -46,14 +46,14 @@ function spawnWorker(workerHome: string, hostResultUrl: string, extra: NodeJS.Pr
       cwd: process.cwd(),
       env: {
         ...process.env,
-        DS_AGENT_HOME: workerHome,
+        LOFIBOT_HOME: workerHome,
         NODE_NO_WARNINGS: '1',
-        DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-        DS_AGENT_MESH_WORKER_MARKER: marker,
-        DS_AGENT_MESH_HOST_RESULT_URL: hostResultUrl,
-        DS_AGENT_MESH_WORKER_PEER_ID: WORKER_PEER,
-        DS_AGENT_MESH_HOST_PEER_ID: HOST_PEER,
-        DS_AGENT_MESH_SECRET: SECRET,
+        LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+        LOFIBOT_MESH_WORKER_MARKER: marker,
+        LOFIBOT_MESH_HOST_RESULT_URL: hostResultUrl,
+        LOFIBOT_MESH_WORKER_PEER_ID: WORKER_PEER,
+        LOFIBOT_MESH_HOST_PEER_ID: HOST_PEER,
+        LOFIBOT_MESH_SECRET: SECRET,
         ...extra,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -100,7 +100,7 @@ async function bindRemoteWorker(
   const hostResultUrl = `http://127.0.0.1:${address.port}/a2a`
   const workerHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-mesh-worker-'))
   homes.push(workerHome)
-  spawnWorker(workerHome, hostResultUrl, workerMode ? { DS_AGENT_MESH_WORKER_MODE: workerMode } : {})
+  spawnWorker(workerHome, hostResultUrl, workerMode ? { LOFIBOT_MESH_WORKER_MODE: workerMode } : {})
   const workerUrl = await waitForWorkerUrl(workerHome)
   runtime.placement.registerRemoteNode({
     id: REMOTE_NODE_ID,
@@ -124,9 +124,9 @@ function meshRuntime(home: string, model: ScriptedModel, remoteResultTimeoutMs: 
     stuckMs: 600_000,
     env: {
       ...process.env,
-      DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
-      DS_AGENT_MESH_CAPACITY: '1',
-      DS_AGENT_INSTANCE_ID: HOST_PEER,
+      LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
+      LOFIBOT_MESH_CAPACITY: '1',
+      LOFIBOT_INSTANCE_ID: HOST_PEER,
     },
   })
 }
@@ -159,7 +159,7 @@ function createTicket(runtime: Runtime, slug: string): string {
   runtime.engine.receive(imTrigger({
     id: `trg_${slug}`,
     thread: `topic/${slug}`,
-    text: '@ds-agent fix checkout',
+    text: '@lofibot fix checkout',
   }), { shards: ['default'] })
   const decision = runtime.engine.evaluateDue()[0]
   if (!decision?.ticketId) throw new Error('expected ticket')

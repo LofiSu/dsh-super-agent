@@ -351,24 +351,24 @@ export class HttpOpenAI implements Model, SemanticPolicy {
 }
 
 function timeoutFromEnv(env: NodeJS.ProcessEnv): number {
-  const raw = Number(env.DS_AGENT_API_TIMEOUT_MS)
+  const raw = Number(env.LOFIBOT_API_TIMEOUT_MS)
   return Number.isFinite(raw) && raw > 0 ? raw : 60_000
 }
 
 /**
- * A local gateway takes priority when `DS_AGENT_GATEWAY_URL` is set. The bearer
- * token comes from `DS_AGENT_GATEWAY_TOKEN` or the gateway's persisted 0600
+ * A local gateway takes priority when `LOFIBOT_GATEWAY_URL` is set. The bearer
+ * token comes from `LOFIBOT_GATEWAY_TOKEN` or the gateway's persisted 0600
  * token file, so the agent reuses the gateway's self-issued token automatically.
  */
 function gatewayApiFromEnv(env: NodeJS.ProcessEnv): { base: string; apiKey: string; model: string } | undefined {
-  const raw = env.DS_AGENT_GATEWAY_URL?.trim()
+  const raw = env.LOFIBOT_GATEWAY_URL?.trim()
   if (!raw) return undefined
   const trimmed = raw.replace(/\/+$/, '')
   const base = trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
-  const home = env.DS_AGENT_HOME?.trim() || path.join(process.cwd(), '.ds-agent')
-  const token = env.DS_AGENT_GATEWAY_TOKEN?.trim() || readGatewayToken(home)
+  const home = env.LOFIBOT_HOME?.trim() || path.join(process.cwd(), '.lofibot')
+  const token = env.LOFIBOT_GATEWAY_TOKEN?.trim() || readGatewayToken(home)
   if (!token) return undefined
-  const model = env.DS_AGENT_GATEWAY_MODEL?.trim() || env.DS_AGENT_API_MODEL?.trim() || 'auto'
+  const model = env.LOFIBOT_GATEWAY_MODEL?.trim() || env.LOFIBOT_API_MODEL?.trim() || 'auto'
   return { base, apiKey: token, model }
 }
 
@@ -383,7 +383,7 @@ export function createModelFromEnv(env: NodeJS.ProcessEnv = process.env): Model 
 
 /**
  * Per-role model ids (T07/T10). The Router can run a lighter model than the Worker.
- * Only creates a client when the corresponding DS_AGENT_*_MODEL id is set; otherwise
+ * Only creates a client when the corresponding LOFIBOT_*_MODEL id is set; otherwise
  * the runtime keeps one model for every role.
  */
 export function roleModelsFromEnv(
@@ -400,9 +400,9 @@ export function roleModelsFromEnv(
   }
   if (!live) return {}
   const ids: Record<Role, string | undefined> = {
-    router: env.DS_AGENT_ROUTER_MODEL,
-    worker: env.DS_AGENT_WORKER_MODEL,
-    watchdog: env.DS_AGENT_WATCHDOG_MODEL,
+    router: env.LOFIBOT_ROUTER_MODEL,
+    worker: env.LOFIBOT_WORKER_MODEL,
+    watchdog: env.LOFIBOT_WATCHDOG_MODEL,
   }
   const models: Partial<Record<Role, Model>> = {}
   for (const role of ['router', 'worker', 'watchdog'] as const) {

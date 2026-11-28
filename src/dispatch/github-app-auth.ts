@@ -124,7 +124,7 @@ async function fetchGithubJson<T>(urlPath: string, opts: FetchJsonOpts): Promise
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
     Authorization: `Bearer ${opts.bearer}`,
-    'User-Agent': 'ds-agent-github-app-auth',
+    'User-Agent': 'lofibot-github-app-auth',
   }
   let body: string | undefined
   if (opts.body !== undefined) {

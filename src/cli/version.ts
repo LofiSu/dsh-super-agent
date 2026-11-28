@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
  * Read the version of the package that owns the running CLI.
  *
  * Walks up from this module's directory until it finds a `package.json` whose
- * `name` is `ds-agent`. That works both from `tsx src/cli/main.ts` (repo root
+ * `name` is `lofibot`. That works both from `tsx src/cli/main.ts` (repo root
  * two levels up) and from `node dist/cli/main.js` after `pnpm build` (the
  * package root two levels up), including a globally installed tarball.
  *
@@ -19,9 +19,9 @@ export function readPackageVersion(moduleUrl: string = import.meta.url): string 
     const candidate = path.join(dir, 'package.json')
     if (existsSync(candidate)) {
       const pkg = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: unknown; version?: unknown }
-      if (pkg.name === 'ds-agent') {
+      if (pkg.name === 'lofibot') {
         if (typeof pkg.version !== 'string' || pkg.version.length === 0) {
-          throw new Error(`ds-agent version unavailable: package.json at ${candidate} has no version`)
+          throw new Error(`lofibot version unavailable: package.json at ${candidate} has no version`)
         }
         return pkg.version
       }
@@ -30,5 +30,5 @@ export function readPackageVersion(moduleUrl: string = import.meta.url): string 
     if (parent === dir) break
     dir = parent
   }
-  throw new Error('ds-agent version unavailable: no package.json named "ds-agent" above the CLI entry')
+  throw new Error('lofibot version unavailable: no package.json named "lofibot" above the CLI entry')
 }

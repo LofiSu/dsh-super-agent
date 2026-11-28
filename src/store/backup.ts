@@ -26,7 +26,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { UserError } from '../shared/errors.ts'
 import { LATEST_SCHEMA_VERSION } from './schema.ts'
 
-export const STORE_DB_FILE = 'ds-agent.db'
+export const STORE_DB_FILE = 'lofibot.db'
 
 /**
  * Directories under the state home reserved for spill/scratch data. A backup
@@ -70,7 +70,7 @@ export interface BackupStoreOptions {
 
 export interface RestoreStoreOptions {
   /**
-   * Replace an existing `ds-agent.db`. Without it, restore refuses when a
+   * Replace an existing `lofibot.db`. Without it, restore refuses when a
    * store is present. The old database and its WAL sidecars are moved to
    * `<home>/backups/pre-restore-<timestamp>.db*` before installation.
    */
@@ -300,7 +300,7 @@ export function backupStore(
 
   if (!fs.existsSync(dbPath)) {
     throw new UserError(
-      `no store at ${dbPath}; run "ds-agent init" before backing up`,
+      `no store at ${dbPath}; run "lofibot init" before backing up`,
     )
   }
 
@@ -321,7 +321,7 @@ export function backupStore(
     if (schemaVersion > LATEST_SCHEMA_VERSION) {
       throw new UserError(
         `store schema version ${schemaVersion} is newer than this build supports `
-        + `(${LATEST_SCHEMA_VERSION}); upgrade ds-agent before backing up this store`,
+        + `(${LATEST_SCHEMA_VERSION}); upgrade lofibot before backing up this store`,
       )
     }
 
@@ -380,7 +380,7 @@ export function backupStore(
 /**
  * Fail if another connection currently holds a write lock on `target`.
  *
- * This is a best-effort probe. A running ds-agent process that is idle can
+ * This is a best-effort probe. A running lofibot process that is idle can
  * hold no lock at the instant checked, so the operator must still stop the
  * process before calling restore.
  */
@@ -397,7 +397,7 @@ function assertNoActiveWriter(target: string): void {
     const message = errorMessage(error)
     if (/locked|busy/i.test(message)) {
       throw new UserError(
-        `store at ${target} is locked by another process; stop the running ds-agent process before restoring`,
+        `store at ${target} is locked by another process; stop the running lofibot process before restoring`,
       )
     }
     // An unreadable or corrupt target is exactly what restore is meant to
@@ -573,7 +573,7 @@ export function restoreStore(
   if (schemaVersion > LATEST_SCHEMA_VERSION) {
     throw new UserError(
       `backup schema version ${schemaVersion} is newer than this build supports `
-      + `(${LATEST_SCHEMA_VERSION}); upgrade ds-agent before restoring this backup`,
+      + `(${LATEST_SCHEMA_VERSION}); upgrade lofibot before restoring this backup`,
     )
   }
 
@@ -581,7 +581,7 @@ export function restoreStore(
   if (targetExists && !force) {
     throw new UserError(
       `store already exists at ${target}; restoring replaces it. `
-      + 'Stop the ds-agent process and re-run with --force; the old database and '
+      + 'Stop the lofibot process and re-run with --force; the old database and '
       + `WAL sidecars are moved to ${path.join(homePath, 'backups')} first`,
     )
   }
