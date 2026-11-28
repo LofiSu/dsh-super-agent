@@ -127,3 +127,31 @@ LofiBot 的常驻运行时使用已有 Daemon 心跳。配置可用模型时默�
 旧版在工单结束和 Router 判定时生成 `ltm` 快照，再以标题、线程及可选向量相似度检索，并把命中的摘要注入任务。可预测的工单回顾适合这种机制。用户习惯、规则纠正、跨会话综合和受控晋升更适合 Anthropic 的记忆架构，因此生产运行时改用后者。
 
 Ticket、Decision、Thread、对象引用和 spill 继续记录可追溯的事实。旧版 `ltm` 快照通过 `memory archive` 查阅。运行时只有一条长期知识路径。模型可以维护笔记，后台整理把原始用户证据与已发布页面合并，下一次任务从同一作用域装载入口。延后判定和主动回访也从这套已发布记忆取用数据。
+
+## 公开工单验收
+
+以下验收根据公开 PR 重建输入。场景保留原故障的技术约束，使用替代的消息、身份和标识。测试使用隔离的 SQLite，涉及 Feishu、iMessage 和连接器的场景也在本地重放。
+
+| 公开案例 | 回归检查 |
+| --- | --- |
+| [#188](https://github.com/LofiSu/LofiBot/pull/188) | 直聊 Router 能在 Worker 启动前保存并复用证据，另一个直聊隔离 |
+| [#184](https://github.com/LofiSu/LofiBot/pull/184) | 过时的消息和整理草稿不能覆盖用户更正 |
+| [#198](https://github.com/LofiSu/LofiBot/pull/198) | 证据跨多个批次时，重启从持久检查点继续处理 |
+| [#90](https://github.com/LofiSu/LofiBot/pull/90) · [#107](https://github.com/LofiSu/LofiBot/pull/107) | iMessage 群聊和直聊的相似身份保持隔离，退订的线程不能借用原记忆域 |
+| [#174](https://github.com/LofiSu/LofiBot/pull/174) | 定时信号、助手陈述和脱敏内容无法作为新的用户依据 |
+| [#124](https://github.com/LofiSu/LofiBot/pull/124) | 两个 SQLite 实例竞争同一记忆域时，只产生一次发布 |
+| [#131](https://github.com/LofiSu/LofiBot/pull/131) | 在线备份恢复后，既有笔记和处理进度可以一起读回 |
+| [#99](https://github.com/LofiSu/LofiBot/pull/99) | Worker 失败后保持同域证据顺序，独立记忆域继续处理 |
+| [#185](https://github.com/LofiSu/LofiBot/pull/185) | 暂停后的人为纠正能够进入退出整理，重启后可读 |
+| [#112](https://github.com/LofiSu/LofiBot/pull/112) · [#204](https://github.com/LofiSu/LofiBot/pull/204) | 历史快照仍可用归档命令查看，当前索引和模型证据保持分离 |
+
+```bash
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm run test test/memory-real-cases.test.ts
+```
+
+以上测试使用确定性模型替身，验证运行时、工具、SQLite、事务和作用域。设置可用的模型配置后，下面的命令把同一批公开故障模式的重建消息交给真实模型，检查跨会话整理后的知识更正、索引和隔离。脚本使用临时状态库，每个场景输出判定结果。
+
+```bash
+node --import tsx scripts/memory-live-acceptance.ts
+node --import tsx scripts/memory-live-acceptance.ts 1 4
+```
