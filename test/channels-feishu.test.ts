@@ -1283,6 +1283,53 @@ describe('Feishu Markdown card outbox formatting', () => {
     })
   })
 
+  it('skips Feishu when a single text acceptance was persisted before the caller lost the result', async () => {
+    await withFormat('text', async () => {
+      const { fn, calls } = fakeFetch(url => url.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        : { body: { code: 0, data: { message_id: 'text_accepted' } } })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const row = makeRow('short accepted text', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' })
+      let durableTarget = row.target
+      const firstResult = await adapter.sendWithProgress(row, target => { durableTarget = target })
+      const retryResult = await adapter.sendWithProgress({ ...row, target: durableTarget }, target => { durableTarget = target })
+
+      expect(retryResult.externalId).toBe(firstResult.externalId)
+      expect(JSON.parse(durableTarget.__ds_feishu_text_progress ?? '{}')).toMatchObject({
+        nextChunk: 1,
+        total: 1,
+        firstExternalId: firstResult.externalId,
+      })
+      expect(sentCalls(calls)).toHaveLength(1)
+      expect(sentCalls(calls)[0]?.url).toContain('/om_source/reply')
+    })
+  })
+
+  it('skips Feishu when an interactive card acceptance was persisted before the caller lost the result', async () => {
+    await withFormat(undefined, async () => {
+      const calls: { url: string; body: Record<string, unknown> }[] = []
+      const { fn } = fakeFetch((url, init) => {
+        if (url.includes('tenant_access_token')) return { body: { code: 0, tenant_access_token: 'tok', expire: 7200 } }
+        calls.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+        return { body: { code: 0, data: { message_id: `card_${calls.length}` } } }
+      })
+      const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
+      const row = makeRow('## Structured\n- body', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' })
+      let durableTarget = row.target
+      const firstResult = await adapter.sendWithProgress(row, target => { durableTarget = target })
+      const retryResult = await adapter.sendWithProgress({ ...row, target: durableTarget }, target => { durableTarget = target })
+
+      expect(retryResult.externalId).toBe(firstResult.externalId)
+      expect(JSON.parse(durableTarget.__ds_feishu_text_progress ?? '{}')).toMatchObject({
+        interactiveHash: expect.any(String),
+        interactiveExternalId: firstResult.externalId,
+      })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.body.msg_type).toBe('interactive')
+      expect(calls[0]?.url).toContain('/om_source/reply')
+    })
+  })
+
   it('reuses a persisted interactive uuid when the caller loses the accepted result', async () => {
     await withFormat(undefined, async () => {
       const createdByUuid = new Map<string, string>()
@@ -1302,9 +1349,12 @@ describe('Feishu Markdown card outbox formatting', () => {
       const adapter = new FeishuOutboxAdapter(new FeishuClient(config, fn))
       const row = makeRow('## Structured\n- body', { provider: 'feishu', chat_id: 'oc_chat', message_id: 'om_source' })
       let durableTarget = row.target
-      const firstResult = await adapter.sendWithProgress(row, target => { durableTarget = target })
+      await expect(adapter.sendWithProgress(row, (target, externalId) => {
+        if (externalId) throw new Error('simulated loss before accepted progress was persisted')
+        durableTarget = target
+      })).rejects.toThrow(/simulated loss/)
       const retryResult = await adapter.sendWithProgress({ ...row, target: durableTarget }, () => undefined)
-      expect(firstResult.externalId).toBe(retryResult.externalId)
+      expect(retryResult.externalId).toBe('card_1')
       expect(calls).toHaveLength(2)
       expect(calls[0]?.body.uuid).toBe(calls[1]?.body.uuid)
       expect(createdByUuid.size).toBe(1)
