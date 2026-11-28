@@ -22,6 +22,8 @@ pnpm lofibot tasks
 
 更换模型服务商或迁移已有安装，请看[安装指南](docs/zh/install.md)。同时启用飞书和 iMessage 时，先运行 `pnpm lofibot channels check`，再运行 `pnpm lofibot serve --imessage --feishu`。详细配置和 GitHub 接入见[信道文档](docs/REAL_CHANNELS.md)。
 
+要在原生窗口中和 Agent 聊天，请参阅 [Rune 桌面客户端](desktop/README.md)。它接入现有 Agent runtime，也支持离线生成界面截图。
+
 ## 架构
 
 ```mermaid

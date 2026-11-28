@@ -26,10 +26,13 @@ export class Evals {
    * Deterministic Eval. It accepts only what Policy can decide without an LLM.
    * A `defer` keeps the Triggers queued and asks the Main Agent to assess them.
    */
-  evaluateDue(): Decision[] {
+  evaluateDue(threadKey?: string): Decision[] {
     const decisions: Decision[] = []
-    const due = this.host.repo.listDocs<Thread>('thread').filter(thread => thread.pending.length > 0)
-    for (const thread of due) {
+    const threads = threadKey === undefined
+      ? this.host.repo.listDocs<Thread>('thread')
+      : [this.host.repo.getDoc<Thread>('thread', threadKey)]
+    for (const thread of threads) {
+      if (!thread?.pending.length) continue
       const ids = nextBatch(thread.pending)
       const triggers: Trigger[] = []
       const filtered: string[] = []

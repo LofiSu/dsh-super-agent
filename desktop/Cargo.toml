@@ -1,0 +1,25 @@
+[package]
+name = "lofibot-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "b1878e630d1f57b466084dc7af9e9fd0c2774f8b" }
+
+# Keep local GUI builds and the Finder development bundle compact.
+[profile.dev]
+debug = 0
+incremental = false

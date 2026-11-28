@@ -46,6 +46,7 @@ import { runImessageCommand } from './imessage.ts'
 import { resolveServeChannelConfigs, runChannelsCheck, startServeChannels } from './channels.ts'
 import { backupUsage, runBackupCli } from './backup.ts'
 import { runUi } from './ui.ts'
+import { runDesktopChat } from './desktop-chat.ts'
 import { runProfileCommand, runWireCommand } from './wiring.ts'
 import { runSetupCommand } from './setup.ts'
 import { readPackageVersion } from './version.ts'
@@ -1043,6 +1044,10 @@ async function main(): Promise<void> {
     } finally {
       store.close()
     }
+    return
+  }
+  if (cmd === 'desktop-bridge') {
+    await runWithEmbeddedGateway(home, () => runDesktopChat(home))
     return
   }
   if (cmd === 'chat') {
