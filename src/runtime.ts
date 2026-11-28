@@ -64,7 +64,7 @@ import { McpToolSource } from './harness/mcp.ts'
 import { parseMcpServers, type McpServerConfig } from './harness/mcp-config.ts'
 import { TeamRegistry } from './harness/team.ts'
 import { createModelFromEnv, HttpOpenAI, roleModelsFromEnv, type Model } from './harness/model.ts'
-import { directChatRouterShard, directChatThread, SessionJournal, sharesDirectChatThread, workerSessionId } from './harness/session.ts'
+import { directChatRouterShard, SessionJournal, workerSessionId } from './harness/session.ts'
 import { loadPromptFiles, type PromptFiles } from './harness/prompts.ts'
 import { LocalAgentRegistry, loadLocalAgents, type LocalAgentSpec } from './env/local-agents.ts'
 import { SkillRegistry } from './env/skills.ts'
@@ -92,6 +92,7 @@ import { RouterShardRegistry, type RouterShard } from './ingress/shards.ts'
 import { inlineOrSpill } from './memory/recall.ts'
 import { DEFAULT_EMBEDDING_FLOOR, HashedEmbedding, type EmbeddingPort } from './memory/embedding.ts'
 import { refsForTrigger, triggerRef } from './memory/graph.ts'
+import { AutoDream } from './memory/auto-dream.ts'
 import { SessionMemory } from './memory/tools.ts'
 import { SpillBackedLongTermMemory } from './memory/long-term.ts'
 import { Metrics } from './metrics/metrics.ts'
@@ -530,6 +531,9 @@ export class Runtime {
   private readonly batchWindowMs: number
   private readonly admission: AdmissionRules
   /** Kept so finish() can close external MCP server processes. */
+  private readonly memory: SessionMemory
+  private readonly autoDream?: AutoDream
+  private memoryOnExit = false
   private readonly tools: ToolRegistry
   private readonly remoteResultWait?: RemoteMeshResultWait
   /** Shared slot-release/cancel path, bound in the factory closure. */
@@ -580,6 +584,8 @@ export class Runtime {
     connectorConfig: ConnectorConfig
     connectorIndex: ConnectorIndex
     connectorWake: ConnectorWakeScheduler
+    memory: SessionMemory
+    autoDream?: AutoDream
     instanceId: string
     routerShards: RouterShardRegistry
     workerMesh: WorkerMeshRegistry
@@ -616,6 +622,8 @@ export class Runtime {
     this.connectorConfig = parts.connectorConfig
     this.connectorIndex = parts.connectorIndex
     this.connectorWake = parts.connectorWake
+    this.memory = parts.memory
+    this.autoDream = parts.autoDream
     this.instanceId = parts.instanceId
     this.routerShards = parts.routerShards
     this.workerMesh = parts.workerMesh
@@ -831,6 +839,7 @@ export class Runtime {
     const placement = WorkerPlacement.fromEnv(baseEnv, instanceId, workerMesh, line => log.info(line))
     // Retention keeps the durable index bounded: 1000 entries / 90 days by
     // default, with 0 disabling either dimension.
+    const memory = new SessionMemory(store, redact)
     const retention = memoryRetentionFromEnv(baseEnv, opts.memoryRetention)
     const embeddings = semanticRecallEnabled(baseEnv, opts.embeddings)
       ? opts.embeddings || new HashedEmbedding()
@@ -849,9 +858,10 @@ export class Runtime {
       store,
       config: proactiveConfig,
       env: baseEnv,
-      memoryFor: ticket => longTermMemory
-        .forThreads(ticket.threadKeys, 2, ticket.id)
-        .map(entry => entry.text),
+      memoryFor: ticket => {
+        const context = memory.recallForTicket(ticket)
+        return context ? [context] : []
+      },
       fire: trigger => fireRoutine(trigger),
       log: line => log.info(line),
     })
@@ -1800,8 +1810,6 @@ export class Runtime {
         }
       },
       onTicketEnded: ticket => {
-        // One durable memory entry per finished ticket; the next ticket recalls it.
-        const entry = longTermMemory.remember(ticket)
         // Capacity first, then let the scheduler start a queued Worker, but
         // only after the Engine transaction has committed the terminal state.
         releaseMesh(ticket.id)
@@ -1811,7 +1819,6 @@ export class Runtime {
             ticketId: ticket.id,
             outcome: ticket.ended?.outcome ?? 'unknown',
             by: ticket.ended?.by ?? 'unknown',
-            memoryId: entry.id,
           },
         })
         const shards = store.getDoc<Disposition>('disposition', ticket.originTriggerId)?.shards ?? ['default']
@@ -1821,19 +1828,10 @@ export class Runtime {
             ticketId: ticket.id,
             outcome: ticket.ended?.outcome ?? 'unknown',
             by: ticket.ended?.by ?? 'unknown',
-            memoryId: entry.id,
           })
         }
-        metrics.increment('memory.remembered')
-        log.info(`[memory] ticket.ended ticketId=${ticket.id} memory=${entry.id}`)
       },
       onDecision: decision => {
-        // Router global memory (§2.1): decisions survive Tickets and channels.
-        const entry = longTermMemory.rememberDecision(decision)
-        lifecycle.publish({
-          kind: 'decision.remembered',
-          payload: { decisionId: decision.id, kind: decision.kind, memoryId: entry.id },
-        })
         late.harness?.routerObserve('default', {
           kind: 'decision',
           decisionId: decision.id,
@@ -1842,8 +1840,6 @@ export class Runtime {
           ticketId: decision.ticketId,
           triggerIds: decision.triggerIds,
         })
-        metrics.increment('memory.decision')
-        log.info(`[memory] decision.remembered decisionId=${decision.id} memory=${entry.id}`)
       },
       onAssignmentEnded: ticketId => {
         // blocked/failed/waiting end the Assignment but leave the Ticket open.
@@ -1867,9 +1863,12 @@ export class Runtime {
         workspaceDir: path.join(opts.home, 'mcp'),
         baseEnv,
       })
+    const autoDream = model instanceof HttpOpenAI && baseEnv.DS_AGENT_AUTO_DREAM !== '0'
+      ? new AutoDream(store, memory, model, redact, line => log.info(line))
+      : undefined
     const tools = new ToolRegistry({
       store,
-      memory: new SessionMemory(store, redact),
+      memory,
       ports: bindRolePorts(engine),
       env,
       metrics,
@@ -2180,57 +2179,6 @@ export class Runtime {
         // A missing disposition is not fatal: ingest always writes one.
         engine.decide(ticket.originTriggerId, { kind: 'stop', ticketId: ticket.id, reason })
       },
-      memory: ticket => {
-        // Direct chats are private threads: recall only memories that belong to
-        // the same conversation. Cross-ticket recall stays for repository work.
-        const thread = directChatThread(ticket)
-        const lexical = longTermMemory.query({
-          ticketId: ticket.id,
-          text: ticket.title,
-          limit: thread ? 50 : 3,
-        })
-        const scoped = thread
-          ? lexical.filter(entry => {
-            const source = store.getDoc<Ticket>('ticket', entry.ticketId)
-            return source ? sharesDirectChatThread(source, thread) : false
-          }).slice(0, 3)
-          : lexical
-        // Same-Thread decisions and cold digests are injected even when the
-        // new title shares no lexical token.
-        const threaded = longTermMemory.forThreads(ticket.threadKeys, 3, ticket.id)
-        const seen = new Set<string>()
-        const entries = [...threaded, ...scoped].filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).slice(0, 5)
-        if (entries.length) metrics.increment('memory.recalled', entries.length)
-        return entries.map(entry => ({
-          id: entry.id,
-          spillId: entry.spillId,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
-      },
-      routerMemory: ticket => {
-        // A direct chat must never inherit another conversation's decisions:
-        // global decision recall is for repository work, not a private thread.
-        const direct = directChatThread(ticket) !== undefined
-        const seen = new Set<string>()
-        return [
-          ...(direct ? [] : [longTermMemory.recentDecisions(3, ticket.id)]),
-          ...longTermMemory.forThreads(ticket.threadKeys, 3, ticket.id),
-        ].flat().filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).slice(0, 5).map(entry => ({
-          id: entry.id,
-          spillId: entry.spillId,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
-      },
     })
     late.harness = harness
     const watchdog = new Watchdog({
@@ -2252,6 +2200,7 @@ export class Runtime {
       routines,
       proactive,
       connectorWake,
+      autoDream,
     )
     const runtime = new Runtime({
       home: opts.home,
@@ -2272,6 +2221,8 @@ export class Runtime {
       connectorConfig,
       connectorIndex,
       connectorWake,
+      memory,
+      autoDream,
       instanceId,
       routerShards,
       workerMesh,
@@ -2515,19 +2466,8 @@ export class Runtime {
           .filter((trigger): trigger is Trigger => trigger != null)
         const live = arbitrateSubscribers(this.store.listDocs<Ticket>('ticket').filter(ticket =>
           current!.subscriptions.includes(ticket.id) && !ticket.ended))
-        const seen = new Set<string>()
-        const memory = [
-          ...this.longTermMemory.recentDecisions(3, live?.id),
-          ...this.longTermMemory.forThreads([thread.key], 3, live?.id),
-        ].filter(entry => {
-          if (seen.has(entry.id)) return false
-          seen.add(entry.id)
-          return true
-        }).map(entry => ({
-          id: entry.id,
-          text: entry.text,
-          refs: entry.refs ?? [],
-        }))
+        const context = this.memory.recallForThread(thread.key)
+        const memory = context ? [{ id: 'curated-thread-memory', text: context, refs: [] }] : []
         const history = this.harness.routerHistory(shard, 12)
         const outcome = await assessWithMainAgent(this.model, triggers, live, 'policy-v1', memory, history)
         if (!this.store.isOpen) return
@@ -2573,8 +2513,9 @@ export class Runtime {
    * is still disabled unless `proactive.json` enables it, and connector polling
    * stays off unless `connectors.json` enables it.
    */
-  start(options: { assessPending?: boolean; routines?: boolean; proactive?: boolean; connectors?: boolean } = {}): void {
+  start(options: { assessPending?: boolean; routines?: boolean; proactive?: boolean; connectors?: boolean; memoryOnExit?: boolean } = {}): void {
     this.assessmentsEnabled = options.assessPending !== false
+    this.memoryOnExit = options.memoryOnExit === true
     // The Router layer is resident: every configured shard gets its Session
     // before recovery, assessment, or the first Trigger.
     this.armResidentRouters()
@@ -2584,6 +2525,7 @@ export class Runtime {
       routines: options.routines === true,
       proactive: options.proactive === true,
       connectors: options.connectors === true,
+      memory: !this.memoryOnExit,
     })
     if (this.assessmentsEnabled) {
       // Resume Gate-deferred work left in SQLite by a previous process.
@@ -3398,6 +3340,7 @@ export class Runtime {
     try {
       // Stop pulse admissions and fence connector polling before any final drain.
       this.daemon.stop()
+      if (!this.memoryOnExit) this.autoDream?.stop()
       await this.connectorWake.stop()
       // Local specialists and browser drivers run detached in their own
       // process group, so they would outlive this process. Kill them before
@@ -3408,12 +3351,14 @@ export class Runtime {
       await this.assessmentsSettled()
       this.flushEvals()
       await this.harness.jobsSettled()
+      if (this.memoryOnExit) await this.autoDream?.finishPass()
     } catch (error) {
       remember(error)
     } finally {
       // The daemon timer, MCP child processes, and SQLite handle must all be
       // released even when a drain step rejects.
       this.daemon.stop()
+      this.autoDream?.stop()
       this.remoteResultWait?.clearAll()
       try {
         await this.tools.close()

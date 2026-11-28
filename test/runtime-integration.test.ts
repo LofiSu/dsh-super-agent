@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { imTrigger } from '../src/channels/im.ts'
 import { bindRolePorts } from '../src/core/role-ports.ts'
+import { SessionMemory } from '../src/memory/tools.ts'
 import { LocalEnv } from '../src/env/local-env.ts'
 import { ToolRegistry } from '../src/harness/tools.ts'
 import type { Runtime } from '../src/runtime.ts'
@@ -72,11 +73,14 @@ function toolRegistry(runtime: Runtime): ToolRegistry {
 }
 
 /** Reports one ready result, which ends a non-speculative ticket. */
-function reportingModel(prompts: string[] = []): ScriptedModel {
+function reportingModel(prompts: string[] = [], indexes: string[] = []): ScriptedModel {
   return new ScriptedModel(request => {
     if (request.role === 'router') return { text: 'router-ok' }
     const prompt = lastPrompt(request)
-    if (request.role === 'worker') prompts.push(prompt)
+    if (request.role === 'worker') {
+      prompts.push(prompt)
+      indexes.push(...request.messages.filter(item => item.content.startsWith('Session memory index')).map(item => item.content))
+    }
     const reported = request.messages.some(message => message.role === 'tool' && message.name === 'report_to_router')
     if (!reported) {
       return {
@@ -703,33 +707,43 @@ describe('Runtime service integration', () => {
     }))).toEqual(['default'])
   })
 
-  it('writes a long-term memory on ticket end and recalls it on the next ticket', async () => {
+  it('reads only scoped agent memory in the next Worker and keeps tickets as evidence', async () => {
     const prompts: string[] = []
-    const runtime = start({ model: reportingModel(prompts) })
-
-    runtime.ingest(imTrigger({
-      id: 'trg_mem_1',
-      thread: 'topic/mem-1',
-      text: '@ds-agent please fix the login timeout on checkout',
+    const indexes: string[] = []
+    const runtime = start({ model: reportingModel(prompts, indexes) })
+    const send = (id: string, thread: string) => runtime.ingest(imTrigger({
+      id, thread, text: '@ds-agent please fix the login timeout on checkout',
     }))
+    send('trg_mem_1', 'topic/mem')
     await runtime.jobsSettled()
-    const first = runtime.store.listDocs<Ticket>('ticket')[0]
-    expect(first?.ended).toBeDefined()
-    const memory = runtime.store.getDoc<{ id: string }>('ltm', `ltm_${first!.id}`)
-    expect(memory).toBeDefined()
+    const first = runtime.store.listDocs<Ticket>('ticket')[0]!
+    expect(first.ended).toBeDefined()
+    expect(runtime.store.listDocs('ltm')).toEqual([])
+    const memory = new SessionMemory(runtime.store, text => text)
+    memory.execute({ sessionId: `worker_${first.id}`, role: 'worker', ticketId: first.id }, {
+      command: 'create', path: '/memories/MEMORY.md', file_text: 'Use the staging checkout fixture.',
+    })
+    runtime.longTermMemory.put(first.id, 'Archived snapshot marker.')
 
-    runtime.ingest(imTrigger({
-      id: 'trg_mem_2',
-      thread: 'topic/mem-2',
-      text: '@ds-agent please fix the login timeout on checkout',
-    }))
+    send('trg_mem_2', 'topic/mem')
     await runtime.jobsSettled()
+    const sameScope = prompts.at(-1) ?? ''
+    expect(sameScope).toContain('login timeout')
+    expect(sameScope).not.toContain('Archived snapshot marker.')
+    const second = runtime.store.listDocs<Ticket>('ticket').at(-1)!
+    const secondJournal = runtime.store.listMessages(`worker_${second.id}`)
+    expect(secondJournal.length).toBeGreaterThan(0)
+    const secondScope = { sessionId: `worker_${second.id}`, role: 'worker' as const, ticketId: second.id }
+    expect(memory.index(secondScope)).toContain('Use the staging checkout fixture.')
+    expect(indexes.join('\n')).toContain('Use the staging checkout fixture.')
 
-    const secondPrompt = prompts.at(-1) ?? ''
-    expect(secondPrompt).toContain(`memory=ltm_${first!.id}`)
-    expect(secondPrompt).toContain('login timeout')
-    expect(runtime.metrics.snapshot().counters['memory.remembered']).toBeGreaterThanOrEqual(2)
-    expect(runtime.metrics.snapshot().counters['memory.recalled']).toBeGreaterThanOrEqual(1)
+    indexes.length = 0
+    send('trg_mem_other', 'topic/different')
+    await runtime.jobsSettled()
+    const other = runtime.store.listDocs<Ticket>('ticket').at(-1)!
+    expect(memory.index({ sessionId: `worker_${other.id}`, role: 'worker', ticketId: other.id })).toBeUndefined()
+    expect(indexes).toEqual([])
+    expect(runtime.store.listDocs('ltm')).toHaveLength(1)
   })
 
   it('publishes ticket lifecycle events to the lifecycle bus', async () => {

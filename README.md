@@ -169,7 +169,7 @@ Each topic or pull request becomes a **Thread**. The Router batches triggers wai
 
 Short summaries stay inline. Long content is **spilled** out of band with an id, and tools receive typed `kind:id` handles first. `read_object` expands one hop at a time, which gives the model a **Chain of Recall** instead of a context dump. See [docs/MODULES.md](docs/MODULES.md).
 
-Long-term memory keeps hot tickets and Router decisions (1000 entries / 90 days) plus cold Thread digests (200 / 3650 days). Recall is hybrid: lexical search, one tag hop, and an optional `EmbeddingPort`. The default offline `HashedEmbedding` works without a model; `DS_AGENT_SEMANTIC_RECALL=0` disables the semantic arm, and `DS_AGENT_EMBEDDING_FLOOR` sets its cosine floor (default `0.35`, clamped to 0–1). Month-scale behavior is not yet measured, so T48 stays partial; the dated measurement protocol and its offline fixture smoke are in [docs/T48_MONTH_SCALE_PROTOCOL.md](docs/T48_MONTH_SCALE_PROTOCOL.md).
+Agent memory uses scoped transcripts, editable notes, a compact index and automatic evidence-guided consolidation. Runtime retains Tickets and Decisions as evidence. Earlier hot/cold snapshots are available through `ds-agent memory archive`. See the [memory design](docs/ANTHROPIC_AGENT_MEMORY.md).
 
 ### Work that outlives a turn
 
@@ -207,7 +207,7 @@ Every Worker `bash` call is wrapped: `sandbox-exec` on macOS, `bwrap` on Linux. 
 - `ds-agent panel` — Panel · Execution, with Mandate, Executor Session, directory, report, and Outbox delivery counts. A paused ticket's state is `paused`.
 - `ds-agent health` — store, vault mode, machines, Watchdog.
 - `ds-agent metrics` — counters for ingress, Eval, bypass fan-out, speculative deliver/discard, Watchdog nudge/fail, and model latency.
-- `ds-agent memory` — recent long-term memory entries.
+- `ds-agent memory` — current session memory indexes. `ds-agent memory archive` inspects historical snapshots.
 - `ds-agent ui` — read-only, token-gated loopback dashboard with tickets, threads, Outbox metadata, health, metrics, and sanitized lifecycle events.
 
 ### Extension domains
@@ -216,7 +216,7 @@ These services are always constructed by `Runtime.create`; there is no opt-in fe
 
 - **Router shards** (`DS_AGENT_SHARDS`, `RuntimeOptions.routerShards`) — the default shard always exists.
 - **Worker mesh** (`DS_AGENT_MESH_CAPACITY`, `DS_AGENT_MESH_QUEUE`) — logical placement by least-loaded node, with a bounded FIFO wait queue.
-- **Long-term memory** — hot tickets, decisions, and cold Thread digests.
+- **Agent memory** — scope-bound notes, evidence and automatic Dreaming.
 - **Lifecycle events** — a read model for panels and CLI views.
 - **A2A** (`DS_AGENT_INSTANCE_ID`) — authenticated HMAC-SHA256 HTTP transport.
 
@@ -344,8 +344,7 @@ Use a small model for the Router and Watchdog and a stronger one for Workers. Th
 | `DS_AGENT_MESH_CAPACITY` | in-process default | Maximum concurrent Worker nodes. |
 | `DS_AGENT_MESH_QUEUE` | `100` | Bounded FIFO wait list when every node is full. |
 | `DS_AGENT_INSTANCE_ID` | unset | Local A2A address and mesh node id. |
-| `DS_AGENT_SEMANTIC_RECALL` | on | Set to `0` to disable embedding recall. |
-| `DS_AGENT_EMBEDDING_FLOOR` | `0.35` | Cosine similarity floor for semantic recall, clamped to 0–1. |
+| `DS_AGENT_AUTO_DREAM` | on with an OpenAI-compatible runtime model | Set to `0` to disable automatic consolidation. |
 | `DS_AGENT_SANDBOX_READ_ISOLATION` | off | `1` / `true` / `strict` for strict read confinement. |
 | `DS_AGENT_UI_TOKEN` | unset | Bearer token for `ds-agent ui`, minimum 16 characters. |
 
@@ -450,7 +449,7 @@ Partial and owner-gated areas, stated plainly:
 
 - **Router scale-out** — the shard registry is always wired and the default shard exists, but there is no multi-process scale-out claim.
 - **Worker mesh** — placement is logical within this process; a remote transport exists, starts no listener, and is not yet connected to the local placement queue.
-- **Long-term memory** — hot/cold tiers and hybrid recall work; calendar-month behavior is bounded, not measured across real months.
+- **Agent memory** — scope-bound notes, evidence and automatic Dreaming.
 - **A2A** — HMAC-SHA256 HTTP transport is implemented; cross-host exposure and remote dispatch remain operator-gated.
 - **Watchdog drift checks** — nudge/fail, rules, and read-only `ds-agent health` work; deeper natural-language goal-drift checks are still thin.
 - **Latency bake-off** — one dated local dual-layer versus single-session run is recorded in [docs/BAKEOFF.md](docs/BAKEOFF.md); it is a single sample, not a benchmark.

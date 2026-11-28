@@ -169,7 +169,7 @@ Router 是全局序点：它负责对话、批处理 Trigger 和分派。Worker 
 
 短摘要留在上下文里。长内容带 id **外置（Spill）**，工具先拿到类型化的 `kind:id` 句柄。`read_object` 每次只展开一跳，于是模型得到的是一条 **Chain of Recall**，而不是一次性灌满的上下文。详见 [docs/MODULES.md](docs/MODULES.md)。
 
-长期记忆保存 hot Ticket 与 Router Decision（1000 条 / 90 天），以及 cold Thread digest（200 条 / 3650 天）。召回是混合式的：词法检索、一跳标签，以及可选的 `EmbeddingPort`。默认的离线 `HashedEmbedding` 不需要模型；`DS_AGENT_SEMANTIC_RECALL=0` 可关闭语义召回，`DS_AGENT_EMBEDDING_FLOOR` 设置余弦下限（默认 `0.35`，限制在 0–1）。自然月尺度尚未实测，T48 仍为 partial；测量协议与离线 fixture smoke 见 [docs/T48_MONTH_SCALE_PROTOCOL.md](docs/T48_MONTH_SCALE_PROTOCOL.md)。
+Agent 记忆由按授权划分的会话证据、可编辑笔记、短索引和自动整理组成。运行时保留工单与决策作为证据，旧快照可用 `ds-agent memory archive` 查阅。[记忆架构详解](docs/ANTHROPIC_AGENT_MEMORY.md)
 
 ### 能跨轮次的工作
 
@@ -207,7 +207,7 @@ CLI、GitHub 风格来源、Feishu、iMessage、A2A，以及本地 OpenAI 兼容
 - `ds-agent panel`：Panel · Execution，含 Mandate、Executor Session、目录、报告与 Outbox 投递计数。暂停中的状态是 `paused`。
 - `ds-agent health`：存储、vault 模式、机器、Watchdog。
 - `ds-agent metrics`：Ingress、Eval、订阅 bypass fan-out、投机 deliver/discard、Watchdog nudge/fail、模型延迟等计数。
-- `ds-agent memory`：最近的长期记忆条目。
+- `ds-agent memory` 查看当前会话记忆索引，`ds-agent memory archive` 查看旧快照。
 - `ds-agent ui`：只读、必需 token 的 loopback 面板，展示 Ticket、Thread、Outbox 元数据、健康、指标和脱敏后的生命周期事件。
 
 ### 扩展域
@@ -216,7 +216,7 @@ CLI、GitHub 风格来源、Feishu、iMessage、A2A，以及本地 OpenAI 兼容
 
 - **Router 分片**（`DS_AGENT_SHARDS`、`RuntimeOptions.routerShards`）：默认 shard 始终存在。
 - **Worker mesh**（`DS_AGENT_MESH_CAPACITY`、`DS_AGENT_MESH_QUEUE`）：按最少负载做逻辑放置，节点全满时进入有界 FIFO 队列。
-- **长期记忆**：hot Ticket、Decision 与 cold Thread digest。
+- **Agent 记忆**由授权范围内的笔记、原文证据和自动 Dreaming 组成。
 - **生命周期事件**：供面板和 CLI 读取的 read model。
 - **A2A**（`DS_AGENT_INSTANCE_ID`）：HMAC-SHA256 认证的 HTTP transport。
 
@@ -344,8 +344,7 @@ Router 和 Watchdog 适合用轻量模型，Worker 适合用更强的模型。�
 | `DS_AGENT_MESH_CAPACITY` | 进程内默认值 | 最大并发 Worker 节点数。 |
 | `DS_AGENT_MESH_QUEUE` | `100` | 节点全满时的有界 FIFO 等待队列。 |
 | `DS_AGENT_INSTANCE_ID` | 未设置 | 本地 A2A 地址与 mesh 节点 id。 |
-| `DS_AGENT_SEMANTIC_RECALL` | 开启 | 设为 `0` 关闭向量召回。 |
-| `DS_AGENT_EMBEDDING_FLOOR` | `0.35` | 语义召回的余弦相似度下限，限制在 0–1。 |
+| `DS_AGENT_AUTO_DREAM` | 使用 OpenAI 兼容运行时模型时开启 | 设为 `0` 关闭自动记忆整理。 |
 | `DS_AGENT_SANDBOX_READ_ISOLATION` | 关闭 | `1` / `true` / `strict` 启用严格读隔离。 |
 | `DS_AGENT_UI_TOKEN` | 未设置 | `ds-agent ui` 的 Bearer token，至少 16 个字符。 |
 
@@ -430,7 +429,7 @@ DS_AGENT_GH_KEEP=1 pnpm demo           # 故意保留真实 issue
 
 - **Router 水平扩展**：分片注册表已常驻、默认 shard 存在，但不宣称多进程扩展能力。
 - **Worker mesh**：放置是进程内的逻辑放置；远端 transport 已实现，但默认不监听，也尚未接入本地放置队列。
-- **长期记忆**：hot/cold 分层与混合召回可用；自然月尺度的行为有边界，尚未按真实月份测量。测量协议见 [docs/T48_MONTH_SCALE_PROTOCOL.md](docs/T48_MONTH_SCALE_PROTOCOL.md)。
+- **Agent 记忆**由授权范围内的笔记、原文证据和自动 Dreaming 组成。
 - **A2A**：HMAC-SHA256 HTTP transport 已实现；跨主机暴露与远端 dispatch 仍需运维者开启。
 - **Watchdog 漂移检查**：nudge/fail、规则与只读 `ds-agent health` 可用；更深的自然语言目标漂移检查仍较薄。
 - **延迟对照**：一次有日期记录的本机双层 vs 单 Session 运行见 [docs/BAKEOFF.md](docs/BAKEOFF.md)；这只是单个样本，不是基准测试。

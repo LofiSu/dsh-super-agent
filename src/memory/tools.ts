@@ -1,9 +1,9 @@
 import type { ToolSpec } from '../harness/model.ts'
-import { workerSessionId } from '../harness/session.ts'
+import { directChatRouterShard, routerSessionId, workerSessionId } from '../harness/session.ts'
 import { UserError } from '../shared/errors.ts'
 import type { Role, Ticket } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
-import { MemoryNotes } from './notes.ts'
+import { MemoryNotes, type Note } from './notes.ts'
 import { readMemoryTranscript } from './transcript.ts'
 
 export const memorySpec: ToolSpec = {
@@ -45,7 +45,7 @@ export const transcriptSpec: ToolSpec = {
   },
 }
 
-interface MemorySession {
+export interface MemorySession {
   sessionId: string
   role: Role
   ticketId?: string
@@ -89,10 +89,46 @@ export class SessionMemory {
       // Legacy tickets and tickets that dropped a source stay ticket-local.
       // Their journal can still contain evidence from the removed source.
       if (exposed.length === current.size && exposed.every(key => current.has(key))) {
-        return JSON.stringify(['worker', 'threads', exposed])
+        return workerThreadScope(exposed)
       }
     }
     return JSON.stringify([session.role, 'session', session.sessionId])
+  }
+
+  consolidationScope(session: MemorySession): string | undefined {
+    if (!supportsSessionMemory(session.role, session.sessionId)) return undefined
+    const ticket = this.workerTicket(session)
+    if (session.role === 'worker' && (!ticket || ticket.speculative || ticket.ended?.silent)) return undefined
+    return this.noteScope(session, ticket)
+  }
+
+  /** Same curated memory used by proactive evaluation, with the Ticket's normal scope. */
+  recallForTicket(ticket: Ticket): string | undefined {
+    if (ticket.speculative || ticket.ended?.silent) return undefined
+    const shard = directChatRouterShard(ticket)
+    const session: MemorySession = shard
+      ? { sessionId: routerSessionId(shard), role: 'router' }
+      : { sessionId: workerSessionId(ticket.id), role: 'worker', ticketId: ticket.id }
+    const scope = this.consolidationScope(session)
+    return scope ? this.readConsolidated(scope)?.slice(0, 2_000) : undefined
+  }
+
+  /** Deferred assessment is authorized for exactly one thread. */
+  recallForThread(threadKey: string): string | undefined {
+    return this.readConsolidated(workerThreadScope([threadKey]))?.slice(0, 2_000)
+  }
+
+  readConsolidated(scope: string): string | undefined {
+    const text = this.notes.readConsolidated(scope)
+    return text === undefined ? undefined : this.redact(text)
+  }
+
+  readEditableNotes(scope: string): Note[] {
+    return this.notes.readEditableNotes(scope)
+  }
+
+  applyConsolidation(scope: string, page: string | undefined, edits: Note[]): void {
+    this.notes.applyConsolidation(scope, page, edits)
   }
 
   transcript(sessionId: string, args: Record<string, unknown>) {
@@ -107,4 +143,8 @@ export class SessionMemory {
       return undefined
     }
   }
+}
+
+function workerThreadScope(threads: string[]): string {
+  return JSON.stringify(['worker', 'threads', threads])
 }

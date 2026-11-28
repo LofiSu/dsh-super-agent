@@ -830,13 +830,11 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
     const failed = createTicket(runtime, 'trg_async_fail')
     const later = createTicket(runtime, 'trg_async_later')
 
-    // Memory recall runs inside the scheduled Worker callback, so throwing here
-    // rejects the promise `startWorkerTurn` returned instead of throwing
-    // synchronously out of `launch`.
-    const originalQuery = runtime.longTermMemory.query.bind(runtime.longTermMemory)
-    vi.spyOn(runtime.longTermMemory, 'query').mockImplementation(query => {
-      if (query.ticketId === failed.ticketId) throw new Error('worker turn exploded')
-      return originalQuery(query)
+    // Session setup happens inside the scheduled Worker callback.
+    const upsert = runtime.store.upsertSession.bind(runtime.store)
+    vi.spyOn(runtime.store, 'upsertSession').mockImplementation(session => {
+      if (session.ticketId === failed.ticketId) throw new Error('worker turn exploded')
+      upsert(session)
     })
 
     // The launch must resolve; the mesh slot picked before the turn rejected
@@ -872,12 +870,11 @@ describe('Worker mesh capacity backpressure (P1-3)', () => {
     await tick(20)
     expect(runtime.log.text()).toContain(`mesh.queued ticketId=${failing.ticketId}`)
 
-    // Memory recall runs inside the scheduled Worker callback, so the queued
-    // turn rejects asynchronously after `pump` already reserved its mesh slot.
-    const originalQuery = runtime.longTermMemory.query.bind(runtime.longTermMemory)
-    vi.spyOn(runtime.longTermMemory, 'query').mockImplementation(query => {
-      if (query.ticketId === failing.ticketId) throw new Error('queued worker turn exploded')
-      return originalQuery(query)
+    // Reject after the queue has already reserved the worker's mesh slot.
+    const upsert = runtime.store.upsertSession.bind(runtime.store)
+    vi.spyOn(runtime.store, 'upsertSession').mockImplementation(session => {
+      if (session.ticketId === failing.ticketId) throw new Error('queued worker turn exploded')
+      upsert(session)
     })
 
     first.release()

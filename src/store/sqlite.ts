@@ -945,6 +945,18 @@ export class Store {
     `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
   }
 
+  /** Forward cursor for bounded background consolidation. */
+  listTranscriptAfter(
+    sessionId: string, after: number, limit: number,
+  ): { id: number; body: string | null }[] {
+    return this.db.prepare(`
+      SELECT id, CASE WHEN length(CAST(body AS BLOB)) <= 65536 THEN body END AS body
+      FROM messages
+      WHERE session_id = ? AND id > ? AND role = 'user'
+      ORDER BY id LIMIT ?
+    `).all(sessionId, after, limit) as { id: number; body: string | null }[]
+  }
+
   addArtifact(ticketId: string, filePath: string): string {
     this.assertWritable()
     const id = this.nextId('art')
