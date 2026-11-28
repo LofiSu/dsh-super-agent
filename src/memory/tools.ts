@@ -146,3 +146,9 @@ export class SessionMemory {
 function workerThreadScope(threads: string[]): string {
   return JSON.stringify(['worker', 'threads', threads])
 }
+
+/** Accept only the host-generated shared Worker scope format. */
+export function sharedWorkerThreads(scope: string): string[] | undefined {
+  const key = JSON.parse(scope) as unknown[]
+  return key[0] === 'worker' && key[1] === 'threads' ? key[2] as string[] : undefined
+}

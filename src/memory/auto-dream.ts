@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Model } from '../harness/model.ts'
 import type { Role } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
-import type { MemorySession, SessionMemory } from './tools.ts'
+import { sharedWorkerThreads, type MemorySession, type SessionMemory } from './tools.ts'
 import type { Note } from './notes.ts'
 import { readPendingMemoryEvidence } from './transcript.ts'
 
@@ -127,7 +127,8 @@ export class AutoDream {
     return this.store.atomic(() => {
       const pending: Omit<Work, 'lease' | 'previous' | 'notes'>[] = []
       const cursor = this.store.getDoc<number>(SCAN_KIND, 'sessions') ?? 0
-      const rows = this.store.listIdleMemorySessions(cursor, new Date(now - idleMs).toISOString(), SESSION_SCAN_LIMIT)
+      const idleBefore = new Date(now - idleMs).toISOString()
+      const rows = this.store.listIdleMemorySessions(cursor, idleBefore, SESSION_SCAN_LIMIT)
       const nextCursor = rows.length === SESSION_SCAN_LIMIT ? rows.at(-1)!.cursor : 0
       if (nextCursor !== cursor) this.store.putDoc(SCAN_KIND, 'sessions', nextCursor)
       for (const row of rows) {
@@ -152,21 +153,25 @@ export class AutoDream {
         pending.push({ session, scope, heartbeat: row.heartbeat, model, scopeThrough, ...batch })
       }
       pending.sort((a, b) => a.entries[0]!.id - b.entries[0]!.id)
-      const work = pending[0]
-      if (!work) return undefined
-      // Do not leapfrog evidence from another session sharing these notes.
-      const sibling = pending.slice(1).find(item => item.scope === work.scope)
-      const entries = sibling ? work.entries.filter(entry => entry.id < sibling.entries[0]!.id) : work.entries
-      const lease = { token: randomUUID(), expires: now + LEASE_MS }
-      this.store.putDoc(LEASE_KIND, work.scope, lease)
-      return {
-        ...work,
-        entries,
-        through: sibling ? entries.at(-1)!.id : work.through,
-        lease,
-        previous: this.memory.readConsolidated(work.scope),
-        notes: this.memory.readEditableNotes(work.scope),
+      for (const work of pending) {
+        const threads = sharedWorkerThreads(work.scope)
+        // A sibling may be outside the scan window or waiting to retry. Its
+        // older evidence is still a publication barrier for this scope.
+        const boundary = threads ? this.store.earliestMemorySibling(
+          work.session.sessionId, threads, idleBefore, work.scopeThrough, work.through,
+        ) : undefined
+        const entries = boundary === undefined ? work.entries : work.entries.filter(entry => entry.id < boundary)
+        if (!entries.length) continue
+        const lease = { token: randomUUID(), expires: now + LEASE_MS }
+        this.store.putDoc(LEASE_KIND, work.scope, lease)
+        return {
+          ...work, entries, lease,
+          through: boundary === undefined ? work.through : entries.at(-1)!.id,
+          previous: this.memory.readConsolidated(work.scope),
+          notes: this.memory.readEditableNotes(work.scope),
+        }
       }
+      return undefined
     })
   }
 
@@ -182,7 +187,7 @@ export class AutoDream {
           + 'retain unaffected prior knowledge and replace contradicted notes using the newer user evidence. '
           + 'Keep at most 3000 characters. Return only JSON with page (full Markdown string or null if unchanged) '
           + 'and evidence_ids (IDs from this batch supporting the change). Use headings for topics. '
-          + 'Optional edits is an array of up to four {path,text} replacements of supplied notes. '
+          + 'Optional edits gives up to four {path,text} replacements of supplied notes, at most 1100 characters each. '
           + 'Only edit a supplied note to resolve an explicit contradiction or update. Preserve its unrelated contents.' },
         { role: 'user', content: JSON.stringify({ previous: this.redact(work.previous?.slice(0, MAX_PAGE) ?? ''), evidence: work.entries, notes: work.notes }) },
       ],
@@ -211,9 +216,13 @@ export class AutoDream {
       throw new Error('Consolidation requires evidence from this batch')
     }
     const ids = [...new Set(proposed.evidence_ids as number[])].join(', ')
+    const annotatedEdits = edits.map(edit => ({
+      ...edit, text: `${edit.text.trim()}\n\nEvidence rows: ${ids}\n`,
+    }))
+    if (annotatedEdits.some(edit => edit.text.length > 1_200)) throw new Error('Annotated note exceeds the edit limit')
     return {
       page: proposed.page === null ? undefined : this.redact(`${proposed.page.trim()}\n\nEvidence rows: ${ids}\n`),
-      edits: edits.map(edit => ({ ...edit, text: `${edit.text.trim()}\n\nEvidence rows: ${ids}\n` })),
+      edits: annotatedEdits,
     }
   }
 

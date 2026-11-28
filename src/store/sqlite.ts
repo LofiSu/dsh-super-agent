@@ -969,6 +969,32 @@ export class Store {
     `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
   }
 
+  /** Oldest unprocessed sibling row in an exact shared Worker scope. */
+  earliestMemorySibling(
+    sessionId: string, threadKeys: string[], idleBefore: string, after: number, before: number,
+  ): number | undefined {
+    const keys = JSON.stringify(threadKeys)
+    const row = this.db.prepare(`
+      SELECT message.id
+      FROM messages AS message
+      JOIN sessions AS session ON session.id = message.session_id
+      JOIN documents AS ticket ON ticket.kind = 'ticket' AND ticket.id = session.ticket_id
+      LEFT JOIN documents AS progress ON progress.kind = 'memory_dream_progress' AND progress.id = session.id
+      WHERE message.id > ? AND message.id <= ? AND message.session_id != ? AND message.role = 'user'
+        AND session.role = 'worker' AND session.status = 'idle' AND session.heartbeat <= ?
+        AND session.id = 'worker_' || session.ticket_id
+        AND COALESCE(json_extract(ticket.payload, '$.speculative'), 0) = 0
+        AND COALESCE(json_extract(ticket.payload, '$.ended.silent'), 0) = 0
+        AND message.id > COALESCE(json_extract(progress.payload, '$.through'), 0)
+        AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.threadKeys')) = json_array_length(?)
+        AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.memoryThreadKeys')) = json_array_length(?)
+        AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.threadKeys') EXCEPT SELECT value FROM json_each(?))
+        AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.memoryThreadKeys') EXCEPT SELECT value FROM json_each(?))
+      ORDER BY message.id LIMIT 1
+    `).get(after, before, sessionId, idleBefore, keys, keys, keys, keys)
+    return row ? Number(row.id) : undefined
+  }
+
   /** Forward cursor for bounded background consolidation. */
   listTranscriptAfter(
     sessionId: string, after: number, limit: number,

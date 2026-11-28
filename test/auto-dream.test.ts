@@ -240,3 +240,81 @@ it('uses the same Worker model as foreground work', async () => {
     await runtime.finish()
   }
 })
+
+function idleWorker(store: Store, ticketId: string, thread = 'cli:local'): string {
+  const at = new Date(0).toISOString()
+  const sessionId = `worker_${ticketId}`
+  store.putDoc('ticket', ticketId, {
+    id: ticketId, threadKeys: [thread], memoryThreadKeys: [thread], speculative: false,
+  })
+  store.upsertSession({
+    id: sessionId, role: 'worker', status: 'idle', ticketId, createdAt: at, heartbeat: at,
+  })
+  return sessionId
+}
+
+function userRow(store: Store, sessionId: string, text: string): void {
+  store.appendMessage(sessionId, 'user', JSON.stringify({ role: 'user', kind: 'message', evidenceText: text }))
+}
+
+function receivedEvidence(content: string): { id: number; text: string } {
+  return (JSON.parse(content) as { evidence: { id: number; text: string }[] }).evidence[0]!
+}
+
+it('keeps a failed older sibling retryable while an independent scope proceeds', async () => {
+  const { store, memory } = fixture()
+  userRow(store, idleWorker(store, 'older'), 'Use npm.')
+  userRow(store, idleWorker(store, 'newer'), 'Use pnpm.')
+  userRow(store, idleWorker(store, 'independent', 'cli:other'), 'Use staging.')
+  const seen: number[] = []
+  const model = stub(async request => {
+    const evidence = receivedEvidence(request.messages[1]!.content)
+    seen.push(evidence.id)
+    if (seen.length === 1) throw new Error('temporary provider failure')
+    return { text: JSON.stringify({ page: evidence.text, evidence_ids: [evidence.id] }) }
+  })
+  const dream = new AutoDream(store, memory, () => model, redact, () => {})
+  await dream.tick(now)
+  await dream.tick(now + 60_000)
+  await dream.tick(now + 300_000)
+  await dream.tick(now + 360_000)
+  expect(seen).toEqual([1, 3, 1, 2])
+})
+
+it('orders already-eligible sibling evidence across scan pages', async () => {
+  const { store, memory } = fixture()
+  const workers = Array.from({ length: 33 }, (_, i) => idleWorker(store, `page_${i}`))
+  userRow(store, workers[32]!, 'First thread fact')
+  userRow(store, workers[0]!, 'Second thread fact')
+  const seen: number[] = []
+  const model = stub(async request => {
+    const evidence = receivedEvidence(request.messages[1]!.content)
+    seen.push(evidence.id)
+    return { text: JSON.stringify({ page: evidence.text, evidence_ids: [evidence.id] }) }
+  })
+  const dream = new AutoDream(store, memory, () => model, redact, () => {})
+  await dream.tick(now)
+  await dream.tick(now + 60_000)
+  await dream.tick(now + 120_000)
+  expect(seen).toEqual([1, 2])
+})
+
+it('keeps every automatically edited note eligible for a subsequent correction', async () => {
+  const { store, memory } = fixture()
+  const path = '/memories/setup.md'
+  memory.execute(session, { command: 'create', path, file_text: 'An earlier setup note.' })
+  append(store, 'Use pnpm.')
+  const model = stub(async request => {
+    const evidence = receivedEvidence(request.messages[1]!.content)
+    const text = 'x'.repeat(evidence.id === 1 ? 1_200 : 1_100)
+    return { text: JSON.stringify({ page: null, evidence_ids: [evidence.id], edits: [{ path, text }] }) }
+  })
+  const dream = new AutoDream(store, memory, () => model, redact, () => {})
+  await dream.tick(now)
+  expect(memory.execute(session, { command: 'view', path })).toContain('An earlier setup note.')
+  const retry = new AutoDream(store, memory, () => stub(async () => ({
+    text: JSON.stringify({ page: null, evidence_ids: [1], edits: [{ path, text: 'x'.repeat(1_100) }] }),
+  })), redact, () => {})
+  await retry.tick(now + 300_000)
+  expect(memory.readEditableNotes(memory.consolidationScope(session)!)[0]?.text).toContain('Evidence rows: 1')
+})
