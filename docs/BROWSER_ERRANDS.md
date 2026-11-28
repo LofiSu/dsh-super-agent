@@ -71,7 +71,7 @@ Request (stdin for `command`, JSON body for `http`):
 
 ```json
 {
-  "protocol": "lofibot-browser-errand/v1",
+  "protocol": "ds-agent-browser-errand/v1",
   "action": "navigate",
   "session": "worker_ticket_123",
   "url": "https://example.com/page"

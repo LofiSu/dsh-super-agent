@@ -39,6 +39,7 @@ import {
   type FillTarget,
   type FillVaultLoad,
 } from './env/fill-vault.ts'
+import { rejectLegacyConfig } from './env/legacy-config.ts'
 import { LocalEnv } from './env/local-env.ts'
 import { strictReadIsolationIncludesPath } from './env/seccomp.ts'
 import type { SandboxPolicy, SandboxSystem } from './env/seccomp.ts'
@@ -637,6 +638,7 @@ export class Runtime {
 
   static create(opts: RuntimeOptions): Runtime {
     const baseEnv = opts.env ?? process.env
+    rejectLegacyConfig(baseEnv)
     // Owner-gated and off when `connectors.json` is absent. A malformed file
     // fails here, before SQLite or a network client is opened. Credentials are
     // read only after an explicit enable.

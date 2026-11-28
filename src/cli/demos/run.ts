@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { rejectLegacyConfig } from '../../env/legacy-config.ts'
 import { demoLogDir, messageOf, type DemoSummary } from './lib.ts'
 import { runParallelDemo } from './parallel.ts'
 import { runSpillMemoryDemo } from './spill-memory.ts'
@@ -50,6 +51,7 @@ async function main(): Promise<void> {
     console.log('Real channels only: GitHub issues + comments through gh api, live Magpie/DeepSeek model.')
     process.exit(0)
   }
+  rejectLegacyConfig(process.env)
   if (flag('keep')) process.env.LOFIBOT_GH_KEEP = '1'
 
   const logDir = demoLogDir()

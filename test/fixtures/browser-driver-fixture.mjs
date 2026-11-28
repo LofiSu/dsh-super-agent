@@ -1,4 +1,4 @@
-// Test driver for lofibot-browser-errand/v1. It never touches a real browser.
+// Test driver for ds-agent-browser-errand/v1. It never touches a real browser.
 import process from 'node:process'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'

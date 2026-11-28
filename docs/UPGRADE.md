@@ -58,25 +58,29 @@ whose recorded version is above this build's maximum. The error names the
 found and supported versions. Upgrade the binary, or restore an older backup,
 rather than editing `schema_migrations` by hand.
 
+## Migrate a pre-LofiBot installation
+
+Follow the [install guide](install.md#upgrading-an-existing-checkout) to use
+separate state directories for the old and new releases. Keep the old directory
+as a pre-cutover snapshot. The old executable expects `ds-agent.db` and the new
+one expects `lofibot.db`.
+
+To roll back once LofiBot has accepted traffic, stop it and take a LofiBot
+snapshot first. If the old executable supports that snapshot's schema, restore
+it with the old CLI into the old state directory and verify it before resuming.
+If the schema is newer than the old executable supports, use the pre-cutover
+snapshot and account for any changes made after cutover.
+
 ## Back up before upgrading
 
 Stop the lofibot process first. A backup can snapshot a live WAL database,
 but the upgrade procedure is easier to verify and roll back with a stopped
 process.
 
-Once the CLI integration lands, the command is:
+Use the built CLI or prefix this command with `pnpm` in a source checkout.
 
 ```bash
 lofibot backup --out "$HOME/lofibot-backup-$(date +%Y%m%dT%H%M%SZ).db"
-```
-
-In this branch the command bodies and standalone entry ship before the
-`src/cli/main.ts` dispatch, so the equivalent is:
-
-```bash
-npx tsx src/cli/backup.ts \
-  --home "${LOFIBOT_HOME:-./.lofibot}" \
-  --out "$HOME/lofibot-backup-$(date +%Y%m%dT%H%M%SZ).db"
 ```
 
 `backupStore` / `runBackupCommand` behavior:
@@ -154,14 +158,7 @@ Replacing an existing `lofibot.db` requires `--force`. Without it, restore
 refuses rather than silently overwriting state.
 
 ```bash
-# Once wired:
-lofibot restore --input "$HOME/lofibot-backup-YYYYMMDDTHHMMSSZ.db" --force
-
-# In this branch:
-npx tsx src/cli/backup.ts \
-  --home "${LOFIBOT_HOME:-./.lofibot}" \
-  --input "$HOME/lofibot-backup-YYYYMMDDTHHMMSSZ.db" \
-  --force
+lofibot restore "$HOME/lofibot-backup-YYYYMMDDTHHMMSSZ.db" --force
 ```
 
 `restoreStore` / `runRestoreCommand` behavior, in order:
@@ -227,16 +224,14 @@ Expected: `journal_mode` is `wal` for a store this build has opened;
 `1` through `5`. A legacy backup may have an empty or missing ledger until its next
 open.
 
-## Rollback checklist
+## Rollback checklist for LofiBot releases
 
 1. Stop the process.
 2. Install the previous binary/tarball.
 3. If the previous binary supports the current schema version (table above),
    start it; no restore is needed.
 4. If the schema advanced past the previous binary's maximum, restore the
-   pre-upgrade backup with the previous binary's `restore --input ... --force`
-   path (or by replacing `lofibot.db` while stopped), then remove any stale
-   `-wal`/`-shm` files. Alternatively, use the `backups/pre-restore-*.db*`
-   set retained by the last restore.
+   pre-upgrade backup with the previous binary's `restore <backup> --force`
+   command. The restore operation archives the existing database and sidecars.
 5. Verify with the queries above and `lofibot health`.
 6. Never delete or rewrite `schema_migrations` to force a downgrade.

@@ -79,6 +79,6 @@ Worker 的 `bash` 需要 macOS 上的 `sandbox-exec` 或 Linux 上的 `bwrap`；
 
 ## 升级已有安装
 
-命令已改为 `lofibot`，项目环境变量统一以 `LOFIBOT_` 开头。请更新脚本、服务配置和机器人提及（`@lofibot`）。新的默认状态目录是 `./.lofibot`。
+命令已改为 `lofibot`，项目环境变量统一以 `LOFIBOT_` 开头。请更新脚本、服务配置和机器人提及（`@lofibot`）。新的默认状态目录是 `./.lofibot`。启动前请用新变量名设置原有的账号和群组白名单、沙箱要求及读取隔离，并清除旧变量。
 
 停止旧进程后，在旧版本目录运行 `pnpm ds-agent backup --out /absolute/path/lofibot-backup.db`。再在新版目录运行 `pnpm lofibot restore /absolute/path/lofibot-backup.db` 恢复 SQLite 快照。请保留旧状态目录作为备份，并按需单独复制仍在使用的文件配置、凭据库和工作区。

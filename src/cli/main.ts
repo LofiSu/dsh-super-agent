@@ -19,6 +19,7 @@ import { createModelFromEnv, requireLiveModelFromEnv, type Model } from '../harn
 import { buildSystemPrompt, describePromptSections, loadPrompts } from '../harness/prompts.ts'
 import { parseMcpServers } from '../harness/mcp-config.ts'
 import { redactSecrets, secretValues } from '../env/sanitize.ts'
+import { rejectLegacyConfig } from '../env/legacy-config.ts'
 import { LOCAL_AGENTS_FILE, loadLocalAgents } from '../env/local-agents.ts'
 import { SKILLS_DIR, SKILL_FILE, SkillRegistry } from '../env/skills.ts'
 import { loadRoutines, ROUTINES_ENV, ROUTINES_FILE } from '../harness/routines.ts'
@@ -517,7 +518,6 @@ function getReceiptTicket(store: Store, id: string): ReceiptTicket | undefined {
 
 async function main(): Promise<void> {
   const [cmd, sub] = process.argv.slice(2)
-  const home = defaultHome()
   if (cmd === '--version' || cmd === '-V' || cmd === 'version') {
     console.log(readPackageVersion())
     return
@@ -526,6 +526,8 @@ async function main(): Promise<void> {
     help()
     return
   }
+  rejectLegacyConfig(process.env)
+  const home = defaultHome()
   if (cmd === 'demo') {
     // Legacy local fixture flow. `pnpm demo` is the real-channel acceptance runner.
     await runDemo(home)

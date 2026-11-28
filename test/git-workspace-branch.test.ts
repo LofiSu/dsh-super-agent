@@ -49,6 +49,8 @@ describe('defaultCredentialHidePaths', () => {
       const sshDir = path.join(home, '.ssh')
       expect(paths).toContain(ghConfig)
       expect(paths).toContain(sshDir)
+      expect(paths).toContain('/workspace/ds-agent-notify-secrets')
+      expect(paths).toContain('/workspace/lofibot-notify-secrets')
       expect(fs.existsSync(ghConfig)).toBe(false)
       expect(fs.existsSync(sshDir)).toBe(false)
     } finally {

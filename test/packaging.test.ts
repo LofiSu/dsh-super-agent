@@ -7,11 +7,11 @@ import { describe, expect, it } from 'vitest'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 /** Run the CLI from source so the unit suite does not need a prior build. */
-function runCli(arg: string) {
+function runCli(arg: string, env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', arg], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, ...env, NODE_NO_WARNINGS: '1' },
   })
 }
 
@@ -62,6 +62,17 @@ describe('package manifest', () => {
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('--version')
     expect(result.stdout).toContain('-V')
+  })
+
+  it('refuses stale policy configuration before opening local state', () => {
+    const result = runCli('tasks', {
+      DS_AGENT_ACTOR_ALLOWLIST: 'private-actor',
+      DS_AGENT_SANDBOX_READ_ISOLATION: 'strict',
+    })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('DS_AGENT_ACTOR_ALLOWLIST → LOFIBOT_ACTOR_ALLOWLIST')
+    expect(result.stderr).toContain('DS_AGENT_SANDBOX_READ_ISOLATION → LOFIBOT_SANDBOX_READ_ISOLATION')
+    expect(result.stderr).not.toContain('private-actor')
   })
 
   it('builds dist through the build tsconfig and on prepack', () => {

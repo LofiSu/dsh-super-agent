@@ -120,7 +120,7 @@ jobs:
         id: live_key
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          LOFIBOT_API_KEY: ${{ secrets.LOFIBOT_API_KEY }}
+          LOFIBOT_API_KEY: ${{ secrets.LOFIBOT_API_KEY || secrets.DS_AGENT_API_KEY }}
         run: |
           if [ -n "$DEEPSEEK_API_KEY" ] || [ -n "$LOFIBOT_API_KEY" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
@@ -160,7 +160,7 @@ jobs:
       - name: Live demo
         env:
           LOFIBOT_API_BASE: https://api.deepseek.com/v1
-          LOFIBOT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || secrets.LOFIBOT_API_KEY }}
+          LOFIBOT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || secrets.LOFIBOT_API_KEY || secrets.DS_AGENT_API_KEY }}
           LOFIBOT_API_MODEL: deepseek-chat
         run: |
           set -o pipefail

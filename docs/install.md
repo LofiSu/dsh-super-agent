@@ -79,6 +79,6 @@ Feishu setup is in the repo: [docs/REAL_CHANNELS.md]({{ site.repository_url }}/b
 
 ## Upgrading an existing checkout
 
-The CLI is now `lofibot`, and project environment variables use the `LOFIBOT_` prefix. Update scripts, service definitions, and bot mentions to use `@lofibot`. The default state directory is `./.lofibot`.
+The CLI is now `lofibot`, and project environment variables use the `LOFIBOT_` prefix. Update scripts, service definitions, and bot mentions to use `@lofibot`. The default state directory is `./.lofibot`. Rename and unset old variables before starting LofiBot. Verify the existing actor and group allowlists, required sandbox dimensions, and read isolation under their new names.
 
 Stop the old process and back up its database using `pnpm ds-agent backup --out /absolute/path/lofibot-backup.db` from the old checkout. Restore that snapshot with `pnpm lofibot restore /absolute/path/lofibot-backup.db` from the new checkout. Keep the old state directory as a backup. Copy any filesystem-based configuration, vault and workspaces you still need into the new state directory separately.

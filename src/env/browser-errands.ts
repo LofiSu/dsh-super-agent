@@ -24,7 +24,8 @@ import { ENV_ALLOWLIST, redactKnownSecrets, secretValues } from './sanitize.ts'
 
 export const BROWSER_ERRANDS_FILE = 'browser-errands.json'
 export const BROWSER_ERRANDS_ENV = 'LOFIBOT_BROWSER_ERRANDS'
-export const BROWSER_PROTOCOL = 'lofibot-browser-errand/v1'
+// This wire identifier is part of the installed drivers' v1 contract.
+export const BROWSER_PROTOCOL = 'ds-agent-browser-errand/v1'
 
 export const BROWSER_ERRAND_ACTIONS = ['navigate', 'read', 'fill', 'extract'] as const
 export type BrowserErrandAction = (typeof BROWSER_ERRAND_ACTIONS)[number]
