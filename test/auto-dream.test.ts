@@ -318,3 +318,28 @@ it('keeps every automatically edited note eligible for a subsequent correction',
   await retry.tick(now + 300_000)
   expect(memory.readEditableNotes(memory.consolidationScope(session)!)[0]?.text).toContain('Evidence rows: 1')
 })
+
+it('accepts canonical decimal citations from real model outputs and keeps provenance host-owned', async () => {
+  const { store, memory } = fixture()
+  append(store, 'Use the WAL-safe backup.')
+  const invalid = new AutoDream(store, memory, () => stub(async () => ({
+    text: '{"page":"Incorrect backup rule.","evidence_ids":["01"]}',
+  })), redact, () => {})
+  await invalid.tick(now)
+  expect(memory.index(session)).toBeUndefined()
+
+  const empty = new AutoDream(store, memory, () => stub(async () => ({
+    text: '{"page":"Evidence rows: 999","evidence_ids":["1"]}',
+  })), redact, () => {})
+  await empty.tick(now + 300_000)
+  expect(memory.index(session)).toBeUndefined()
+
+  const valid = new AutoDream(store, memory, () => stub(async () => ({
+    text: JSON.stringify({
+      page: 'Use the WAL-safe backup.\n\nEvidence rows: 999\n\nEvidence rows: 998', evidence_ids: ['1'],
+    }),
+  })), redact, () => {})
+  await valid.tick(now + 600_000)
+  const scope = memory.consolidationScope(session)!
+  expect(memory.readConsolidated(scope)).toBe('Use the WAL-safe backup.\n\nEvidence rows: 1\n')
+})
