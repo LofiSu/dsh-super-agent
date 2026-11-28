@@ -50,15 +50,15 @@ The program is complete only when all of the following hold:
 | Task | Status | Owner files | Acceptance |
 |---|---|---|---|
 | STORE-MIGRATIONS | done (#116, `39ff321`) | `src/store/schema.ts`, `src/store/sqlite.ts`, `test/store-migration.test.ts` | `schema_migrations` ledger, versioned transactional upgrade, legacy baseline, fail-closed future version, no data loss; `LATEST_SCHEMA_VERSION = 4` |
-| HOST-READ-ISOLATION | done (#117, `0201b4f`) | `src/env/seccomp.ts`, `src/env/local-env.ts`, `test/sandbox-read-isolation.test.ts` | opt-in strict read allowlist on Darwin/Linux (`DS_AGENT_SANDBOX_READ_ISOLATION` set to `1`, `true`, or `strict`), no blanket `/` or home read, invalid env fails closed, existing behavior unchanged when off |
-| PACKAGING | done (#122 + #160); version surface merged | `package.json`, `tsconfig.build.json`, `scripts/copy-assets.ts`, `scripts/package-smoke.ts`, `scripts/release-check.ts`, `test/packaging.test.ts`, docs | `pnpm build` emits `dist/`, `bin.ds-agent`, `files` allowlist, install/run without `tsx`, package smoke and release checks. `ds-agent --version` / `src/cli/version.ts` landed in #160 |
+| HOST-READ-ISOLATION | done (#117, `0201b4f`) | `src/env/seccomp.ts`, `src/env/local-env.ts`, `test/sandbox-read-isolation.test.ts` | opt-in strict read allowlist on Darwin/Linux (`LOFIBOT_SANDBOX_READ_ISOLATION` set to `1`, `true`, or `strict`), no blanket `/` or home read, invalid env fails closed, existing behavior unchanged when off |
+| PACKAGING | done (#122 + #160); version surface merged | `package.json`, `tsconfig.build.json`, `scripts/copy-assets.ts`, `scripts/package-smoke.ts`, `scripts/release-check.ts`, `test/packaging.test.ts`, docs | `pnpm build` emits `dist/`, `bin.lofibot`, `files` allowlist, install/run without `tsx`, package smoke and release checks. `lofibot --version` / `src/cli/version.ts` landed in #160 |
 
 ### W2 — Recall and policy (landed; T48 measurement open)
 
 | Task | Status | Owner files | Acceptance |
 |---|---|---|---|
-| SEMANTIC-LTM-IMPL | done (#152, `922b3b9`) for hybrid recall; **T48 remains [~]** for month-scale | `src/memory/embedding.ts`, `src/memory/long-term.ts`, memory tests, M6 docs | ADR-010 lexical normalization + synonyms + tag-aware one-hop, held-out queries, 1000-entry bound, ACL preserved; plus hybrid semantic arm behind `EmbeddingPort` with default-on offline `HashedEmbedding`, `DS_AGENT_SEMANTIC_RECALL=0` opt-out, and a cosine floor (`DS_AGENT_EMBEDDING_FLOOR`). No calendar-month measurement exists, so T48 is not claimed |
-| MODEL-SLOW-PATH (T17) | done, opt-in (#128 `788be60`; channel wiring #135 `268809d`) | `src/ingress/policy.ts`, `src/ingress/filter.ts`, `src/runtime.ts`, channel loops, tests | rules-only default; `DS_AGENT_SLOW_PATH=model` adds structured-output policy with timeout and `ruleClassify` fallback on timeout/error/invalid output; sync `ingest` and A2A inbound never call the model; offline CI makes no provider call |
+| SEMANTIC-LTM-IMPL | done (#152, `922b3b9`) for hybrid recall; **T48 remains [~]** for month-scale | `src/memory/embedding.ts`, `src/memory/long-term.ts`, memory tests, M6 docs | ADR-010 lexical normalization + synonyms + tag-aware one-hop, held-out queries, 1000-entry bound, ACL preserved; plus hybrid semantic arm behind `EmbeddingPort` with default-on offline `HashedEmbedding`, `LOFIBOT_SEMANTIC_RECALL=0` opt-out, and a cosine floor (`LOFIBOT_EMBEDDING_FLOOR`). No calendar-month measurement exists, so T48 is not claimed |
+| MODEL-SLOW-PATH (T17) | done, opt-in (#128 `788be60`; channel wiring #135 `268809d`) | `src/ingress/policy.ts`, `src/ingress/filter.ts`, `src/runtime.ts`, channel loops, tests | rules-only default; `LOFIBOT_SLOW_PATH=model` adds structured-output policy with timeout and `ruleClassify` fallback on timeout/error/invalid output; sync `ingest` and A2A inbound never call the model; offline CI makes no provider call |
 | LIVE-BAKEOFF (T45) | measured (#115) | `docs/BAKEOFF.md`, no product code | dated local-Magpie run (2026-11-04T08:44Z): dual 11 calls / 38,805 ms vs single 10 calls / 38,684 ms, `wallRatio=1.0031`; limitations stated |
 
 > **T48 month-scale protocol (added 2026-11-06):**
@@ -73,7 +73,7 @@ The program is complete only when all of the following hold:
 | Task | Status | Owner files | Acceptance |
 |---|---|---|---|
 | LIFECYCLE-PERSISTENCE | done (#124, `888f810`) | `src/core/lifecycle.ts`, `src/store/schema.ts`, `src/runtime.ts`, `test/lifecycle-persistence.test.ts` | lifecycle events survive restart; bounded replay; schema migration added (v3) |
-| LOCAL-UI | done (#129 `123ee40`; command wiring #136 `1e01862`) | `src/ui/server.ts`, `src/cli/main.ts`, `test/cli-ui.test.ts`, docs | `ds-agent ui` binds 127.0.0.1 only, requires a shared token (`DS_AGENT_UI_TOKEN` or `--token`), read-only ticket/thread/outbox/health views, no remote code |
+| LOCAL-UI | done (#129 `123ee40`; command wiring #136 `1e01862`) | `src/ui/server.ts`, `src/cli/main.ts`, `test/cli-ui.test.ts`, docs | `lofibot ui` binds 127.0.0.1 only, requires a shared token (`LOFIBOT_UI_TOKEN` or `--token`), read-only ticket/thread/outbox/health views, no remote code |
 | ONE-UI-MANY-TOPICS | done (#129) | UI read model + lifecycle events | tickets, threads, outbox, and health visible without a Session; speculative tickets filtered; no fake data |
 
 ### W4 — Interop and distributed execution (transport landed; listeners owner-gated)
@@ -89,10 +89,10 @@ The program is complete only when all of the following hold:
 
 | Task | Status | Acceptance |
 |---|---|---|
-| BACKUP/RESTORE | done (#131 `d67731a`; usage fix #138 `58c410a`) | documented + tested `ds-agent backup`, `ds-agent restore`, WAL-safe, restore validates source schema version |
+| BACKUP/RESTORE | done (#131 `d67731a`; usage fix #138 `58c410a`) | documented + tested `lofibot backup`, `lofibot restore`, WAL-safe, restore validates source schema version |
 | UPGRADE RUNBOOK | done (#131) | `docs/UPGRADE.md`: migration + rollback procedure, supported-version table |
 | CONTAINER PROFILE | done (#131) | `docs/CONTAINER.md`: default-deny read profile for workers; distinguishes host policy from this repo's sandbox |
-| HEALTH/OBSERVABILITY | done (#127 `e700730`) | `ds-agent health` reports schema version, requested vs enforced read isolation and worker sandbox, and transport mode. It truthfully reports `in-process` A2A/mesh and does not claim a listener |
+| HEALTH/OBSERVABILITY | done (#127 `e700730`) | `lofibot health` reports schema version, requested vs enforced read isolation and worker sandbox, and transport mode. It truthfully reports `in-process` A2A/mesh and does not claim a listener |
 | RELEASE | tooling done (#131, #132 `a1985c0`); first release **human step** | version bump, CHANGELOG, manual `release.yml` (workflow_dispatch, `contents: read`, no secrets), install smoke in `docs/RELEASE.md`. Tagged publication remains a deliberate human step; there is no npm publish step |
 
 ## Sequencing
@@ -153,7 +153,7 @@ alone.
 | PACKAGING | #122 (version surface: #160 merged) | `c72f514` | `package.json` `bin`/`files`/`build`, `tsconfig.build.json`, `scripts/copy-assets.ts`, `scripts/package-smoke.ts`, `scripts/release-check.ts`, `test/packaging.test.ts` |
 | SEMANTIC-LTM-IMPL | #152 | `922b3b9` | `src/memory/embedding.ts` `HashedEmbedding`; `src/memory/long-term.ts`; `test/memory-recall-eval.test.ts`. T48 month-scale still **[~]**; protocol in `docs/T48_MONTH_SCALE_PROTOCOL.md` |
 | LIVE-BAKEOFF | #115 | — | local Magpie run 2026-11-04T08:44Z: dual 11 calls / 38,805 ms vs single 10 calls / 38,684 ms; `wallRatio=1.0031`; summary and raw JSON appendix in `docs/BAKEOFF.md` |
-| MODEL-SLOW-PATH | #128, #135 | `788be60`, `268809d` | `src/ingress/policy.ts` `PolicyClassifier`; `RuntimeOptions.slowPath`; opt-in `DS_AGENT_SLOW_PATH=model`; `n-policy`/`n-model` tests |
+| MODEL-SLOW-PATH | #128, #135 | `788be60`, `268809d` | `src/ingress/policy.ts` `PolicyClassifier`; `RuntimeOptions.slowPath`; opt-in `LOFIBOT_SLOW_PATH=model`; `n-policy`/`n-model` tests |
 | LIFECYCLE-PERSISTENCE | #124 | `888f810` | `src/core/lifecycle.ts`; `test/lifecycle-persistence.test.ts`; schema v3 events |
 | LOCAL-UI | #129, #136 | `123ee40`, `1e01862` | `src/ui/server.ts`; `test/cli-ui.test.ts`; loopback-only, token required |
 | ONE-UI-MANY-TOPICS | #129 | `123ee40` | read model in `src/ui/server.ts` (tickets/threads/outbox/health) |

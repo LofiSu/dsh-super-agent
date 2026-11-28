@@ -152,12 +152,12 @@ describe('browser errand configuration', () => {
     const home = configHome()
     fs.writeFileSync(path.join(home, 'browser-errands.json'), '  \n')
     expect(loadBrowserErrands(home, {
-      DS_AGENT_BROWSER_ERRANDS: JSON.stringify(rawCommandConfig()),
+      LOFIBOT_BROWSER_ERRANDS: JSON.stringify(rawCommandConfig()),
     })).toBeUndefined()
   })
 
   it('loads the environment seed and lets the file win', () => {
-    const seed = { DS_AGENT_BROWSER_ERRANDS: JSON.stringify(rawCommandConfig()) }
+    const seed = { LOFIBOT_BROWSER_ERRANDS: JSON.stringify(rawCommandConfig()) }
     expect(loadBrowserErrands(configHome(), seed)?.allowedHosts).toEqual(['example.com', '*.example.org'])
 
     const home = configHome()
@@ -374,7 +374,7 @@ describe('browser URL allowlist', () => {
 })
 
 describe('command browser driver', () => {
-  it('sends the ds-agent protocol envelope and keeps the worker session stable', async () => {
+  it('sends the lofibot protocol envelope and keeps the worker session stable', async () => {
     const errands = commandErrands()
     cleanups.push(() => errands.killAll())
     const config = enabled()
@@ -925,7 +925,7 @@ describe('runtime wiring', () => {
       watchdogIntervalMs: 60_000,
       browserErrands: enabled(rawCommandConfig('echo', { command: 'definitely-not-a-real-browser-driver' })),
     })).toThrow(/not found on PATH/)
-    expect(fs.existsSync(path.join(invalidDriverHome, 'ds-agent.db'))).toBe(false)
+    expect(fs.existsSync(path.join(invalidDriverHome, 'lofibot.db'))).toBe(false)
   })
 
   it('honors an explicit disable even when a config file exists', () => {

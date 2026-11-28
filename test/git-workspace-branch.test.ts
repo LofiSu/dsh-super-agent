@@ -41,7 +41,7 @@ describe('normalizePeanutBranch', () => {
 
 describe('defaultCredentialHidePaths', () => {
   it('retains host credential candidates that do not exist yet', () => {
-    const home = path.join(os.tmpdir(), `ds-agent-cred-candidates-${process.pid}-${Date.now()}`)
+    const home = path.join(os.tmpdir(), `lofibot-cred-candidates-${process.pid}-${Date.now()}`)
     fs.mkdirSync(home, { recursive: true })
     try {
       const paths = defaultCredentialHidePaths(home)
@@ -59,7 +59,7 @@ describe('defaultCredentialHidePaths', () => {
 
 describe('excludeWorkspaceRuntimePaths', () => {
   it('installs checkout-local exclusions for runtime credential directories', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-exclude-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-exclude-'))
     const workspace = path.join(root, 'workspace')
     fs.mkdirSync(workspace, { recursive: true })
     try {
@@ -84,7 +84,7 @@ describe('excludeWorkspaceRuntimePaths', () => {
   })
 
   it('is a no-op outside a git checkout', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-exclude-nogit-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-exclude-nogit-'))
     try {
       expect(() => excludeWorkspaceRuntimePaths(root)).not.toThrow()
     } finally {
@@ -95,7 +95,7 @@ describe('excludeWorkspaceRuntimePaths', () => {
 
 describe('isGitRepositorySource', () => {
   it('recognizes a valid git checkout and a bare repository', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-src-ok-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-src-ok-'))
     const work = path.join(root, 'work')
     const bare = path.join(root, 'bare.git')
     fs.mkdirSync(work, { recursive: true })
@@ -110,7 +110,7 @@ describe('isGitRepositorySource', () => {
   })
 
   it('rejects a non-repository directory or a missing path', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-src-bad-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-src-bad-'))
     try {
       expect(isGitRepositorySource(root)).toBe(false)
       expect(isGitRepositorySource(path.join(root, 'missing'))).toBe(false)
@@ -122,7 +122,7 @@ describe('isGitRepositorySource', () => {
 
 describe('seedWorkspaceCheckout', () => {
   it('surfaces concise git stderr and rolls back when the clone fails', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-seed-fail-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-seed-fail-'))
     const workspace = path.join(root, 'workspace')
     fs.mkdirSync(workspace, { recursive: true })
     try {

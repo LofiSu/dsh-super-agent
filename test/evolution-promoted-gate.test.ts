@@ -59,9 +59,9 @@ describe('promoted deliver gate consumer', () => {
     expect(evaluateDeliverGateStrategy(baseline, { speculative: true, report: orbitReport })).toBe('discard')
     expect(evaluateDeliverGateStrategy(winner!.strategy, { speculative: true, report: orbitReport })).toBe('deliver')
 
-    const prev = process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-    process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = '1'
-    process.env.DS_AGENT_HOME = home
+    const prev = process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+    process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = '1'
+    process.env.LOFIBOT_HOME = home
     try {
       const baselineGate = new HeuristicDeliverGate()
       expect(baselineGate.evaluate({ ticket: gateTicket, report: orbitReport })).toBe('discard')
@@ -81,8 +81,8 @@ describe('promoted deliver gate consumer', () => {
       expect(after).toBeInstanceOf(HeuristicDeliverGate)
       expect(after.evaluate({ ticket: gateTicket, report: orbitReport })).toBe('discard')
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-      else process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = prev
+      if (prev === undefined) delete process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+      else process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = prev
     }
   })
 })

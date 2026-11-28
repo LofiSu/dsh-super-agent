@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /** Default journal directory for parent-scheduled longitudinal collection (not created at runtime by tests). */
-export const DEFAULT_T48_JOURNAL_DIR = '.ds-agent/measurement/t48-journal'
+export const DEFAULT_T48_JOURNAL_DIR = '.lofibot/measurement/t48-journal'
 
 export interface T48JournalEntry {
   schemaVersion: 1
@@ -19,10 +19,10 @@ export interface T48JournalEntry {
 }
 
 export function resolveT48JournalPath(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env.DS_AGENT_T48_JOURNAL?.trim()
+  const override = env.LOFIBOT_T48_JOURNAL?.trim()
   if (override) return path.resolve(override)
-  const dir = env.DS_AGENT_T48_JOURNAL_DIR?.trim() || DEFAULT_T48_JOURNAL_DIR
-  const home = env.DS_AGENT_HOME?.trim() || process.cwd()
+  const dir = env.LOFIBOT_T48_JOURNAL_DIR?.trim() || DEFAULT_T48_JOURNAL_DIR
+  const home = env.LOFIBOT_HOME?.trim() || process.cwd()
   return path.join(home, dir, 't48-measurements.jsonl')
 }
 

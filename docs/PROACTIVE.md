@@ -11,7 +11,7 @@ nothing and sends nothing.
 
 ## Configuration
 
-`proactive.json` in the agent home (`$DS_AGENT_HOME`, default `~/.ds-agent`).
+`proactive.json` in the agent home (`$LOFIBOT_HOME`, default `~/.lofibot`).
 It is read once at `Runtime.create`; restart `serve` after editing it.
 
 ```json
@@ -48,7 +48,7 @@ at startup. A typo must not silently become a live schedule.
 The model has no tool that writes `proactive.json`, in the same way it has no
 tool that writes `routines.json`. The file is owner-controlled. It is not a
 sandbox boundary: a trusted specialist agent or an embedding with the sandbox
-disabled and a writable `DS_AGENT_HOME` could still edit it. Keep those agents
+disabled and a writable `LOFIBOT_HOME` could still edit it. Keep those agents
 trusted, or enable strict read isolation.
 
 ## Scheduling semantics
@@ -108,8 +108,8 @@ Daemon pulse -> ProactiveScheduler.tick -> Runtime.ingest
   and `thread_id`, so a reply cannot be threaded onto an old message.
 - It fires only into an existing admitted private thread. It never invents a
   recipient and never posts to a group.
-- The normal admission rules still apply (`DS_AGENT_ACTOR_ALLOWLIST`,
-  `DS_AGENT_GROUP_ALLOWLIST`, `DS_AGENT_DROP_SELF`). `DROP_SELF` is what stops
+- The normal admission rules still apply (`LOFIBOT_ACTOR_ALLOWLIST`,
+  `LOFIBOT_GROUP_ALLOWLIST`, `LOFIBOT_DROP_SELF`). `DROP_SELF` is what stops
   the agent from ingesting its own proactive output as a fresh instruction.
 - Quota state is written before the trigger is handed to ingress. A crash
   cannot reset the daily cap or the minimum interval and produce a burst.
@@ -123,7 +123,7 @@ Daemon pulse -> ProactiveScheduler.tick -> Runtime.ingest
 ## Enabling and operating
 
 1. Write `proactive.json` with `"enabled": true` and the desired limits.
-2. Restart the long-lived process (`ds-agent serve --feishu ...`). A one-shot
+2. Restart the long-lived process (`lofibot serve --feishu ...`). A one-shot
    command never ticks the scheduler.
 3. Watch the log for `[proactive] enabled=true ...` and the per-tick action
    (`armed`, `not-due`, `quiet-hours`, `min-interval`, `daily-cap`, `silent`,

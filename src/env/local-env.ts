@@ -17,7 +17,7 @@ import { enforceRequiredSandbox } from './sandbox-probe.ts'
 import { readIsolationFromEnv, sandboxEnabledFromEnv, wrapBashCommand, type SandboxPolicy } from './seccomp.ts'
 
 function unsharePidRequiredFromEnv(env: NodeJS.ProcessEnv): boolean {
-  const raw = env.DS_AGENT_SANDBOX_REQUIRED?.trim()
+  const raw = env.LOFIBOT_SANDBOX_REQUIRED?.trim()
   if (!raw) return false
   return raw.split(',').map(t => t.trim()).includes('process')
 }
@@ -40,7 +40,7 @@ export interface LocalEnvOptions {
   redactValues?: readonly string[]
   sandbox?: SandboxPolicy
   /**
-   * Opt-in strict read confinement. Overrides `DS_AGENT_SANDBOX_READ_ISOLATION`
+   * Opt-in strict read confinement. Overrides `LOFIBOT_SANDBOX_READ_ISOLATION`
    * and the sandbox policy's own flag; default is off.
    */
   readIsolation?: boolean
@@ -106,7 +106,7 @@ export class LocalEnv implements EnvPort {
       readRoots: [...(sandbox.readRoots ?? []), ...(options.readRoots ?? [])],
       unsharePid,
     }
-    if (env.DS_AGENT_SANDBOX_REQUIRED?.trim()) {
+    if (env.LOFIBOT_SANDBOX_REQUIRED?.trim()) {
       enforceRequiredSandbox(env, this.sandbox)
     }
     const vaultSecrets = this.vault
@@ -120,7 +120,7 @@ export class LocalEnv implements EnvPort {
   }
 
 
-  /** Read-only config for `ds-agent health` and tests. */
+  /** Read-only config for `lofibot health` and tests. */
   get readIsolation(): boolean {
     return this.sandbox.readIsolation === true
   }

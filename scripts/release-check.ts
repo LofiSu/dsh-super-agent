@@ -3,7 +3,7 @@
  *
  * This is a pre-release gate, not a publisher. It verifies the parts of the
  * package that users actually install:
- *  - `package.json` has a semver version and a `ds-agent` bin pointing at
+ *  - `package.json` has a semver version and a `lofibot` bin pointing at
  *    `dist/cli/main.js`;
  *  - the build emitted the CLI entry and the runtime rules asset;
  *  - `npm pack --dry-run --json` would ship `dist/` and the entry points.
@@ -58,7 +58,7 @@ export const RULES_ASSET_CANDIDATES = [
 
 /**
  * Host-side fixtures the sandbox probe loads from beside the compiled module.
- * Without them `DS_AGENT_SANDBOX_REQUIRED=network|process` can never pass in an
+ * Without them `LOFIBOT_SANDBOX_REQUIRED=network|process` can never pass in an
  * installed package, so the tarball must ship them.
  */
 export const SANDBOX_PROBE_ASSETS: readonly string[] = RUNTIME_ASSETS
@@ -99,8 +99,8 @@ function isFile(file: string): boolean {
 
 function binTarget(bin: unknown): string | undefined {
   if (typeof bin === 'string') return bin
-  if (bin && typeof bin === 'object' && 'ds-agent' in bin) {
-    const value = (bin as Record<string, unknown>)['ds-agent']
+  if (bin && typeof bin === 'object' && 'lofibot' in bin) {
+    const value = (bin as Record<string, unknown>)['lofibot']
     return typeof value === 'string' ? value : undefined
   }
   return undefined
@@ -188,10 +188,10 @@ export function checkRelease(options: ReleaseCheckOptions = {}): ReleaseCheckRes
     const normalized = target === undefined ? undefined : normalizePackPath(target)
     checks.push(
       normalized === CLI_ENTRY
-        ? passed('bin', `bin.ds-agent points at ${CLI_ENTRY}`)
+        ? passed('bin', `bin.lofibot points at ${CLI_ENTRY}`)
         : failed(
           'bin',
-          `package.json bin.ds-agent must be "./${CLI_ENTRY}"`,
+          `package.json bin.lofibot must be "./${CLI_ENTRY}"`,
           `got ${JSON.stringify(target ?? pkg.bin)}`,
         ),
     )

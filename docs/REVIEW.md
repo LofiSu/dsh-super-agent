@@ -1,4 +1,4 @@
-# ds-agent review
+# lofibot review
 
 > **Historical snapshot** — this review describes the tree as of 2026-10-31. Findings may already be fixed; see [`docs/ROADMAP.md`](./ROADMAP.md) for current status. It is not a statement about current `main`.
 
@@ -18,7 +18,7 @@ No Cloud or Claude code-review methodology article is referenced in this repo.
 
 Searched: the working tree, and every commit (`git grep` across `git rev-list --all`, plus `git log -S` for `Cloud`, `Claude`, `code review`, and `methodology`). The only Cloud hits are BYOM wording, not a review rubric:
 
-- `src/cli/main.ts:29` — "Cloud model: DS_AGENT_API_BASE + DS_AGENT_API_KEY"
+- `src/cli/main.ts:29` — "Cloud model: LOFIBOT_API_BASE + LOFIBOT_API_KEY"
 - `src/shared/ports.ts:13` and `src/env/local-env.ts:8` — a future cloud worker implementing `EnvPort`
 - `test/filter.test.ts:107` — "cloud env vars"
 
@@ -28,7 +28,7 @@ Nothing cites a methodology post, and this review does not import one. Findings 
 
 `pnpm demo` under MockModel prints the blog's vocabulary: two-level filter, `bypass=subscription`, spill id, speculative silence, `deliver=true`, a watchdog tick, an async job. Those strings are real. The control plane the plan describes is not what runs.
 
-The Router does not decide. Eval always accepts. A batch is one trigger. Subscription bypass is every live subscriber, not a human message. The deliver gate is a boolean the worker sets. The session journal is write-only. The watchdog logs. The shell inherits `DS_AGENT_API_KEY` and returns it as a tool result. Turning on `DS_AGENT_API_*` switches the model client and drops the scripted proofs; it does not turn those behaviors into model policy.
+The Router does not decide. Eval always accepts. A batch is one trigger. Subscription bypass is every live subscriber, not a human message. The deliver gate is a boolean the worker sets. The session journal is write-only. The watchdog logs. The shell inherits `LOFIBOT_API_KEY` and returns it as a tool result. Turning on `LOFIBOT_API_*` switches the model client and drops the scripted proofs; it does not turn those behaviors into model policy.
 
 PLAN §4 says the TypeScript shapes are frozen and that code changes follow the plan. `src/shared/types.ts` is a different model (`Role`, `Strength` includes `maybe`, `Thread.subscriptions: string[]`, `Assignment.state`, no `Engine.decide`). PLAN §10's file tree (`roles.ts`, `sanitize.ts`, `prompts/`, `src/app/runtime.ts`, `Assessor`) is not the tree that shipped. The audit at PLAN lines 1013–1033 then marks that drift as covered. README checkboxes that say `[x]` for batching, a model slow path, `roleModels`, the deliver gate, daemon resume, and the credential baseline describe the plan, not the branch.
 
@@ -69,7 +69,7 @@ child.on('close', code => resolve({ code: code ?? 1, stdout, stderr }))
 
 The worker tool returns that stdout and stderr unchanged (`src/harness/tools.ts:101-104`). `runTurn` JSON-encodes the result into the next `messages` array (`src/harness/loop.ts:223-228`) and `HttpOpenAI.complete` posts those messages to the API (`src/harness/model.ts:164-196`). `SessionJournal.append` also writes the same line to SQLite and to `sessions/<id>.jsonl` (`src/harness/session.ts:22-26`).
 
-Reproduced: with `DS_AGENT_API_KEY` set to a sentinel, `env.bash(worker, 'echo KEY=$DS_AGENT_API_KEY')` returned `code: 0` and the sentinel in `stdout`. The same call `cat ../../../../etc/hostname` from the worker directory returned the host file. `safe()` (`src/env/local-env.ts:47-54`) applies to `readFile` / `writeFile` only. `bash` is arbitrary execution with the process environment, network, and filesystem.
+Reproduced: with `LOFIBOT_API_KEY` set to a sentinel, `env.bash(worker, 'echo KEY=$LOFIBOT_API_KEY')` returned `code: 0` and the sentinel in `stdout`. The same call `cat ../../../../etc/hostname` from the worker directory returned the host file. `safe()` (`src/env/local-env.ts:47-54`) applies to `readFile` / `writeFile` only. `bash` is arbitrary execution with the process environment, network, and filesystem.
 
 The worker prompt is the trigger text (`src/harness/loop.ts:48-55`, `72-79`). IM and GitHub bodies are untrusted. A live model that follows "print the environment" instructions, or a Mock script that is later pointed at a different command, puts the API key in the journal and in the following completion request. MockModel's own script only runs `echo worker-ok` (`src/harness/model.ts:124`), so `pnpm demo` does not trip the probe. The probe was never written.
 
@@ -119,7 +119,7 @@ The router tool list really does omit `bash` (`src/harness/tools.ts:97-100` is `
 
 **A + B.** PLAN §2.3 and T19: a **human** message that reaches a **live** ticket bypasses Eval, and the log line contains `ticketId`. An ended ticket that was not stopped resumes. `contextOnly` subscriptions do not grant follow-up (M5). The log probe itself works: `src/core/intake.ts:59-60` prints `bypass=subscription ticketId=…`, and `test/subscription.test.ts` locks that for a second human message on the same thread.
 
-The fan-out condition is "the ticket is deliverable", and a ticket with no `ended` is deliverable for every trigger (`src/core/intake.ts:73-74`, loop at `38-53`). Reproduced: after a human `@ds-agent please fix…` on `im:topic/bug`, a `human: false` CI-style message on that same thread was `stored` with `fanout: ['ticket_2']` and the bypass log line. Eval did not see it. Bot and CI traffic on a subscribed thread skips the router.
+The fan-out condition is "the ticket is deliverable", and a ticket with no `ended` is deliverable for every trigger (`src/core/intake.ts:73-74`, loop at `38-53`). Reproduced: after a human `@lofibot please fix…` on `im:topic/bug`, a `human: false` CI-style message on that same thread was `stored` with `fanout: ['ticket_2']` and the bypass log line. Eval did not see it. Bot and CI traffic on a subscribed thread skips the router.
 
 Resume is `delete ticket.ended` (`src/core/intake.ts:77-80`). Nothing else changes. Reproduced after `report({ kind: 'ready', deliver: true })`:
 
@@ -158,7 +158,7 @@ Reproduced on the demo's flaky-test trigger (`meta.speculate: true`):
 - `report({ kind: 'failed', text: 'watchdog: stuck', deliver: false })` left `ended` unset, `state` `running`, `speculative` true. That is the payload `mark_task_failed` sends (`src/harness/tools.ts:213-214`). A speculative ticket cannot be failed through the only fail API, because the silence return happens before the terminal branch.
 - `report({ kind: 'ready', deliver: true })` set `ended` and left `speculative: true`. No `speculate.delivered` event exists (`src/shared/events.ts:1-11`).
 
-`list_tasks` returns speculative rows (`src/harness/tools.ts:79-84`). `ds-agent tasks` prints every ticket (`src/cli/main.ts:71-74`). `Engine.reply` does not look at `speculative` (`src/core/engine.ts:45-50`), so a Router tool call speaks even when the report said not to deliver. MockModel avoids that with prompt text (`src/harness/model.ts:105-107`). The engine does not.
+`list_tasks` returns speculative rows (`src/harness/tools.ts:79-84`). `lofibot tasks` prints every ticket (`src/cli/main.ts:71-74`). `Engine.reply` does not look at `speculative` (`src/core/engine.ts:45-50`), so a Router tool call speaks even when the report said not to deliver. MockModel avoids that with prompt text (`src/harness/model.ts:105-107`). The engine does not.
 
 MockModel's speculative script always delivers on the second report (`src/harness/model.ts:128-145`: progress `deliver: false`, then `ready` / `deliver: true` with the fixed sentence `ready: investigation recorded`). The demo's "might be a flaky payment test" still produces a GitHub result. The value heuristic is "the mock said true".
 
@@ -199,7 +199,7 @@ The stuck signal is the wrong one. `Harness.run` sets the session to `running` a
 
 ### H8. Live mode does not run the policy the demo proves
 
-**A + B.** T07 and T10, and README's model section: Router and Watchdog use a light model, the Worker a stronger one (`roleModels`). T17: the slow path is an LLM policy, with Mock allowed to substitute rules. `createModelFromEnv` returns one `HttpOpenAI` or one `MockModel` for every role (`src/harness/model.ts:219-223`). `HttpOpenAI.classify` calls `ruleClassify` (`src/harness/model.ts:160-162`), the same keyword function MockModel uses (`src/harness/model.ts:79-81`, rules in `src/ingress/filter.ts:50-66`). Setting `DS_AGENT_API_BASE` and `DS_AGENT_API_KEY` does not send triggers to the model for admission.
+**A + B.** T07 and T10, and README's model section: Router and Watchdog use a light model, the Worker a stronger one (`roleModels`). T17: the slow path is an LLM policy, with Mock allowed to substitute rules. `createModelFromEnv` returns one `HttpOpenAI` or one `MockModel` for every role (`src/harness/model.ts:219-223`). `HttpOpenAI.classify` calls `ruleClassify` (`src/harness/model.ts:160-162`), the same keyword function MockModel uses (`src/harness/model.ts:79-81`, rules in `src/ingress/filter.ts:50-66`). Setting `LOFIBOT_API_BASE` and `LOFIBOT_API_KEY` does not send triggers to the model for admission.
 
 The scripted behaviors that make the demo "prove" the blog live only inside `MockModel.complete`: speculative silence, `read_object` before bash, `start_job`, `deliver: true`, watchdog `list_tasks` (`src/harness/model.ts:83-147`). `LIVE_DEMO_PROOFS` (`src/cli/demo.ts:37-47`) drops `RouterSession`, `WorkerSession`, `spillId=`, `read_object`, `speculative silent`, `deliver=true`, `async job started`, and the watchdog tick. That list is an admission that those proofs are Mock-only. A live worker is not forced through the deliver gate (H4), not forced to page spills (H7), and not given a different model from the router.
 
@@ -248,7 +248,7 @@ Measured: `spawn('bash', ['-c', 'echo PID $$; sleep 3; echo DONE'], { timeout: 5
 
 ### M7. Live model errors abort the turn and can leave it running
 
-**B.** `HttpOpenAI.complete` has no fetch timeout (`src/harness/model.ts:164-166`). Tool arguments are `JSON.parse` with no catch (`src/harness/model.ts:210-214`); invalid JSON rejects `runTurn`, because `model.complete` sits outside the per-tool try (`src/harness/loop.ts:210`). The HTTP error string includes the first 200 characters of the response body (`src/harness/model.ts:197-199`), and `ds-agent` prints `error.message` (`src/cli/main.ts:126-128`). Combined with H6, the assignment stays `running` and the session row goes `idle`.
+**B.** `HttpOpenAI.complete` has no fetch timeout (`src/harness/model.ts:164-166`). Tool arguments are `JSON.parse` with no catch (`src/harness/model.ts:210-214`); invalid JSON rejects `runTurn`, because `model.complete` sits outside the per-tool try (`src/harness/loop.ts:210`). The HTTP error string includes the first 200 characters of the response body (`src/harness/model.ts:197-199`), and `lofibot` prints `error.message` (`src/cli/main.ts:126-128`). Combined with H6, the assignment stays `running` and the session row goes `idle`.
 
 ### M8. `report_to_router` waits on the router while holding the worker chain
 
@@ -262,7 +262,7 @@ Measured: `spawn('bash', ['-c', 'echo PID $$; sleep 3; echo DONE'], { timeout: 5
 
 ### L2. Runtime docs disagree with the package
 
-PLAN freezes Node ≥ 20. `package.json` `engines.node` is `>=22` (this tree uses `node:sqlite`). README's quick start says Node 20+ and `pnpm start`. There is no `start` script. The database file is `ds-agent.db` (`src/store/sqlite.ts:16`), not `ds-agent.sqlite`. `node:sqlite` prints an experimental warning unless `NODE_NO_WARNINGS` is set, which the npm scripts set and a raw `node` invocation does not.
+PLAN freezes Node ≥ 20. `package.json` `engines.node` is `>=22` (this tree uses `node:sqlite`). README's quick start says Node 20+ and `pnpm start`. There is no `start` script. The database file is `lofibot.db` (`src/store/sqlite.ts:16`), not `lofibot.sqlite`. `node:sqlite` prints an experimental warning unless `NODE_NO_WARNINGS` is set, which the npm scripts set and a raw `node` invocation does not.
 
 ### L3. Dead helpers
 
@@ -283,7 +283,7 @@ These parts match the plan and the tests:
 - IM English text is truncated at 100 words. GitHub text is wrapped in a small labeled block (`src/channels/norms.ts`).
 - SQLite document rows survive a close and a new `Store` on the same directory. The demo's restart check is that row count.
 - `start_job` returns before the timer, and a later turn runs, under MockModel (`test/job.test.ts`). The later turn does not see the earlier one (H5).
-- With no `DS_AGENT_API_*`, `createModelFromEnv` returns `MockModel`. With both base and key set, it returns `HttpOpenAI` (`test/filter.test.ts`). The key stays on the client object and is not copied into `systemPrompt` (`src/harness/model.ts:44-52`). Leakage is the tool path in C1, not the system prompt.
+- With no `LOFIBOT_API_*`, `createModelFromEnv` returns `MockModel`. With both base and key set, it returns `HttpOpenAI` (`test/filter.test.ts`). The key stays on the client object and is not copied into `systemPrompt` (`src/harness/model.ts:44-52`). Leakage is the tool path in C1, not the system prompt.
 
 ## Patch in this PR
 

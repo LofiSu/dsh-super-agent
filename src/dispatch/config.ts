@@ -11,8 +11,8 @@ import { UserError } from '../shared/errors.ts'
 
 export const GITHUB_DISPATCH_FILE = 'github-dispatch.json'
 
-/** Public user we do not own; never accept as default mention identity. */
-export const UNOWNED_PUBLIC_HANDLE = 'ds-agent'
+/** Brand handles are not verified app identities. */
+const RESERVED_MENTION_HANDLES = new Set(['lofibot', 'ds-agent'])
 
 export interface GithubDispatchConfig {
   enabled: boolean
@@ -122,7 +122,7 @@ function assertMentionHandlesForAuth(
   auth: GithubDispatchAuthConfig,
 ): void {
   for (const handle of mentionHandles) {
-    if (handle.toLowerCase() === UNOWNED_PUBLIC_HANDLE) {
+    if (RESERVED_MENTION_HANDLES.has(handle.toLowerCase())) {
       throw new UserError(
         `github-dispatch: mention handle "${handle}" is an unrelated public account`,
       )

@@ -273,12 +273,12 @@ export function renderHtml(snapshot: UiSnapshot): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ds-agent local ui</title>
+<title>LofiBot Dashboard</title>
 <style>${PAGE_STYLE}</style>
 </head>
 <body>
 <header>
-  <h1>ds-agent local ui</h1>
+  <h1>LofiBot Dashboard</h1>
   <span class="sub" id="generated">generated ${escapeHtml(snapshot.generatedAt)}</span>
   <span class="sub">stream <span class="live" id="live">connecting</span></span>
 </header>

@@ -5,10 +5,10 @@
  * reopening the same store, appends JSONL journal rows, and prints metrics.
  *
  * Parent operators may schedule:
- *   DS_AGENT_HOME=/path/to/state CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 pnpm t48:long
+ *   LOFIBOT_HOME=/path/to/state CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm t48:long
  *
- * Journal default: $DS_AGENT_HOME/.ds-agent/measurement/t48-journal/t48-measurements.jsonl
- * Override file: DS_AGENT_T48_JOURNAL=/absolute/path.jsonl
+ * Journal default: $LOFIBOT_HOME/.lofibot/measurement/t48-journal/t48-measurements.jsonl
+ * Override file: LOFIBOT_T48_JOURNAL=/absolute/path.jsonl
  *
  * No network, no live model, no reads of real user memories.
  */
@@ -48,10 +48,10 @@ export function runT48LongitudinalHarness(options: {
   appendJournal?: boolean
 } = {}): LongitudinalHarnessResult {
   const ownsHome = options.home == null
-  const home = options.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-t48-long-'))
+  const home = options.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-t48-long-'))
   const report = runT48MonthScaleProtocol({ home })
   const runId = randomUUID()
-  const journalPath = options.journalPath ?? resolveT48JournalPath({ ...process.env, DS_AGENT_HOME: home })
+  const journalPath = options.journalPath ?? resolveT48JournalPath({ ...process.env, LOFIBOT_HOME: home })
   if (options.appendJournal !== false) {
     const entry: T48JournalEntry = {
       schemaVersion: 1,

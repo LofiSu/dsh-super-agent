@@ -40,14 +40,14 @@ describe('probeSandboxAvailability (M2 env)', () => {
 
   it('maps strict read env to strictReadIsolationPolicy when env is valid', () => {
     expect(probeSandboxAvailability(
-      { DS_AGENT_SANDBOX_READ_ISOLATION: '1' },
+      { LOFIBOT_SANDBOX_READ_ISOLATION: '1' },
       linuxWithBwrap,
     )).toEqual({
       workerSandboxWrapper: 'available',
       strictReadIsolationPolicy: 'on',
     })
     expect(probeSandboxAvailability(
-      { DS_AGENT_SANDBOX_READ_ISOLATION: '0' },
+      { LOFIBOT_SANDBOX_READ_ISOLATION: '0' },
       linuxWithBwrap,
     )).toEqual({
       workerSandboxWrapper: 'available',
@@ -57,7 +57,7 @@ describe('probeSandboxAvailability (M2 env)', () => {
 
   it('fails closed on invalid read isolation env for policy only', () => {
     expect(probeSandboxAvailability(
-      { DS_AGENT_SANDBOX_READ_ISOLATION: 'lax' },
+      { LOFIBOT_SANDBOX_READ_ISOLATION: 'lax' },
       linuxWithBwrap,
     )).toEqual({
       workerSandboxWrapper: 'available',
@@ -67,7 +67,7 @@ describe('probeSandboxAvailability (M2 env)', () => {
 
   it('reports unsupported on platforms without a filesystem sandbox wrapper', () => {
     expect(probeSandboxAvailability(
-      { DS_AGENT_SANDBOX_READ_ISOLATION: 'strict' },
+      { LOFIBOT_SANDBOX_READ_ISOLATION: 'strict' },
       { platform: 'win32', available: () => true },
     )).toEqual({
       workerSandboxWrapper: 'unsupported',

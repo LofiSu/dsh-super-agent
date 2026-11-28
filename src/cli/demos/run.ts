@@ -10,7 +10,7 @@ import { runWatchdogDemo } from './watchdog.ts'
  *
  *   pnpm demo
  *   pnpm demo -- --only parallel,spill
- *   DS_AGENT_GH_KEEP=1 pnpm demo
+ *   LOFIBOT_GH_KEEP=1 pnpm demo
  *
  * Every scenario creates/reads real GitHub issues and posts real issue
  * comments. There is no fake IM/GitHub fallback; a missing live model or
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     console.log('Real channels only: GitHub issues + comments through gh api, live Magpie/DeepSeek model.')
     process.exit(0)
   }
-  if (flag('keep')) process.env.DS_AGENT_GH_KEEP = '1'
+  if (flag('keep')) process.env.LOFIBOT_GH_KEEP = '1'
 
   const logDir = demoLogDir()
   fs.mkdirSync(logDir, { recursive: true })
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     elapsedMs: Date.now() - Date.parse(startedAt),
     logDir,
     realChannels: {
-      github: 'gh api on DS_AGENT_GH_REPO (default LofiSu/deepseek-super-agent)',
+      github: 'gh api on LOFIBOT_GH_REPO (default LofiSu/LofiBot)',
       feishu: process.env.FEISHU_APP_ID ? 'configured (FEISHU_APP_ID present)' : 'not configured (no FEISHU_APP_ID)',
     },
     results: summaries.map(summary => ({

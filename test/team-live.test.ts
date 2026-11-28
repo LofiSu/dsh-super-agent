@@ -21,7 +21,7 @@ function detectLive(): boolean {
   }
 }
 
-const forceOffline = process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
+const forceOffline = process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
 const hasLive = !forceOffline && detectLive()
 
 let runtime: Runtime | undefined

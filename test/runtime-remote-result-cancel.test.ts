@@ -23,7 +23,7 @@ describe('Runtime remote result idempotence after cancel', () => {
       instanceId: HOST,
       singleSession: true,
       jobDelayMs: 0,
-      env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_INSTANCE_ID: HOST },
+      env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_INSTANCE_ID: HOST },
       model: silentModel(),
     })
     runtime.placement.registerRemoteNode({
@@ -35,7 +35,7 @@ describe('Runtime remote result idempotence after cancel', () => {
     })
     runtime.start({ assessPending: false })
     runtime.engine.receive(
-      imTrigger({ id: 'trg_done', thread: 'topic/trg_done', text: '@ds-agent fix the login timeout on checkout' }),
+      imTrigger({ id: 'trg_done', thread: 'topic/trg_done', text: '@lofibot fix the login timeout on checkout' }),
       { shards: ['default'] },
     )
     const ticketId = runtime.engine.evaluateDue()[0]?.ticketId ?? ''

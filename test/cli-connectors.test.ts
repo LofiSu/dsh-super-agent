@@ -10,7 +10,7 @@ import { Store } from '../src/store/sqlite.ts'
 const dirs: string[] = []
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-cli-connectors-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-cli-connectors-'))
   dirs.push(home)
   return home
 }
@@ -23,12 +23,12 @@ function runCli(home: string, args: string[]): { status: number | null; stdout: 
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' },
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
-describe('ds-agent connectors', () => {
+describe('lofibot connectors', () => {
   it('reports a disabled feature when connectors.json is absent', () => {
     const home = tempHome()
     const result = runCli(home, ['connectors', 'status'])

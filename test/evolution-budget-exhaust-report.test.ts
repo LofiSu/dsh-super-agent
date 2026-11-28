@@ -18,7 +18,7 @@ afterEach(() => {
 })
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-budget-report-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-budget-report-'))
   homes.push(home)
   return home
 }

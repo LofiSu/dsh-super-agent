@@ -42,7 +42,7 @@ afterEach(() => {
 })
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-sec-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-sec-'))
   homes.push(home)
   return home
 }
@@ -316,16 +316,16 @@ describe('evolution security and ABC final test', () => {
     const home = tempHome()
     const { report, winner } = await winningPipeline(home)
     const artifact = path.join(report.archiveDir, winner.candidateId, 'candidate.json')
-    const prev = process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-    process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = '1'
+    const prev = process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+    process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = '1'
     try {
       approvePromotion({ home, runReport: report, candidateId: winner.candidateId, artifactPath: artifact })
       expect(resolveDeliverGate(home).constructor.name).toBe('ConfigurableDeliverGate')
       rollbackPromotion(home)
       expect(resolveDeliverGate(home).constructor.name).toBe('HeuristicDeliverGate')
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-      else process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = prev
+      if (prev === undefined) delete process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+      else process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = prev
     }
   })
 
@@ -345,7 +345,7 @@ describe('evolution security and ABC final test', () => {
 
 describe('promotion binds to the experiment-sealed frozen receipt', () => {
   it('refuses a swapped run report and receipt that bypass the validation gate', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-bind-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-bind-ds-'))
     datasets.push(dataset)
     writeValidationMissDataset(dataset)
     const home = tempHome()
@@ -430,13 +430,13 @@ describe('promotion binds to the experiment-sealed frozen receipt', () => {
 
 describe('promotion consumer enforces the sealed admission gates', () => {
   function withPromotedGate<T>(fn: () => T): T {
-    const prev = process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-    process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = '1'
+    const prev = process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+    process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = '1'
     try {
       return fn()
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-      else process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = prev
+      if (prev === undefined) delete process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+      else process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = prev
     }
   }
 
@@ -460,7 +460,7 @@ describe('promotion consumer enforces the sealed admission gates', () => {
   }
 
   it('refuses planted promotion artifacts when sealed validation accuracy is < 1', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-consumer-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-consumer-ds-'))
     datasets.push(dataset)
     writeValidationMissDataset(dataset)
     const home = tempHome()
@@ -488,7 +488,7 @@ describe('promotion consumer enforces the sealed admission gates', () => {
   })
 
   it('re-applies the gates to the sealed receipt, not a swapped on-disk receipt', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-consumer-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-consumer-ds-'))
     datasets.push(dataset)
     writeValidationMissDataset(dataset)
     const home = tempHome()
@@ -509,7 +509,7 @@ describe('promotion consumer enforces the sealed admission gates', () => {
   })
 
   it('refuses planted promotion artifacts when sealed final test accuracy is < 1', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-consumer-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-consumer-ds-'))
     datasets.push(dataset)
     writeFinalTestMissDataset(dataset)
     const home = tempHome()
@@ -559,7 +559,7 @@ describe('freeze binds to the search-recorded run report digest', () => {
   }
 
   it('refuses to freeze a report swapped on disk after search', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-freeze-bind-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-freeze-bind-ds-'))
     datasets.push(dataset)
     writeValidationMissDataset(dataset)
     const home = tempHome()
@@ -607,7 +607,7 @@ describe('freeze binds to the search-recorded run report digest', () => {
   })
 
   it('freezes the untampered search report and seals the real validation score', async () => {
-    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-freeze-bind-ds-'))
+    const dataset = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-freeze-bind-ds-'))
     datasets.push(dataset)
     writeValidationMissDataset(dataset)
     const home = tempHome()

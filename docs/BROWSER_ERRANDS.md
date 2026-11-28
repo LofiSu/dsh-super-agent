@@ -1,10 +1,10 @@
 # Browser errands
 
 Status: **PR-only** on `feat/instinct-browser-errands`, not merged to `main`.
-This is ds-agent's own browser-errand adapter. It is **not** Instinct's leased
+This is lofibot's own browser-errand adapter. It is **not** Instinct's leased
 cloud browser, it does not replay Instinct prompts or control flow, and it does
 not create a hosted browser session. It is one clearly labeled equivalent: an
-owner-configured local command or remote HTTP endpoint that speaks ds-agent's
+owner-configured local command or remote HTTP endpoint that speaks lofibot's
 own protocol.
 
 The adapter is **off by default**. Missing configuration registers no browser
@@ -14,8 +14,8 @@ half-working capability.
 
 ## Configure
 
-Create `browser-errands.json` in the agent home (`$DS_AGENT_HOME`, by default
-`~/.ds-agent`). The file wins over `DS_AGENT_BROWSER_ERRANDS`; an empty file
+Create `browser-errands.json` in the agent home (`$LOFIBOT_HOME`, by default
+`~/.lofibot`). The file wins over `LOFIBOT_BROWSER_ERRANDS`; an empty file
 also disables the environment seed.
 
 ### Local command driver
@@ -25,7 +25,7 @@ also disables the environment seed.
   "enabled": true,
   "driver": {
     "kind": "command",
-    "command": "/usr/local/bin/ds-agent-browser-driver",
+    "command": "/usr/local/bin/lofibot-browser-driver",
     "args": [],
     "env": ["BROWSER_PROFILE_DIR"],
     "timeoutMs": 30000
@@ -52,7 +52,7 @@ itself; the adapter starts no long-lived browser process.
   "driver": {
     "kind": "http",
     "url": "https://browser.example.net/errand",
-    "tokenEnv": "DS_AGENT_BROWSER_TOKEN",
+    "tokenEnv": "LOFIBOT_BROWSER_TOKEN",
     "timeoutMs": 30000
   },
   "allowedHosts": ["example.com"]
@@ -71,7 +71,7 @@ Request (stdin for `command`, JSON body for `http`):
 
 ```json
 {
-  "protocol": "ds-agent-browser-errand/v1",
+  "protocol": "lofibot-browser-errand/v1",
   "action": "navigate",
   "session": "worker_ticket_123",
   "url": "https://example.com/page"
@@ -137,9 +137,9 @@ Worker/Harness path.
   matches itself; `*.example.org` matches subdomains but not the apex. The
   check is not a network firewall and does not inspect redirects performed
   inside the driver.
-- **No saved logins.** ds-agent has no credential vault on this path. The
+- **No saved logins.** lofibot has no credential vault on this path. The
   adapter does not claim the owner is signed in anywhere. If a driver maintains
-  its own browser profile, that store belongs to the driver, not ds-agent.
+  its own browser profile, that store belongs to the driver, not lofibot.
 - **Bounded.** Output is capped, read/extract results are clamped, timeouts
   kill the process group, and at most two driver calls run concurrently.
   Runtime shutdown kills in-flight driver children.
@@ -149,7 +149,7 @@ Worker/Harness path.
 ```bash
 # 1. Write browser-errands.json in the agent home with "enabled": true.
 # 2. Start the normal runtime; a bad file or missing executable fails here.
-pnpm ds-agent status
+pnpm lofibot status
 
 # Focused offline suite (uses a fake driver; no real browser):
 pnpm vitest run test/browser-errands.test.ts
@@ -159,7 +159,7 @@ pnpm vitest run test/browser-errands.test.ts
 
 - No hosted/leased cloud browser and no real-site acceptance. The command and
   HTTP drivers are exercised with fakes and a loopback test server.
-- No navigation state is held by ds-agent; the driver is responsible for
+- No navigation state is held by lofibot; the driver is responsible for
   session-keyed page state.
 - No credential vault, saved logins, payment, or approval-card UI is added
   here.

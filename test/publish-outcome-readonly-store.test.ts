@@ -11,7 +11,7 @@ import { LATEST_SCHEMA_VERSION, MIGRATIONS, migrate } from '../src/store/schema.
 const roots: string[] = []
 
 function makeRoot(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-publish-outcome-readonly-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-publish-outcome-readonly-'))
   roots.push(root)
   return root
 }
@@ -26,7 +26,7 @@ function runCli(home: string, ticketId: string, json = true) {
   ], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, DS_AGENT_HOME: home, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, LOFIBOT_HOME: home, NODE_NO_WARNINGS: '1' },
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
@@ -53,7 +53,7 @@ function v5Snapshot(dbPath: string) {
 
 function createV5Database(home: string): string {
   fs.mkdirSync(home)
-  const dbPath = path.join(home, 'ds-agent.db')
+  const dbPath = path.join(home, 'lofibot.db')
   const db = new DatabaseSync(dbPath)
   try {
     expect(migrate(db, MIGRATIONS.slice(0, 5), 5)).toBe(5)
@@ -76,7 +76,7 @@ describe('publish-outcome read-only database entry', () => {
     expect(result.status, result.stderr).toBe(0)
     expect(JSON.parse(result.stdout).admissions).toEqual([])
     expect(fs.existsSync(home)).toBe(false)
-    expect(fs.existsSync(path.join(home, 'ds-agent.db'))).toBe(false)
+    expect(fs.existsSync(path.join(home, 'lofibot.db'))).toBe(false)
   })
 
   it('discloses missing historical evidence when an existing state directory has no database', () => {
@@ -94,7 +94,7 @@ describe('publish-outcome read-only database entry', () => {
   it('discloses unavailable history for a pre-admission schema without migrating it', () => {
     const home = path.join(makeRoot(), 'pre-admission-state')
     fs.mkdirSync(home)
-    const dbPath = path.join(home, 'ds-agent.db')
+    const dbPath = path.join(home, 'lofibot.db')
     const db = new DatabaseSync(dbPath)
     try {
       expect(migrate(db, MIGRATIONS.slice(0, 4), 4)).toBe(4)
@@ -116,7 +116,7 @@ describe('publish-outcome read-only database entry', () => {
     for (const withLedger of [false, true]) {
       const home = path.join(makeRoot(), withLedger ? 'future-with-ledger' : 'future-without-ledger')
       fs.mkdirSync(home)
-      const dbPath = path.join(home, 'ds-agent.db')
+      const dbPath = path.join(home, 'lofibot.db')
       if (withLedger) {
         const store = new Store(home)
         store.close()
@@ -148,7 +148,7 @@ describe('publish-outcome read-only database entry', () => {
   it('reports corrupt or invalid database paths without replacing them or falling back to Store', () => {
     const corruptHome = path.join(makeRoot(), 'corrupt-state')
     fs.mkdirSync(corruptHome)
-    const corruptPath = path.join(corruptHome, 'ds-agent.db')
+    const corruptPath = path.join(corruptHome, 'lofibot.db')
     fs.writeFileSync(corruptPath, 'owned corrupt sqlite fixture')
     const corruptBefore = createHash('sha256').update(fs.readFileSync(corruptPath)).digest('hex')
 
@@ -156,14 +156,14 @@ describe('publish-outcome read-only database entry', () => {
 
     expect(corrupt.status).not.toBe(0)
     expect(createHash('sha256').update(fs.readFileSync(corruptPath)).digest('hex')).toBe(corruptBefore)
-    expect(fs.readdirSync(corruptHome)).toEqual(['ds-agent.db'])
+    expect(fs.readdirSync(corruptHome)).toEqual(['lofibot.db'])
 
     const invalidHome = path.join(makeRoot(), 'invalid-state')
     fs.mkdirSync(invalidHome)
-    fs.mkdirSync(path.join(invalidHome, 'ds-agent.db'))
+    fs.mkdirSync(path.join(invalidHome, 'lofibot.db'))
     const invalid = runCli(invalidHome, 'ticket-invalid')
     expect(invalid.status).not.toBe(0)
-    expect(fs.statSync(path.join(invalidHome, 'ds-agent.db')).isDirectory()).toBe(true)
+    expect(fs.statSync(path.join(invalidHome, 'lofibot.db')).isDirectory()).toBe(true)
   })
 
   it('reads a v5 database whose main file is marked read-only without changing it', () => {
@@ -184,7 +184,7 @@ describe('publish-outcome read-only database entry', () => {
     const home = path.join(makeRoot(), 'wal-state')
     const store = new Store(home)
     store.close()
-    const dbPath = path.join(home, 'ds-agent.db')
+    const dbPath = path.join(home, 'lofibot.db')
     const writer = new DatabaseSync(dbPath)
     try {
       writer.exec('PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; BEGIN IMMEDIATE')
@@ -269,7 +269,7 @@ describe('publish-outcome read-only database entry', () => {
     })).toBe(true)
     store.close()
 
-    const dbPath = path.join(home, 'ds-agent.db')
+    const dbPath = path.join(home, 'lofibot.db')
     const writer = new DatabaseSync(dbPath)
     writer.prepare(`UPDATE publish_approval_admissions SET observation_state = ?
                     WHERE ticket_id = ? AND approval_id = ?`)

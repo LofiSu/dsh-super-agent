@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Two independent OS CLI processes + LABEL synthetic dataset (temp).
- * Evidence log: /tmp/ds-agent-evolution-cli-demo-<ts>.jsonl
+ * Evidence log: /tmp/lofibot-evolution-cli-demo-<ts>.jsonl
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -11,24 +11,24 @@ import { fileURLToPath } from 'node:url'
 import { writeSynthDataset } from './evolution-synth-dataset.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const logPath = path.join(os.tmpdir(), `ds-agent-evolution-cli-demo-${Date.now()}.jsonl`)
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-cli-home-'))
-const datasetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-synth-'))
+const logPath = path.join(os.tmpdir(), `lofibot-evolution-cli-demo-${Date.now()}.jsonl`)
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-cli-home-'))
+const datasetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-synth-'))
 writeSynthDataset(datasetRoot)
 
 function append(obj) {
   fs.appendFileSync(logPath, JSON.stringify(obj) + '\n', 'utf8')
 }
 
-function dsAgent(args, roundLabel) {
+function lofibot(args, roundLabel) {
   const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-  const child = spawnSync(cmd, ['ds-agent', 'evolution', ...args], {
+  const child = spawnSync(cmd, ['lofibot', 'evolution', ...args], {
     cwd: repoRoot,
     env: {
       ...process.env,
-      DS_AGENT_HOME: home,
+      LOFIBOT_HOME: home,
       CI: 'true',
-      DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+      LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
     },
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
@@ -55,7 +55,7 @@ function dsAgent(args, roundLabel) {
 
 append({ step: 'init', home, datasetRoot, logPath, parentPid: process.pid })
 
-const r1 = dsAgent([
+const r1 = lofibot([
   'run',
   '--dataset',
   datasetRoot,
@@ -66,7 +66,7 @@ const r1 = dsAgent([
   '1',
 ], 'round1_cli_process')
 
-const r2 = dsAgent([
+const r2 = lofibot([
   'run',
   '--dataset',
   datasetRoot,
@@ -113,36 +113,36 @@ const picked = pickWinner(r2, r1)
 if (!picked) throw new Error('no evaluated candidate for freeze')
 const { winner, report: winReport } = picked
 
-const freeze = dsAgent(['freeze', winner.candidateId, '--run', winReport.runId], 'freeze_cli_process')
-const fin = dsAgent(['finalize', winner.candidateId, '--dataset', datasetRoot], 'finalize_cli_process')
+const freeze = lofibot(['freeze', winner.candidateId, '--run', winReport.runId], 'freeze_cli_process')
+const fin = lofibot(['finalize', winner.candidateId, '--dataset', datasetRoot], 'finalize_cli_process')
 
 try {
-  dsAgent(['finalize', winner.candidateId, '--dataset', datasetRoot], 'finalize_retry_rejected')
+  lofibot(['finalize', winner.candidateId, '--dataset', datasetRoot], 'finalize_retry_rejected')
 } catch (error) {
   append({ step: 'finalize_retry_rejected', error: String(error) })
 }
 
 try {
-  dsAgent(['run', '--dataset', datasetRoot], 'search_after_freeze_rejected')
+  lofibot(['run', '--dataset', datasetRoot], 'search_after_freeze_rejected')
 } catch (error) {
   append({ step: 'search_after_freeze_rejected', error: String(error) })
 }
 
-const prevGate = process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = '1'
+const prevGate = process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = '1'
 try {
-  const approve = dsAgent([
+  const approve = lofibot([
     'approve',
     winReport.runId,
     winner.candidateId,
   ], 'approve_cli_process')
-  const status = dsAgent(['status'], 'status_promoted')
-  dsAgent(['rollback'], 'rollback_cli_process')
-  const statusAfter = dsAgent(['status'], 'status_after_rollback')
+  const status = lofibot(['status'], 'status_promoted')
+  lofibot(['rollback'], 'rollback_cli_process')
+  const statusAfter = lofibot(['status'], 'status_after_rollback')
   append({ step: 'promotion_cycle', approve, status, statusAfter })
 } finally {
-  if (prevGate === undefined) delete process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-  else process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = prevGate
+  if (prevGate === undefined) delete process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+  else process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = prevGate
 }
 
 append({

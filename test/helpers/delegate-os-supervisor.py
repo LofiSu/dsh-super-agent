@@ -148,7 +148,7 @@ def install_parent_death_signal(expected_parent_pid):
 
 
 def wait_for_test_bootstrap_gate():
-    gate = os.environ.get('DS_AGENT_TEST_PARENT_RACE_GATE')
+    gate = os.environ.get('LOFIBOT_TEST_PARENT_RACE_GATE')
     if not gate:
         return
     gate_path = Path(gate)
@@ -466,18 +466,18 @@ def run(mode, home, repo_root, task, expected_parent_pid):
     helper_script = str((root_path / 'test/helpers/delegate-recovery-os-child.ts').resolve())
     helper_env = os.environ.copy()
     helper_env.update({
-        'DS_AGENT_HOME': str(home_path),
-        'DS_AGENT_DELEGATE_TASK': task,
-        'DS_AGENT_RECOVERY_CHILD_MODE': 'seed',
-        'DS_AGENT_TEST_DELEGATE_PID_FILE': str(pid_file),
-        'DS_AGENT_TEST_DELEGATE_OWNER_FILE': str(owner_file),
-        'DS_AGENT_TEST_DELEGATE_OWNER_ACK': str(owner_ack),
+        'LOFIBOT_HOME': str(home_path),
+        'LOFIBOT_DELEGATE_TASK': task,
+        'LOFIBOT_RECOVERY_CHILD_MODE': 'seed',
+        'LOFIBOT_TEST_DELEGATE_PID_FILE': str(pid_file),
+        'LOFIBOT_TEST_DELEGATE_OWNER_FILE': str(owner_file),
+        'LOFIBOT_TEST_DELEGATE_OWNER_ACK': str(owner_ack),
         'NODE_NO_WARNINGS': '1',
-        'DS_AGENT_ALLOW_MOCK_FIXTURE': '1',
+        'LOFIBOT_ALLOW_MOCK_FIXTURE': '1',
     })
 
     if mode in ('prepublish-kill', 'prepublish-timeout'):
-        helper_env['DS_AGENT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'] = str(
+        helper_env['LOFIBOT_TEST_DELEGATE_OWNER_PREPUBLISH_GATE'] = str(
             home_path / '.delegate-owner-prepublish.gate'
         )
 
@@ -512,11 +512,11 @@ def run(mode, home, repo_root, task, expected_parent_pid):
     failure = None
 
     try:
-        helper_launch_marker = os.environ.get('DS_AGENT_TEST_HELPER_LAUNCH_MARKER')
+        helper_launch_marker = os.environ.get('LOFIBOT_TEST_HELPER_LAUNCH_MARKER')
         if helper_launch_marker:
             Path(helper_launch_marker).write_text(f'{os.getpid()}\n')
         helper = subprocess.Popen(
-            [os.environ.get('DS_AGENT_NODE', 'node'), '--import', 'tsx', helper_script, str(home_path)],
+            [os.environ.get('LOFIBOT_NODE', 'node'), '--import', 'tsx', helper_script, str(home_path)],
             cwd=str(root_path),
             env=helper_env,
             stdin=subprocess.DEVNULL,
@@ -587,9 +587,9 @@ def run(mode, home, repo_root, task, expected_parent_pid):
             # The child-published PID file remains startup evidence only. Cleanup
             # ownership was pinned from the spawn handoff before the ack was written.
             wait_for_delegate(pid_file, helper, fixture)
-            hang_ms = int(os.environ.get('DS_AGENT_TEST_SUPERVISOR_HANG_AFTER_OWNERSHIP_MS', '0'))
+            hang_ms = int(os.environ.get('LOFIBOT_TEST_SUPERVISOR_HANG_AFTER_OWNERSHIP_MS', '0'))
             if hang_ms > 0:
-                ready_file = os.environ.get('DS_AGENT_TEST_SUPERVISOR_OWNERSHIP_READY_FILE')
+                ready_file = os.environ.get('LOFIBOT_TEST_SUPERVISOR_OWNERSHIP_READY_FILE')
                 if ready_file:
                     Path(ready_file).write_text(f'{delegate_pid}\n')
                 time.sleep(hang_ms / 1000)
@@ -719,7 +719,7 @@ def main():
     try:
         expected_parent_pid = int(sys.argv[5])
         report, status = run(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], expected_parent_pid)
-        report_file = os.environ.get('DS_AGENT_TEST_SUPERVISOR_REPORT_FILE')
+        report_file = os.environ.get('LOFIBOT_TEST_SUPERVISOR_REPORT_FILE')
         if report_file:
             temp = Path(report_file).with_name(Path(report_file).name + f'.{os.getpid()}.tmp')
             temp.write_text(json.dumps(report, separators=(',', ':')))
@@ -751,7 +751,7 @@ def main():
             report['failure_kind'] = 'UnsupportedCapability' if unsupported else type(error).__name__
             report['failure_message'] = message
             report['unsupported_capability'] = unsupported
-        report_file = os.environ.get('DS_AGENT_TEST_SUPERVISOR_REPORT_FILE')
+        report_file = os.environ.get('LOFIBOT_TEST_SUPERVISOR_REPORT_FILE')
         if report_file:
             temp = Path(report_file).with_name(Path(report_file).name + f'.{os.getpid()}.tmp')
             temp.write_text(json.dumps(report, separators=(',', ':')))

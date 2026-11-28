@@ -60,7 +60,7 @@ export interface RoutineSchedulerOptions {
 }
 
 export const ROUTINES_FILE = 'routines.json'
-export const ROUTINES_ENV = 'DS_AGENT_ROUTINES'
+export const ROUTINES_ENV = 'LOFIBOT_ROUTINES'
 export const MAX_ROUTINES = 32
 export const MIN_ROUTINE_MINUTES = 5
 export const MAX_ROUTINE_MINUTES = 10_080

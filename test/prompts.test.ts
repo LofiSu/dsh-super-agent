@@ -18,7 +18,7 @@ import { loadPrompts as loadPromptsFromIndex } from '../src/harness/index.ts'
 const homes: string[] = []
 
 function tempHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-prompts-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-prompts-'))
   homes.push(home)
   return home
 }
@@ -84,8 +84,8 @@ describe('prompt section order', () => {
 describe('built-in section content', () => {
   it('states who the agent is, who built it, and who it works for', () => {
     const prompt = buildSystemPrompt({ role: 'router' })
-    expect(prompt).toContain('DeepSeek Super Agent')
-    expect(prompt).toContain('not an official DeepSeek product')
+    expect(prompt).toContain('LofiBot')
+    expect(prompt).toContain('LofiBot is an independent, MIT-licensed project')
     expect(prompt).toContain('one person')
     expect(prompt).toContain('not your principal')
   })
@@ -239,9 +239,9 @@ describe('prompt file loading', () => {
   it('reports a file source or an env seed source', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'SOUL.md'), 'From the file.\n')
-    const loaded = loadPrompts(home, { DS_AGENT_IDENTITY: 'From the seed.' })
+    const loaded = loadPrompts(home, { LOFIBOT_IDENTITY: 'From the seed.' })
     expect(loaded.sources.soul).toBe('<home>/SOUL.md')
-    expect(loaded.sources.identity).toBe('env:DS_AGENT_IDENTITY')
+    expect(loaded.sources.identity).toBe('env:LOFIBOT_IDENTITY')
   })
 
   it('falls back from PERSONA.md and warns', () => {
@@ -263,24 +263,24 @@ describe('prompt file loading', () => {
     expect(warnings).toEqual([])
   })
 
-  it('falls back from DS_AGENT_PERSONA and warns', () => {
+  it('falls back from LOFIBOT_PERSONA and warns', () => {
     const warnings: string[] = []
-    const loaded = loadPrompts(tempHome(), { DS_AGENT_PERSONA: 'Legacy seed.' }, line => warnings.push(line))
+    const loaded = loadPrompts(tempHome(), { LOFIBOT_PERSONA: 'Legacy seed.' }, line => warnings.push(line))
     expect(loaded.files.soul).toBe('Legacy seed.')
-    expect(loaded.sources.soul).toBe('env:DS_AGENT_PERSONA (deprecated fallback)')
-    expect(warnings.join('\n')).toContain('DS_AGENT_PERSONA is deprecated')
+    expect(loaded.sources.soul).toBe('env:LOFIBOT_PERSONA (deprecated fallback)')
+    expect(warnings.join('\n')).toContain('LOFIBOT_PERSONA is deprecated')
   })
 
   it('lets a file win over an environment seed', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'SOUL.md'), 'From the file.\n')
-    expect(loadPromptFiles(home, { DS_AGENT_SOUL: 'From the seed.' }).soul).toBe('From the file.')
+    expect(loadPromptFiles(home, { LOFIBOT_SOUL: 'From the seed.' }).soul).toBe('From the file.')
   })
 
   it('ignores blank files and seeds', () => {
     const home = tempHome()
     fs.writeFileSync(path.join(home, 'SOUL.md'), '   \n')
-    const files = loadPromptFiles(home, { DS_AGENT_INSTRUCTIONS: '  ' })
+    const files = loadPromptFiles(home, { LOFIBOT_INSTRUCTIONS: '  ' })
     expect(files.soul).toBeUndefined()
     expect(files.instructions).toBeUndefined()
   })

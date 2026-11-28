@@ -25,7 +25,7 @@ describe('gateway web dashboard', () => {
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type') ?? '').toContain('text/html')
       const body = await res.text()
-      expect(body).toContain('ds-agent gateway')
+      expect(body).toContain('LofiBot Gateway')
       expect(body).toContain('/health')
     }
   })

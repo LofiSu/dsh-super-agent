@@ -14,11 +14,11 @@ function detectLive(): boolean {
   }
 }
 
-const forceOffline = process.env.DS_AGENT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
+const forceOffline = process.env.LOFIBOT_ALLOW_MOCK_FIXTURE === '1' || process.env.CI === 'true'
 const hasLive = !forceOffline && detectLive()
 
 describe.skipIf(!hasLive)('live model demo (real API)', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-live-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-live-'))
 
   afterAll(() => {
     fs.rmSync(home, { recursive: true, force: true })

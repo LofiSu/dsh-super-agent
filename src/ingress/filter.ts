@@ -76,7 +76,7 @@ export function admissionDenial(trigger: Trigger, rules?: AdmissionRules): strin
 function addressed(trigger: Trigger): boolean {
   return trigger.addressed === 'mention'
     || trigger.addressed === 'direct'
-    || /@ds-agent\b/i.test(trigger.text)
+    || /@lofibot\b/i.test(trigger.text)
 }
 
 /** Program fast path: admission rules, source allowlist, mention, keyword, obvious noise. */

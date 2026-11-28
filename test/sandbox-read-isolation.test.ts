@@ -67,8 +67,8 @@ describe('strict read path boundaries', () => {
   })
 
   it('canonicalizes symlinked read roots when checking vault containment', () => {
-    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-seccomp-real-'))
-    const link = path.join(os.tmpdir(), `ds-agent-seccomp-link-${process.pid}-${Date.now()}`)
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-seccomp-real-'))
+    const link = path.join(os.tmpdir(), `lofibot-seccomp-link-${process.pid}-${Date.now()}`)
     try {
       fs.symlinkSync(real, link, 'dir')
       const linux = {
@@ -94,7 +94,7 @@ describe('strict read path boundaries', () => {
 
 describe('strict read isolation (Darwin)', () => {
   it('replaces the host-wide read wildcard with an explicit path allowlist', () => {
-    const workspace = '/opt/ds-agent-workspace'
+    const workspace = '/opt/lofibot-workspace'
     const profile = darwinProfile({
       enabled: true,
       readIsolation: true,
@@ -189,7 +189,7 @@ const REAL_DARWIN_SANDBOX = process.platform === 'darwin'
  */
 describe.skipIf(!REAL_DARWIN_SANDBOX)('strict read isolation smoke (macOS)', () => {
   it('non-strict mode still denies reads of configured credential hide paths', async () => {
-    const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-hide-darwin-'))
+    const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-hide-darwin-'))
     const secretFile = path.join(secretDir, 'hosts.yml')
     fs.writeFileSync(secretFile, 'dummy-not-a-real-token\n')
     try {
@@ -305,24 +305,24 @@ describe('strict read isolation (Linux)', () => {
   })
 })
 
-describe('DS_AGENT_SANDBOX_READ_ISOLATION parsing', () => {
+describe('LOFIBOT_SANDBOX_READ_ISOLATION parsing', () => {
   it('treats unset, empty, 0, and false as off', () => {
     expect(readIsolationFromEnv({})).toBe(false)
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: '' })).toBe(false)
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: '0' })).toBe(false)
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: 'false' })).toBe(false)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: '' })).toBe(false)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: '0' })).toBe(false)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: 'false' })).toBe(false)
   })
 
   it('treats 1, true, and strict as on', () => {
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: '1' })).toBe(true)
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: 'true' })).toBe(true)
-    expect(readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: 'strict' })).toBe(true)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: '1' })).toBe(true)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: 'true' })).toBe(true)
+    expect(readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: 'strict' })).toBe(true)
   })
 
   it('fails closed on any other value', () => {
-    expect(() => readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: 'yes' })).toThrow(UserError)
-    expect(() => readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: '2' })).toThrow(UserError)
-    expect(() => readIsolationFromEnv({ DS_AGENT_SANDBOX_READ_ISOLATION: 'lax' })).toThrow(UserError)
+    expect(() => readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: 'yes' })).toThrow(UserError)
+    expect(() => readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: '2' })).toThrow(UserError)
+    expect(() => readIsolationFromEnv({ LOFIBOT_SANDBOX_READ_ISOLATION: 'lax' })).toThrow(UserError)
   })
 })
 
@@ -334,7 +334,7 @@ describe('LocalEnv read isolation config', () => {
   it('propagates the env switch to the sandbox config', () => {
     const env = envFor({
       sandbox: { enabled: true },
-      env: { DS_AGENT_SANDBOX_READ_ISOLATION: 'strict' },
+      env: { LOFIBOT_SANDBOX_READ_ISOLATION: 'strict' },
     })
     expect(env.readIsolation).toBe(true)
   })
@@ -350,14 +350,14 @@ describe('LocalEnv read isolation config', () => {
     expect(envFor({}).readIsolation).toBe(false)
     expect(envFor({
       readIsolation: false,
-      env: { DS_AGENT_SANDBOX_READ_ISOLATION: '1' },
+      env: { LOFIBOT_SANDBOX_READ_ISOLATION: '1' },
     }).readIsolation).toBe(false)
   })
 
   it('fails closed when the env value is invalid, even with an explicit flag', () => {
     expect(() => envFor({
       readIsolation: true,
-      env: { DS_AGENT_SANDBOX_READ_ISOLATION: 'maybe' },
+      env: { LOFIBOT_SANDBOX_READ_ISOLATION: 'maybe' },
     })).toThrow(UserError)
   })
 })

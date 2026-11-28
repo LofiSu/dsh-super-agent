@@ -51,7 +51,7 @@ export async function runDelegateOsSupervisor(
   const script = path.resolve(process.cwd(), 'test/helpers/delegate-os-supervisor.py')
   const child = spawn('python3', [script, mode, home, process.cwd(), task, String(process.pid)], {
     cwd: process.cwd(),
-    env: { ...process.env, DS_AGENT_NODE: process.execPath },
+    env: { ...process.env, LOFIBOT_NODE: process.execPath },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let stdout = ''

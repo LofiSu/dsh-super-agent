@@ -27,33 +27,33 @@ export function gatewayHostWarning(host: string): string | undefined {
 }
 
 /**
- * `ds-agent gateway` — start a local OpenAI-compatible gateway.
+ * `lofibot gateway` — start a local OpenAI-compatible gateway.
  *
- * Providers come from `DS_AGENT_GATEWAY_PROVIDERS` (JSON array) or the single
- * BYOM provider in `DS_AGENT_API_BASE` + `DS_AGENT_API_KEY`. The local bearer
- * token is generated and persisted (mode 0600) so ds-agent can auto-read it.
+ * Providers come from `LOFIBOT_GATEWAY_PROVIDERS` (JSON array) or the single
+ * BYOM provider in `LOFIBOT_API_BASE` + `LOFIBOT_API_KEY`. The local bearer
+ * token is generated and persisted (mode 0600) so lofibot can auto-read it.
  */
 export async function runGatewayCommand(home: string): Promise<void> {
-  const port = Number(flag('port') ?? process.env.DS_AGENT_GATEWAY_PORT ?? 4319)
+  const port = Number(flag('port') ?? process.env.LOFIBOT_GATEWAY_PORT ?? 4319)
   if (!Number.isFinite(port) || port < 0 || port > 65535) throw new Error(`invalid gateway port: ${port}`)
-  const host = flag('host') ?? process.env.DS_AGENT_GATEWAY_HOST ?? '127.0.0.1'
+  const host = flag('host') ?? process.env.LOFIBOT_GATEWAY_HOST ?? '127.0.0.1'
   const hostWarning = gatewayHostWarning(host)
   if (hostWarning) console.warn(hostWarning)
-  const explicitToken = (flag('token') ?? process.env.DS_AGENT_GATEWAY_TOKEN)?.trim()
+  const explicitToken = (flag('token') ?? process.env.LOFIBOT_GATEWAY_TOKEN)?.trim()
   const token = loadOrCreateGatewayToken(home, explicitToken)
   const { providers, aliases, defaultModel: fileDefault, masking: fileMasking, source } = gatewayFromSources(home)
   if (providers.length === 0) {
     throw new Error(
-      'no providers configured: run `pnpm ds-agent setup` to write gateway.config.json, '
-      + 'or set DS_AGENT_GATEWAY_PROVIDERS / DS_AGENT_API_BASE + DS_AGENT_API_KEY',
+      'no providers configured: run `pnpm lofibot setup` to write gateway.config.json, '
+      + 'or set LOFIBOT_GATEWAY_PROVIDERS / LOFIBOT_API_BASE + LOFIBOT_API_KEY',
     )
   }
-  const defaultModel = process.env.DS_AGENT_GATEWAY_MODEL?.trim()
-    || process.env.DS_AGENT_API_MODEL?.trim()
+  const defaultModel = process.env.LOFIBOT_GATEWAY_MODEL?.trim()
+    || process.env.LOFIBOT_API_MODEL?.trim()
     || fileDefault
     || providers[0]?.models?.[0]
 
-  const masking = fileMasking === true || process.env.DS_AGENT_GATEWAY_MASKING === '1'
+  const masking = fileMasking === true || process.env.LOFIBOT_GATEWAY_MASKING === '1'
   const handle = await startGatewayServer({
     host,
     port,
@@ -74,15 +74,15 @@ export async function runGatewayCommand(home: string): Promise<void> {
   }
   fs.writeFileSync(path.join(home, 'gateway.json'), `${JSON.stringify(info, null, 2)}\n`)
 
-  console.log(`ds-agent gateway listening on ${handle.url}`)
+  console.log(`lofibot gateway listening on ${handle.url}`)
   console.log(explicitToken
-    ? '  token:     supplied via --token / DS_AGENT_GATEWAY_TOKEN (never printed)'
+    ? '  token:     supplied via --token / LOFIBOT_GATEWAY_TOKEN (never printed)'
     : `  token:     ${gatewayTokenPath(home)} (mode 0600; never printed)`)
   console.log(`  info:      ${path.join(home, 'gateway.json')}`)
   console.log(`  providers: ${providers.map(provider => provider.id).join(', ')}${defaultModel ? `  defaultModel=${defaultModel}` : ''}  (source=${source})`)
   if (Object.keys(aliases).length) console.log(`  aliases:   ${Object.keys(aliases).join(', ')}`)
   console.log(`  plugins:   ${handle.plugins.join(', ')}${masking ? '  (masking on)' : ''}`)
-  console.log(`  point ds-agent at it:  export DS_AGENT_GATEWAY_URL=${handle.url}`)
+  console.log(`  point lofibot at it:  export LOFIBOT_GATEWAY_URL=${handle.url}`)
 
   const shutdown = (): void => {
     void handle.close().finally(() => process.exit(0))

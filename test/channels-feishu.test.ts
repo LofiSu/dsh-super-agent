@@ -33,7 +33,7 @@ function message(overrides: Partial<FeishuMessage> = {}): FeishuMessage {
     message_id: 'om_1',
     chat_id: 'oc_chat',
     msg_type: 'text',
-    body: { content: JSON.stringify({ text: '@ds-agent please fix the login timeout' }) },
+    body: { content: JSON.stringify({ text: '@lofibot please fix the login timeout' }) },
     create_time: '1761958800000',
     sender: { id: 'ou_alice', sender_type: 'user' },
     ...overrides,
@@ -128,7 +128,7 @@ describe('Feishu config', () => {
 
 describe('Feishu message mapping', () => {
   it('flattens text messages', () => {
-    expect(flattenFeishuMessage(message())).toBe('@ds-agent please fix the login timeout')
+    expect(flattenFeishuMessage(message())).toBe('@lofibot please fix the login timeout')
   })
 
   it('flattens rich post messages', () => {
@@ -180,11 +180,11 @@ describe('Feishu message mapping', () => {
     const trigger = feishuTriggerFromMessage(message(), config)
     expect(trigger.channel?.address?.group).toBe('oc_chat')
 
-    // The same id a deployment puts in DS_AGENT_GROUP_ALLOWLIST admits this trigger.
-    const allowed = admissionRulesFromEnv({ DS_AGENT_GROUP_ALLOWLIST: 'oc_chat' })
+    // The same id a deployment puts in LOFIBOT_GROUP_ALLOWLIST admits this trigger.
+    const allowed = admissionRulesFromEnv({ LOFIBOT_GROUP_ALLOWLIST: 'oc_chat' })
     expect(filterTrigger(trigger, ruleSemantic, allowed)).toMatchObject({ action: 'pass' })
 
-    const denied = admissionRulesFromEnv({ DS_AGENT_GROUP_ALLOWLIST: 'oc_other' })
+    const denied = admissionRulesFromEnv({ LOFIBOT_GROUP_ALLOWLIST: 'oc_other' })
     expect(filterTrigger(trigger, ruleSemantic, denied))
       .toMatchObject({ action: 'drop', layer: 'fast', reason: 'group-not-allowlisted' })
     // A message from a different chat is denied under the original allowlist.
@@ -196,8 +196,8 @@ describe('Feishu message mapping', () => {
   })
 
   it('maps p2p direct mode without address.group and addressed=direct', () => {
-    const prev = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const prev = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const trigger = feishuTriggerFromMessage(message({
         chat_type: 'p2p',
@@ -207,23 +207,23 @@ describe('Feishu message mapping', () => {
       expect(trigger.channel?.address?.group).toBeUndefined()
       expect(trigger.channel?.address?.chat_type).toBe('p2p')
       const groupScoped = admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_group_only',
-        DS_AGENT_ACTOR_ALLOWLIST: 'ou_alice',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_group_only',
+        LOFIBOT_ACTOR_ALLOWLIST: 'ou_alice',
       })
       expect(filterTrigger(trigger, ruleSemantic, groupScoped)).toMatchObject({ action: 'pass' })
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_group_only',
-        DS_AGENT_ACTOR_ALLOWLIST: 'ou_someone_else',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_group_only',
+        LOFIBOT_ACTOR_ALLOWLIST: 'ou_someone_else',
       }))).toMatchObject({ action: 'drop', reason: 'actor-not-allowlisted' })
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = prev
+      if (prev === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = prev
     }
   })
 
   it('keeps group messages grouped under the p2p direct override', () => {
-    const prev = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const prev = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const trigger = feishuTriggerFromMessage(message({
         chat_id: 'oc_group',
@@ -233,7 +233,7 @@ describe('Feishu message mapping', () => {
       expect(trigger.addressed).toBeUndefined()
       expect(trigger.channel?.address?.group).toBe('oc_group')
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_allowed',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_allowed',
       }))).toMatchObject({
         action: 'drop',
         layer: 'fast',
@@ -245,13 +245,13 @@ describe('Feishu message mapping', () => {
         reason: 'noise',
       })
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = prev
+      if (prev === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = prev
     }
   })
 
   it('does not let a p2p address marker bypass the group allowlist without addressed=direct', () => {
-    const groupScoped = admissionRulesFromEnv({ DS_AGENT_GROUP_ALLOWLIST: 'oc_allowed' })
+    const groupScoped = admissionRulesFromEnv({ LOFIBOT_GROUP_ALLOWLIST: 'oc_allowed' })
     const base = feishuTriggerFromMessage(message({ chat_id: 'oc_chat' }), config)
     for (const addressed of [undefined, 'mention'] as const) {
       const trigger = {
@@ -293,16 +293,16 @@ describe('Feishu message mapping', () => {
   })
 
   it('admits a genuine verified p2p bot mention but denies a group-marked forgery', () => {
-    const groupScoped = admissionRulesFromEnv({ DS_AGENT_GROUP_ALLOWLIST: 'oc_allowed' })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const groupScoped = admissionRulesFromEnv({ LOFIBOT_GROUP_ALLOWLIST: 'oc_allowed' })
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       // Genuine verified p2p mention: mapper sets addressed=mention and omits address.group.
       const genuine = feishuTriggerFromMessage(message({
         chat_id: 'oc_p2p',
         chat_type: 'p2p',
-        body: { content: JSON.stringify({ text: '@ds-agent 你现在可以改了' }) },
-        mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+        body: { content: JSON.stringify({ text: '@lofibot 你现在可以改了' }) },
+        mentions: [{ id: { open_id: 'ou_bot' }, name: 'lofibot' }],
       }), config)
       expect(genuine.addressed).toBe('mention')
       expect(genuine.channel?.address?.group).toBeUndefined()
@@ -322,16 +322,16 @@ describe('Feishu message mapping', () => {
         reason: 'group-not-allowlisted',
       })
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
-  it('honors DS_AGENT_FEISHU_P2P_DIRECT for short p2p utterances through filterTrigger', () => {
-    const prev = process.env.DS_AGENT_FEISHU_P2P_DIRECT
+  it('honors LOFIBOT_FEISHU_P2P_DIRECT for short p2p utterances through filterTrigger', () => {
+    const prev = process.env.LOFIBOT_FEISHU_P2P_DIRECT
     const utterances = ['你现在可以改了', '在干嘛怎么回我那么慢'] as const
     try {
-      delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
+      delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
       for (const text of utterances) {
         const trigger = feishuTriggerFromMessage(message({
           chat_type: 'p2p',
@@ -343,7 +343,7 @@ describe('Feishu message mapping', () => {
           .toMatchObject({ action: 'drop', layer: 'fast', reason: 'noise' })
       }
 
-      process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+      process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
       for (const text of utterances) {
         const trigger = feishuTriggerFromMessage(message({
           chat_type: 'p2p',
@@ -354,17 +354,17 @@ describe('Feishu message mapping', () => {
         expect(filterTrigger(trigger, ruleSemantic)).toMatchObject({ action: 'pass' })
       }
 
-      process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+      process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
       const mentioned = feishuTriggerFromMessage(message({
         chat_type: 'p2p',
-        body: { content: JSON.stringify({ text: '@ds-agent 你现在可以改了' }) },
-        mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+        body: { content: JSON.stringify({ text: '@lofibot 你现在可以改了' }) },
+        mentions: [{ id: { open_id: 'ou_bot' }, name: 'lofibot' }],
       }), config)
       expect(mentioned.addressed).toBe('mention')
       expect(mentioned.channel?.address?.group).toBeUndefined()
     } finally {
-      if (prev === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = prev
+      if (prev === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = prev
     }
   })
 
@@ -372,7 +372,7 @@ describe('Feishu message mapping', () => {
     const trigger = feishuTriggerFromMessage(message({
       sender: { id: 'ou_bot', sender_type: 'app' },
       body: { content: JSON.stringify({ text: 'deploy finished' }) },
-      mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+      mentions: [{ id: { open_id: 'ou_bot' }, name: 'lofibot' }],
     }), config)
     expect(trigger.human).toBe(false)
     expect(trigger.addressed).toBe('mention')
@@ -425,7 +425,7 @@ describe('Feishu webhook parser', () => {
           chat_id: 'oc_chat',
           chat_type: 'p2p',
           msg_type: 'text',
-          content: JSON.stringify({ text: '@ds-agent investigate this timeout' }),
+          content: JSON.stringify({ text: '@lofibot investigate this timeout' }),
           create_time: '1761958800000',
         },
       },
@@ -494,14 +494,14 @@ describe('Feishu webhook parser', () => {
           message_id: 'om_enc',
           chat_id: 'oc_chat',
           msg_type: 'text',
-          content: JSON.stringify({ text: '@ds-agent encrypted hello' }),
+          content: JSON.stringify({ text: '@lofibot encrypted hello' }),
           create_time: '1761958800000',
         },
       },
     })
     expect(decryptFeishuPayload(encrypt(plain, 'encrypt-key'), 'encrypt-key')).toBe(plain)
     const result = parseFeishuWebhook({ encrypt: encrypt(plain, 'encrypt-key') }, config, { now: () => 1761958900000 })
-    expect(result.trigger?.text).toBe('@ds-agent encrypted hello')
+    expect(result.trigger?.text).toBe('@lofibot encrypted hello')
   })
 
   it('ignores unrelated events', () => {
@@ -615,9 +615,9 @@ describe('Feishu client and outbox', () => {
       config,
       log: line => logs.push(line),
     })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    if (flag === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    else process.env.DS_AGENT_FEISHU_P2P_DIRECT = flag
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    if (flag === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    else process.env.LOFIBOT_FEISHU_P2P_DIRECT = flag
     try {
       for (let pull = 0; pull < 2; pull += 1) {
         const trigger = (await source.pull())[0]!
@@ -629,8 +629,8 @@ describe('Feishu client and outbox', () => {
       // but the trigger stays conservatively grouped and unaddressed.
       expect(calls.filter(call => call.url.endsWith('/open-apis/im/v1/chats/oc_chat'))).toHaveLength(2)
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -647,8 +647,8 @@ describe('Feishu client and outbox', () => {
     })
     const client = new FeishuClient(config, fn)
     const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const trigger = (await source.pull())[0]!
       expect(trigger.addressed).toBe('direct')
@@ -660,8 +660,8 @@ describe('Feishu client and outbox', () => {
       await source.pull()
       expect(calls.filter(call => call.url.endsWith('/open-apis/im/v1/chats/oc_chat'))).toHaveLength(1)
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -681,22 +681,22 @@ describe('Feishu client and outbox', () => {
       now: () => 1761958900000,
       config,
     })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const trigger = (await source.pull())[0]!
       expect(trigger.addressed).toBeUndefined()
       expect(trigger.channel?.address?.group).toBe('oc_chat')
       expect(trigger.channel?.address?.chat_type).toBeUndefined()
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_chat',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_chat',
       }))).toMatchObject({ action: 'drop', layer: 'fast', reason: 'noise' })
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_other',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_other',
       }))).toMatchObject({ action: 'drop', layer: 'fast', reason: 'group-not-allowlisted' })
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -713,22 +713,22 @@ describe('Feishu client and outbox', () => {
     })
     const client = new FeishuClient(config, fn)
     const source = new FeishuSource(client, 'oc_chat', { sinceMs: 1761958000000, config, now: () => 1761958900000 })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const trigger = (await source.pull())[0]!
       expect(trigger.addressed).toBeUndefined()
       expect(trigger.channel?.address?.group).toBe('oc_chat')
       expect(trigger.channel?.address?.chat_type).toBe('group')
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_chat',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_chat',
       }))).toMatchObject({ action: 'drop', layer: 'fast', reason: 'noise' })
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_other',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_other',
       }))).toMatchObject({ action: 'drop', layer: 'fast', reason: 'group-not-allowlisted' })
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -761,8 +761,8 @@ describe('Feishu client and outbox', () => {
       config,
       log: line => logs.push(line),
     })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const triggers = await source.pull()
       const trigger = triggers[0]!
@@ -775,7 +775,7 @@ describe('Feishu client and outbox', () => {
       expect(trigger.channel?.address?.group).toBe('oc_chat')
       expect(trigger.channel?.address?.chat_type).toBeUndefined()
       expect(filterTrigger(trigger, ruleSemantic, admissionRulesFromEnv({
-        DS_AGENT_GROUP_ALLOWLIST: 'oc_chat',
+        LOFIBOT_GROUP_ALLOWLIST: 'oc_chat',
       }))).toMatchObject({ action: 'drop', layer: 'fast', reason: 'noise' })
       await source.pull()
       expect(logs).toHaveLength(2)
@@ -784,8 +784,8 @@ describe('Feishu client and outbox', () => {
       expect(logs[0]).not.toContain('future-mode')
       expect(logs[0]).not.toContain('metadata unavailable')
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -827,8 +827,8 @@ describe('Feishu client and outbox', () => {
       config,
       log: line => logs.push(line),
     })
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const first = (await source.pull())[0]!
       const second = (await source.pull())[0]!
@@ -851,8 +851,8 @@ describe('Feishu client and outbox', () => {
       expect(calls.filter(call => call.url.endsWith('/open-apis/im/v1/chats/oc_chat'))).toHaveLength(3)
       expect(logs).toHaveLength(2)
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
@@ -1117,11 +1117,11 @@ describe('Feishu Markdown card outbox formatting', () => {
       expect(request.uuid).toMatch(/^[0-9a-f-]{36}$/)
       expect(request.uuid.length).toBeLessThanOrEqual(50)
       const card = JSON.parse(request.content) as { header: { title: { tag: string; content: string } }; elements: { tag: string; text: { tag: string; content: string } }[] }
-      expect(card.header.title).toEqual({ tag: 'plain_text', content: 'ds-agent · 助手 🌱' })
+      expect(card.header.title).toEqual({ tag: 'plain_text', content: 'LofiBot · 助手' })
       expect(card.elements).toHaveLength(1)
       expect(card.elements[0]).toMatchObject({ tag: 'div', text: { tag: 'lark_md', content: text } })
       expect(JSON.stringify(card)).not.toContain('button')
-      expect(card.header.title.content).toBe('ds-agent · 助手 🌱')
+      expect(card.header.title.content).toBe('LofiBot · 助手')
     })
   })
 
@@ -1182,7 +1182,7 @@ describe('Feishu Markdown card outbox formatting', () => {
         : { body: { code: 0, data: { message_id: 'sent_card' } } })
       await new FeishuOutboxAdapter(new FeishuClient(config, fn)).send(makeRow('## 完成 ✅\n- 你好 🌱'))
       const request = JSON.parse(String(sentCalls(calls)[0]?.init?.body)) as { content: string }
-      expect(request.content).toContain('ds-agent')
+      expect(request.content).toContain('LofiBot')
       expect(request.content).toContain('完成 ✅')
       expect(request.content).toContain('你好 🌱')
     })

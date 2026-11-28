@@ -18,7 +18,7 @@ const MIN = 60_000
 const TARGET_ID = 'trg_old_private_owner'
 
 function setup(): { store: Store; index: ConnectorIndex } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-wake-current-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-wake-current-auth-'))
   homes.push(home)
   const store = new Store(home)
   stores.push(store)

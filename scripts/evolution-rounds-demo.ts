@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @deprecated Prefer LABEL synth two-process CLI demo:
- *   CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 pnpm exec tsx scripts/evolution-two-cli-rounds.ts
+ *   CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm exec tsx scripts/evolution-two-cli-rounds.ts
  *
  * In-process fixture demo (legacy); uses adequate budgets for finalize reserve pool.
  */
@@ -21,8 +21,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const datasetRoot = path.join(repoRoot, 'test/fixtures/evolution')
 
 async function main(): Promise<void> {
-  const home = process.env.DS_AGENT_HOME ?? fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-evo-demo-'))
-  process.env.DS_AGENT_HOME = home
+  const home = process.env.LOFIBOT_HOME ?? fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-evo-demo-'))
+  process.env.LOFIBOT_HOME = home
   const log: unknown[] = []
   const budget = {
     maxCandidates: 4,
@@ -61,8 +61,8 @@ async function main(): Promise<void> {
   const fin = await runFinalTestOnce({ home, datasetRoot, candidateId: winner.candidateId })
   log.push({ step: 'finalize', ledgerId: fin.ledgerId, finaltest: fin.scores })
 
-  const prev = process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-  process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = '1'
+  const prev = process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+  process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = '1'
   try {
     approvePromotion({
       home,
@@ -74,8 +74,8 @@ async function main(): Promise<void> {
     rollbackPromotion(home)
     log.push({ step: 'rollback', gate: resolveDeliverGate(home).constructor.name })
   } finally {
-    if (prev === undefined) delete process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE
-    else process.env.DS_AGENT_USE_PROMOTED_DELIVER_GATE = prev
+    if (prev === undefined) delete process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE
+    else process.env.LOFIBOT_USE_PROMOTED_DELIVER_GATE = prev
   }
 
   console.log(JSON.stringify(log, null, 2))

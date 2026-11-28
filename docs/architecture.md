@@ -47,4 +47,4 @@ The public sources for this shape:
 - [Super-agent 设计探索](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg) (§2–§6)
 - [deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) (Trigger → Eval → Ticket → Assignment)
 
-The harness in this repo is not that prototype. Where the plan and the code diverge: [docs/REVIEW.md]({{ site.repository_url }}/blob/main/docs/REVIEW.md). The feature checklist is in the [README]({{ site.repository_url }}/blob/main/README.md#features).
+The harness in this repo is not that prototype. Where the plan and the code diverge: [docs/REVIEW.md]({{ site.repository_url }}/blob/main/docs/REVIEW.md). The [README diagram]({{ site.repository_url }}/blob/main/README.md#architecture) shows the main runtime flow.

@@ -73,7 +73,7 @@ export interface FillVaultLoad {
 }
 
 export const VAULT_FILE = 'vault.json'
-export const VAULT_FILE_ENV = 'DS_AGENT_VAULT_FILE'
+export const VAULT_FILE_ENV = 'LOFIBOT_VAULT_FILE'
 export const MAX_FILL_VALUE_CHARS = 4096
 const MAX_ENTRIES = 100
 const MAX_NAME_CHARS = 64
@@ -397,10 +397,10 @@ export class ProcessFillTarget implements FillTarget {
 export function fillTargetFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ProcessFillTarget | undefined {
-  const command = env.DS_AGENT_FILL_COMMAND?.trim()
+  const command = env.LOFIBOT_FILL_COMMAND?.trim()
   if (!command) return undefined
   let args: string[] = []
-  const rawArgs = env.DS_AGENT_FILL_ARGS?.trim()
+  const rawArgs = env.LOFIBOT_FILL_ARGS?.trim()
   if (rawArgs) {
     try {
       const parsed = JSON.parse(rawArgs) as unknown
@@ -410,11 +410,11 @@ export function fillTargetFromEnv(
       return undefined
     }
   }
-  const timeout = Number(env.DS_AGENT_FILL_TIMEOUT_MS)
+  const timeout = Number(env.LOFIBOT_FILL_TIMEOUT_MS)
   return new ProcessFillTarget({
     command,
     args,
-    label: env.DS_AGENT_FILL_TARGET_LABEL?.trim() || path.basename(command),
+    label: env.LOFIBOT_FILL_TARGET_LABEL?.trim() || path.basename(command),
     ...(Number.isSafeInteger(timeout) && timeout > 0 ? { timeoutMs: timeout } : {}),
     parentEnv: env,
   })

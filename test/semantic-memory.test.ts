@@ -77,17 +77,17 @@ describe('semantic configuration', () => {
   it('parses the kill switch and the floor from the environment', () => {
     expect(semanticRecallEnabled({})).toBe(true)
     for (const value of ['0', 'false', 'OFF', ' no ']) {
-      expect(semanticRecallEnabled({ DS_AGENT_SEMANTIC_RECALL: value })).toBe(false)
+      expect(semanticRecallEnabled({ LOFIBOT_SEMANTIC_RECALL: value })).toBe(false)
     }
-    expect(semanticRecallEnabled({ DS_AGENT_SEMANTIC_RECALL: '1' })).toBe(true)
+    expect(semanticRecallEnabled({ LOFIBOT_SEMANTIC_RECALL: '1' })).toBe(true)
     // An explicit programmatic port wins over a stale kill switch.
-    expect(semanticRecallEnabled({ DS_AGENT_SEMANTIC_RECALL: '0' }, vectors)).toBe(true)
+    expect(semanticRecallEnabled({ LOFIBOT_SEMANTIC_RECALL: '0' }, vectors)).toBe(true)
     expect(semanticRecallEnabled({}, false)).toBe(false)
 
-    expect(embeddingFloorFromEnv({ DS_AGENT_EMBEDDING_FLOOR: '0.5' })).toBe(0.5)
-    expect(embeddingFloorFromEnv({ DS_AGENT_EMBEDDING_FLOOR: 'nope' })).toBeCloseTo(0.35)
-    expect(embeddingFloorFromEnv({ DS_AGENT_EMBEDDING_FLOOR: '2' })).toBe(1)
-    expect(embeddingFloorFromEnv({ DS_AGENT_EMBEDDING_FLOOR: '-1' })).toBe(0)
+    expect(embeddingFloorFromEnv({ LOFIBOT_EMBEDDING_FLOOR: '0.5' })).toBe(0.5)
+    expect(embeddingFloorFromEnv({ LOFIBOT_EMBEDDING_FLOOR: 'nope' })).toBeCloseTo(0.35)
+    expect(embeddingFloorFromEnv({ LOFIBOT_EMBEDDING_FLOOR: '2' })).toBe(1)
+    expect(embeddingFloorFromEnv({ LOFIBOT_EMBEDDING_FLOOR: '-1' })).toBe(0)
     expect(embeddingFloorFromEnv({}, 0.42)).toBe(0.42)
   })
 })

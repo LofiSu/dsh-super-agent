@@ -94,8 +94,8 @@ describe('remote mesh capability matching', () => {
     expect(local.inFlight('local')).toBe(0)
   })
 
-  it('parses DS_AGENT_MESH_REQUIRED_CAPABILITIES', () => {
-    expect(requiredMeshCapabilities({ DS_AGENT_MESH_REQUIRED_CAPABILITIES: ' linux , bwrap ' })).toEqual([
+  it('parses LOFIBOT_MESH_REQUIRED_CAPABILITIES', () => {
+    expect(requiredMeshCapabilities({ LOFIBOT_MESH_REQUIRED_CAPABILITIES: ' linux , bwrap ' })).toEqual([
       'linux', 'bwrap',
     ])
     expect(requiredMeshCapabilities({})).toEqual([])

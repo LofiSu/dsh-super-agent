@@ -62,10 +62,10 @@ function mappedFeishuMention(id: string, chatType: 'p2p' | 'group' = 'p2p'): Tri
     chat_id: chatType === 'p2p' ? 'oc_p2p' : 'oc_group',
     chat_type: chatType,
     msg_type: 'text',
-    body: { content: JSON.stringify({ text: '@ds-agent haha' }) },
+    body: { content: JSON.stringify({ text: '@lofibot haha' }) },
     create_time: '1795737600000',
     sender: { id: 'ou_user', sender_type: 'user' },
-    mentions: [{ id: { open_id: 'ou_bot' }, name: 'ds-agent' }],
+    mentions: [{ id: { open_id: 'ou_bot' }, name: 'lofibot' }],
   }
   return feishuTriggerFromMessage(message, feishuConfig)
 }
@@ -74,7 +74,7 @@ function makeRuntime(model?: Model, env: NodeJS.ProcessEnv = {}): Runtime {
   const runtime = freshRuntime({
     model: model ?? new MockModel(),
     allowMockModel: true,
-    env: { ...process.env, DS_AGENT_ALLOW_MOCK_FIXTURE: '1', DS_AGENT_ACTOR_ALLOWLIST: 'ou_user', ...env },
+    env: { ...process.env, LOFIBOT_ALLOW_MOCK_FIXTURE: '1', LOFIBOT_ACTOR_ALLOWLIST: 'ou_user', ...env },
     batchWindowMs: 60_000,
     jobDelayMs: 0,
   })
@@ -85,8 +85,8 @@ function makeRuntime(model?: Model, env: NodeJS.ProcessEnv = {}): Runtime {
 
 describe('Feishu conversation-first 1:1', () => {
   it('keeps verified p2p bot mentions on the conversation path', async () => {
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const first = mappedFeishuMention('om_mention_1')
       const second = mappedFeishuMention('om_mention_2')
@@ -162,14 +162,14 @@ describe('Feishu conversation-first 1:1', () => {
       expect(runtime.store.getDoc<Disposition>('disposition', first.id)?.fanout).toEqual([])
       expect(runtime.store.getDoc<Disposition>('disposition', second.id)?.fanout).toEqual([])
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 
   it('keeps group mentions outside the conversation path and noise exemption', async () => {
-    const previous = process.env.DS_AGENT_FEISHU_P2P_DIRECT
-    process.env.DS_AGENT_FEISHU_P2P_DIRECT = '1'
+    const previous = process.env.LOFIBOT_FEISHU_P2P_DIRECT
+    process.env.LOFIBOT_FEISHU_P2P_DIRECT = '1'
     try {
       const groupMention = mappedFeishuMention('om_group_mention', 'group')
       expect(groupMention.addressed).toBe('mention')
@@ -178,8 +178,8 @@ describe('Feishu conversation-first 1:1', () => {
       await expect(filterTriggerWithPolicy(groupMention, { name: 'rules', classify: ruleClassify }))
         .resolves.toMatchObject({ action: 'drop', layer: 'semantic', reason: 'noise' })
     } finally {
-      if (previous === undefined) delete process.env.DS_AGENT_FEISHU_P2P_DIRECT
-      else process.env.DS_AGENT_FEISHU_P2P_DIRECT = previous
+      if (previous === undefined) delete process.env.LOFIBOT_FEISHU_P2P_DIRECT
+      else process.env.LOFIBOT_FEISHU_P2P_DIRECT = previous
     }
   })
 

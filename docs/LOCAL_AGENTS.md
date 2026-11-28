@@ -4,7 +4,7 @@ DeepSeek Super Agent is a super agent in the literal sense: the Router
 coordinates work, Workers execute it, and a Worker can hand a self-contained
 task to a local specialist agent already installed on the machine. The
 specialist is a normal CLI process (Claude Code, Codex, OpenCode, Hermes, or a
-custom agent). ds-agent does not embed those agents or reimplement their
+custom agent). lofibot does not embed those agents or reimplement their
 models.
 
 Delegation is **opt-in and owner-configured**. The model never supplies a
@@ -13,8 +13,8 @@ configured agent id and pass a task string.
 
 ## Configure
 
-Create `local-agents.json` in the agent home (`$DS_AGENT_HOME`, by default
-`~/.ds-agent`):
+Create `local-agents.json` in the agent home (`$LOFIBOT_HOME`, by default
+`~/.lofibot`):
 
 ```json
 {
@@ -45,15 +45,15 @@ Create `local-agents.json` in the agent home (`$DS_AGENT_HOME`, by default
 }
 ```
 
-A deployer can seed the same list with `DS_AGENT_LOCAL_AGENTS` (JSON). The file
+A deployer can seed the same list with `LOFIBOT_LOCAL_AGENTS` (JSON). The file
 wins over the environment seed. An empty or missing configuration disables
 delegation; a malformed entry fails at startup instead of being ignored.
 
 Check what is configured without starting a model:
 
 ```bash
-pnpm ds-agent agents
-pnpm ds-agent agents --json
+pnpm lofibot agents
+pnpm lofibot agents --json
 ```
 
 ### Fields
@@ -110,7 +110,7 @@ isolated or discarded.
 
 The specialist's own permissions are part of the trust decision. If `claude` or
 `codex` can write outside the workspace, or reach the network, that is the
-specialist's policy, not ds-agent's sandbox. Configure the specialist's
+specialist's policy, not lofibot's sandbox. Configure the specialist's
 approval mode deliberately. The OS sandbox that wraps Worker `bash` does not
 wrap an arbitrary CLI agent.
 

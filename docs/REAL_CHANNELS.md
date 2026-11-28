@@ -44,7 +44,7 @@ The GitHub adapter uses the authenticated `gh` CLI:
 ```bash
 gh auth login
 gh auth status          # needs repo scope
-export DS_AGENT_GH_REPO=LofiSu/deepseek-super-agent   # default
+export LOFIBOT_GH_REPO=LofiSu/LofiBot   # default
 pnpm demo
 ```
 
@@ -59,7 +59,7 @@ The returned comment id is stored in the outbox and the demos re-read the
 comment with `GET /repos/{owner}/{repo}/issues/comments/{id}` as the acceptance
 proof.
 
-`DS_AGENT_GH_KEEP=1` keeps demo issues open. By default they are closed after
+`LOFIBOT_GH_KEEP=1` keeps demo issues open. By default they are closed after
 the scenario; comments and logs remain available.
 
 ## Feishu IM Source + Outbox
@@ -83,7 +83,7 @@ messages in groups the bot belongs to). Connector wake polling requires
 `im:chat:readonly` to read `/open-apis/im/v1/chats/:chat_id` and classify the
 trusted `chat_mode`; `im:chat:read` or `im:chat` also satisfy the endpoint's
 scope requirements. This is required even when direct mode is off. The same
-scope is needed by `DS_AGENT_FEISHU_P2P_DIRECT=1` polling; without it, lookup
+scope is needed by `LOFIBOT_FEISHU_P2P_DIRECT=1` polling; without it, lookup
 failures are logged and messages stay conservatively in group admission, so
 short 1:1 polls may be filtered. `im:chat:create` is only needed for demo
 creation. The bot must be a member of `FEISHU_CHAT_ID`. Publish a new app
@@ -102,7 +102,7 @@ One-time setup:
 6. Set `FEISHU_APP_ID` and `FEISHU_APP_SECRET` from the app's Credentials page.
    `FEISHU_BASE_URL` is optional; use `https://open.larksuite.com` for Lark.
 
-`ds-agent channels check --feishu` reports only presence and pairing, never the
+`lofibot channels check --feishu` reports only presence and pairing, never the
 secret. Add `--network` for one real `tenant_access_token` call (still no
 message); this remains a token-only check. `--check-chat` implies `--network`,
 then reads chat metadata and at most one history item. It is read-only and does
@@ -123,7 +123,7 @@ Inbound paths:
   only `chat_mode` (`p2p` or `group`/`topic`); `chat_type` visibility such as
   `private`/`public` is never used as a wake classification. Classification
   supplies the trusted chat class; admission changes only when
-  `DS_AGENT_FEISHU_P2P_DIRECT=1` and the lookup verifies `chat_mode=p2p`. In that
+  `LOFIBOT_FEISHU_P2P_DIRECT=1` and the lookup verifies `chat_mode=p2p`. In that
   case `address.group` is omitted, unmentioned messages may be `addressed=direct`,
   and the group allowlist does not apply. Actor allowlists still apply, and bot
   mentions still set `addressed=mention`.
@@ -160,7 +160,7 @@ the chat without a `message_id`.
 
 ### Inbound poll loop from `serve --feishu`
 
-`ds-agent serve --feishu` runs an inbound Feishu poll loop alongside the daemon
+`lofibot serve --feishu` runs an inbound Feishu poll loop alongside the daemon
 timer. The loop lives in `src/cli/feishu.ts` and mirrors `src/cli/channel-loop.ts`
 (the shared iMessage loop): pull, ingest, persist the cursor, request a
 non-blocking `jobsSettled()` drain, flush the durable outbox, then sleep abortably
@@ -191,11 +191,11 @@ and does not kill the other loop or the daemon.
 Run the preflight before a live serve. It needs no model and opens no SQLite:
 
 ```bash
-ds-agent channels check                  # iMessage + Feishu, offline
-ds-agent channels check --imessage       # one channel
-ds-agent channels check --feishu
-ds-agent channels check --feishu --network  # token only; no message
-ds-agent channels check --feishu --check-chat # token + chat metadata + at most one history item; read-only
+lofibot channels check                  # iMessage + Feishu, offline
+lofibot channels check --imessage       # one channel
+lofibot channels check --feishu
+lofibot channels check --feishu --network  # token only; no message
+lofibot channels check --feishu --check-chat # token + chat metadata + at most one history item; read-only
 ```
 
 - iMessage: opens `chat.db` read-only, checks the required schema, prints
@@ -230,9 +230,9 @@ chat is ignored.
 **Admission semantics.** The loop calls `runtime.ingest(trigger)` with the
 Trigger returned by `feishuTriggerFromMessage`; it does not bypass the ingress
 filter. Group messages and messages with a missing or unknown `chat_type` keep
-`channel.address.group = message.chat_id`, so `DS_AGENT_GROUP_ALLOWLIST=<chat id>`
+`channel.address.group = message.chat_id`, so `LOFIBOT_GROUP_ALLOWLIST=<chat id>`
 admits or denies them in `src/ingress/filter.ts`. Set
-`DS_AGENT_FEISHU_P2P_DIRECT=1` to mark only messages verified as P2P by the
+`LOFIBOT_FEISHU_P2P_DIRECT=1` to mark only messages verified as P2P by the
 chat-information `chat_mode` lookup as direct, allowing short 1:1 messages through
 the noise filter. This polling path requires `im:chat:readonly` (or `im:chat:read`
 or `im:chat`) as described above; failed or unrecognized lookups are logged and
@@ -259,8 +259,8 @@ running.
 message:
 
 ```bash
-ds-agent channels check
-ds-agent channels check --feishu --network   # token only; does not send
+lofibot channels check
+lofibot channels check --feishu --network   # token only; does not send
 osascript -e 'tell application "Messages" to get name'  # manual Automation check
 ```
 
@@ -280,7 +280,7 @@ pnpm demo:feishu
 
 It sends a bot message, polls it back through `FeishuSource`, sends a reply
 through the outbox adapter, and polls the reply back. Output is written to
-`/tmp/ds-agent-live-e2e-logs/demos/04-feishu-smoke.log`.
+`/tmp/lofibot-live-e2e-logs/demos/04-feishu-smoke.log`.
 
 ### Feishu status in this environment
 
@@ -308,10 +308,10 @@ Run:
 ```bash
 pnpm demo
 pnpm demo -- --only parallel,spill
-DS_AGENT_GH_KEEP=1 pnpm demo
+LOFIBOT_GH_KEEP=1 pnpm demo
 ```
 
-Logs and JSON proofs: `/tmp/ds-agent-live-e2e-logs/demos/<scenario>.{log,json}`.
+Logs and JSON proofs: `/tmp/lofibot-live-e2e-logs/demos/<scenario>.{log,json}`.
 The aggregate run summary is `run-<timestamp>.json` in the same directory.
 
 ## Offline CI

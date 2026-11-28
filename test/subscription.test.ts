@@ -51,12 +51,12 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
 
     const tickets = runtime.store.listDocs<{ id: string; threadKeys: string[] }>('ticket')
@@ -78,7 +78,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const original = runtime.store.listDocs<Ticket>('ticket')[0]!
     expect(runtime.ingest({
@@ -110,14 +110,14 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const original = runtime.store.listDocs<Ticket>('ticket')[0]!
     runtime.engine.report(original.id, { kind: 'ready', text: 'fixed', deliver: true })
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
 
     const ended = runtime.store.getDoc<Ticket>('ticket', original.id)
@@ -134,7 +134,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const original = runtime.store.listDocs<Ticket>('ticket')[0]!
     original.mandate = { ...original.mandate, scope: '   ' }
@@ -142,7 +142,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
 
     const disposition = runtime.store.getDoc<Disposition>('disposition', 'trg_login_2')
@@ -157,13 +157,13 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const ticket = runtime.store.listDocs<Ticket>('ticket')[0]!
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
     expect(runtime.log.text()).toContain(`bypass=subscription ticketId=${ticket.id}`)
     expect(runtime.store.getDoc<Thread>('thread', 'im:topic/bug-login')?.subscriptions).toEqual([ticket.id])
@@ -184,7 +184,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_3',
       thread: 'topic/bug-login',
-      text: '@ds-agent still broken after handback',
+      text: '@lofibot still broken after handback',
     }))).toBe('stored')
     const disposition = runtime.store.getDoc<Disposition>('disposition', 'trg_login_3')
     expect(disposition?.fanout ?? []).not.toContain(ticket.id)
@@ -198,7 +198,7 @@ describe('subscription bypass', () => {
       id: 'trg_admitted',
       thread: 'topic/bug-login',
       group: 'eng',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const ticket = runtime.store.listDocs<Ticket>('ticket')[0]!
     const before = runtime.store.listDocs<Ticket>('ticket').length
@@ -208,7 +208,7 @@ describe('subscription bypass', () => {
       id: 'trg_denied',
       thread: 'topic/bug-login',
       group: 'random',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('filtered')
     expect(runtime.store.getDoc<Disposition>('disposition', 'trg_denied')?.filtered)
       .toBe('fast:group-not-allowlisted')
@@ -229,7 +229,7 @@ describe('subscription bypass', () => {
       id: 'trg_denied',
       thread: 'topic/bug-login',
       group: 'random',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('filtered')
 
     // Simulate a stale pending entry left by an older process.
@@ -257,13 +257,13 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_login',
       thread: 'topic/bug-login',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     const ticket = runtime.store.listDocs<Ticket>('ticket')[0]!
     expect(runtime.ingest(imTrigger({
       id: 'trg_login_2',
       thread: 'topic/bug-login',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
 
     expect(runtime.engine.handback(ticket.id, 'trg_login_2', 'not-our-bug')).toBe(true)
@@ -287,12 +287,12 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_a',
       thread: 'topic/shared',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('stored')
     expect(runtime.ingest(imTrigger({
       id: 'trg_b',
       thread: 'topic/other',
-      text: '@ds-agent please fix the payment timeout on checkout',
+      text: '@lofibot please fix the payment timeout on checkout',
     }))).toBe('stored')
     const tickets = runtime.store.listDocs<Ticket>('ticket')
     const older = tickets.find(item => item.originTriggerId === 'trg_a')
@@ -304,7 +304,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_recent',
       thread: 'topic/shared',
-      text: '@ds-agent login still 500, the timeout is back',
+      text: '@lofibot login still 500, the timeout is back',
     }))).toBe('stored')
     const fanout = runtime.store.getDoc<Disposition>('disposition', 'trg_recent')?.fanout ?? []
     expect(fanout.sort()).toEqual([older!.id, newer!.id].sort())
@@ -319,7 +319,7 @@ describe('subscription bypass', () => {
     expect(runtime.ingest(imTrigger({
       id: 'trg_active',
       thread: 'topic/shared',
-      text: '@ds-agent please fix the login timeout again',
+      text: '@lofibot please fix the login timeout again',
     }))).toBe('stored')
     expect(runtime.store.getDoc<Disposition>('disposition', 'trg_active')?.fanout).toEqual([older!.id])
     expect(runtime.store.getDoc<Ticket>('ticket', newer!.id)?.inputs.some(input => input.triggerId === 'trg_active')).toBe(false)
@@ -335,7 +335,7 @@ describe('filtered triggers cannot be resurrected', () => {
       id,
       thread: 'topic/bug-login',
       group: 'random',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))).toBe('filtered')
   }
 
@@ -432,7 +432,7 @@ describe('filtered triggers cannot be resurrected', () => {
       id: 'trg_admitted',
       thread: 'topic/bug-login',
       group: 'eng',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     seedFiltered()
     seedDeferred(['trg_denied', 'trg_admitted'])
@@ -457,7 +457,7 @@ describe('filtered triggers cannot be resurrected', () => {
       id: 'trg_admitted',
       thread: 'topic/bug-login',
       group: 'eng',
-      text: '@ds-agent please fix the login timeout on checkout',
+      text: '@lofibot please fix the login timeout on checkout',
     }))
     seedFiltered()
     seedDeferred(['trg_denied', 'trg_admitted'])
@@ -591,7 +591,7 @@ function followUp(overrides: Partial<Trigger> = {}): Trigger {
     actor: { source: 'im', id: 'alex' },
     human: true,
     at: '2026-10-31T00:05:00.000Z',
-    text: '@ds-agent login still 500, the timeout is back',
+    text: '@lofibot login still 500, the timeout is back',
     meta: {},
     ...overrides,
   }

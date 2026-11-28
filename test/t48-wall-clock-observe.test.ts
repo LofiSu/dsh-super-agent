@@ -17,8 +17,8 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
   it('accumulates corpus across invocations with syntheticWorkload true and syntheticClock false', () => {
     const home = tempHome()
     const journal = `${home}/wall.jsonl`
-    const env = { ...process.env, DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
-      DS_AGENT_T48_TEST_HOT_MAX_ENTRIES: '1000' }
+    const env = { ...process.env, LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
+      LOFIBOT_T48_TEST_HOT_MAX_ENTRIES: '1000' }
 
     const first = runT48WallClockObservation({ home, journalPath: journal, minIntervalMs: 0, force: true, env })
     expect(first.action).toBe('appended')
@@ -66,8 +66,8 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
   it('reopens the same home after a simulated process exit and measures older fixture recall', () => {
     const home = tempHome()
     const journal = `${home}/wall-restart.jsonl`
-    const env = { ...process.env, DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
-      DS_AGENT_T48_TEST_HOT_MAX_ENTRIES: '1' }
+    const env = { ...process.env, LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
+      LOFIBOT_T48_TEST_HOT_MAX_ENTRIES: '1' }
 
     for (let i = 0; i < T48_INCREMENTAL_SAMPLES.length; i++) {
       runT48WallClockObservation({
@@ -91,8 +91,8 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
     expect(report.metrics.topBillingQueryIsBilling).toBe(true)
     expect(report.syntheticWorkload).toBe(true)
     expect(report.wallClockMeasurement).toBe(true)
-    expect(fs.existsSync(path.join(resolveT48MeasurementHome(home), 'ds-agent.db'))).toBe(true)
-    expect(fs.existsSync(path.join(home, 'ds-agent.db'))).toBe(false)
+    expect(fs.existsSync(path.join(resolveT48MeasurementHome(home), 'lofibot.db'))).toBe(true)
+    expect(fs.existsSync(path.join(home, 'lofibot.db'))).toBe(false)
   })
 
   it('preserves ordinary runtime memory while fixture retention runs in measurement storage', () => {
@@ -110,7 +110,7 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
       home,
       journalPath: path.join(home, 'isolated.jsonl'),
       force: true,
-      env: { ...process.env, DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0' },
+      env: { ...process.env, LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0' },
     })
 
     const reopened = new Store(home)
@@ -124,7 +124,7 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
   it('refuses a concurrent observation before changing journal or state', () => {
     const home = tempHome()
     const journal = path.join(home, 'locked.jsonl')
-    const lock = path.join(home, '.ds-agent/measurement/t48-wall-clock.lock')
+    const lock = path.join(home, '.lofibot/measurement/t48-wall-clock.lock')
     fs.mkdirSync(path.dirname(lock), { recursive: true })
     fs.writeFileSync(lock, JSON.stringify({
       owner: 'active-observer',
@@ -139,7 +139,7 @@ describe('T48 wall-clock observation (persistent corpus, not month-scale accepta
   it('reclaims an expired observation lease after a crashed process', () => {
     const home = tempHome()
     const journal = path.join(home, 'expired-lock.jsonl')
-    const lock = path.join(home, '.ds-agent/measurement/t48-wall-clock.lock')
+    const lock = path.join(home, '.lofibot/measurement/t48-wall-clock.lock')
     fs.mkdirSync(path.dirname(lock), { recursive: true })
     fs.writeFileSync(lock, JSON.stringify({
       owner: 'crashed-observer',

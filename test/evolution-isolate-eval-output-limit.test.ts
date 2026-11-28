@@ -10,7 +10,7 @@ import type { EvolutionEvalCase } from '../src/evolution/types.ts'
 const tempDirs: string[] = []
 
 function makeWorkDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-eval-output-limit-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-eval-output-limit-'))
   tempDirs.push(dir)
   return dir
 }

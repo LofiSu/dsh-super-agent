@@ -34,8 +34,8 @@ const buildConfig = JSON.parse(readFileSync(path.join(root, 'tsconfig.build.json
 }
 
 describe('package manifest', () => {
-  it('keeps the package identity unchanged', () => {
-    expect(pkg.name).toBe('ds-agent')
+  it('uses the LofiBot package identity', () => {
+    expect(pkg.name).toBe('lofibot')
     expect(pkg.version).toBe('0.1.0')
     expect(pkg.license).toBe('MIT')
     expect(pkg.author).toBe('LofiSu <163713803+LofiSu@users.noreply.github.com>')
@@ -43,8 +43,8 @@ describe('package manifest', () => {
     expect(pkg.engines?.node).toBe('>=22')
   })
 
-  it('exposes the built CLI as the ds-agent bin', () => {
-    expect(pkg.bin).toEqual({ 'ds-agent': './dist/cli/main.js' })
+  it('exposes the built CLI as the lofibot bin', () => {
+    expect(pkg.bin).toEqual({ 'lofibot': './dist/cli/main.js' })
     expect(existsSync(path.join(root, 'src', 'cli', 'main.ts'))).toBe(true)
   })
 
@@ -74,6 +74,7 @@ describe('package manifest', () => {
       'dist',
       'README.md',
       'README.zh-CN.md',
+      'docs/assets/lofibot-banner.png',
       'LICENSE',
       'docs/MODULES.md',
       'docs/ANTHROPIC_AGENT_MEMORY.md',

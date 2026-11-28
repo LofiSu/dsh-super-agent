@@ -1,4 +1,4 @@
-# deepseek-super-agent — project instructions
+# LofiBot — project instructions
 
 Thin TypeScript harness plus a proactive domain engine. Node.js 22+, pnpm.
 Not an official DeepSeek product. Owner-only repository: only LofiSu
@@ -11,7 +11,7 @@ pnpm typecheck                     # tsc --noEmit
 pnpm lint                          # scripts/lint.ts (repo invariants)
 pnpm test                          # vitest; fills local Magpie defaults
 pnpm test:coverage                 # offline fixture suite with coverage
-pnpm ds-agent <command>            # run the CLI
+pnpm lofibot <command>            # run the CLI
 pnpm demo                          # real GitHub channel acceptance (needs gh auth)
 ```
 

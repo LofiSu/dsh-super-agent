@@ -187,7 +187,7 @@ export class FeaturePrPublisher {
     }
     this.assertCredentialsHidden?.()
     const ws = this.workspace(input.workerId)
-    const hostRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-agent-publish-'))
+    const hostRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'lofibot-publish-'))
     try {
       const init = await this.git(['init', '--bare', '--quiet', hostRepo], { cwd: os.tmpdir() })
       if (init.code !== 0) throw new UserError(`publish staging failed: ${init.stderr.trim().slice(0, 300)}`)

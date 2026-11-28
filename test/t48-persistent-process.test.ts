@@ -15,19 +15,19 @@ function spawnOneSample(home: string, journal: string): Promise<number> {
         'tsx',
         '-e',
         `import { runT48WallClockObservation } from './scripts/t48-wall-clock-observe.ts';
-        const r = runT48WallClockObservation({ home: process.env.DS_AGENT_HOME!, journalPath: process.env.DS_AGENT_T48_JOURNAL!, minIntervalMs: 0, force: true, env: process.env });
+        const r = runT48WallClockObservation({ home: process.env.LOFIBOT_HOME!, journalPath: process.env.LOFIBOT_T48_JOURNAL!, minIntervalMs: 0, force: true, env: process.env });
         console.log(JSON.stringify({ inserted: r.state.corpusSamplesInserted }));`,
       ],
       {
         cwd: process.cwd(),
         env: {
           ...process.env,
-          DS_AGENT_HOME: home,
-          DS_AGENT_T48_JOURNAL: journal,
-          DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
-          DS_AGENT_T48_TEST_HOT_MAX_ENTRIES: '1000',
+          LOFIBOT_HOME: home,
+          LOFIBOT_T48_JOURNAL: journal,
+          LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0',
+          LOFIBOT_T48_TEST_HOT_MAX_ENTRIES: '1000',
           CI: 'true',
-          DS_AGENT_ALLOW_MOCK_FIXTURE: '1',
+          LOFIBOT_ALLOW_MOCK_FIXTURE: '1',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -53,13 +53,13 @@ describe('T48 persistent corpus across processes', () => {
 
     const measurementHome = resolveT48MeasurementHome(home)
     expect(readCorpusState(measurementHome)?.insertedSampleIndices).toEqual([0, 1])
-    expect(fs.existsSync(path.join(measurementHome, 'ds-agent.db'))).toBe(true)
-    expect(fs.existsSync(path.join(home, 'ds-agent.db'))).toBe(false)
+    expect(fs.existsSync(path.join(measurementHome, 'lofibot.db'))).toBe(true)
+    expect(fs.existsSync(path.join(home, 'lofibot.db'))).toBe(false)
 
     const { report } = runT48PersistentIncrementalStep({
       home: measurementHome,
       wallClockMeasurement: true,
-      env: { ...process.env, DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0', DS_AGENT_T48_TEST_HOT_MAX_ENTRIES: '1000' },
+      env: { ...process.env, LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0', LOFIBOT_T48_TEST_HOT_MAX_ENTRIES: '1000' },
       forceInsert: false,
     })
     expect(report.metrics.insertedSamples).toBe(2)
@@ -67,7 +67,7 @@ describe('T48 persistent corpus across processes', () => {
 
   it('full corpus in separate steps then reopen recalls all held-out queries', () => {
     const home = tempHome()
-    const env = { ...process.env, DS_AGENT_T48_TEST_HOT_MAX_AGE_DAYS: '0', DS_AGENT_T48_TEST_HOT_MAX_ENTRIES: '1' }
+    const env = { ...process.env, LOFIBOT_T48_TEST_HOT_MAX_AGE_DAYS: '0', LOFIBOT_T48_TEST_HOT_MAX_ENTRIES: '1' }
     for (let i = 0; i < T48_INCREMENTAL_SAMPLES.length; i++) {
       runT48PersistentIncrementalStep({ home, wallClockMeasurement: true, env })
     }

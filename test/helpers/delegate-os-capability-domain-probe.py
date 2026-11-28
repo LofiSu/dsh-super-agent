@@ -24,7 +24,7 @@ def main():
     def start_fixture(label):
         ready = Path(home) / f'{label}.ready'
         child = subprocess.Popen([node, fixture, label], cwd=root,
-                                 env={**os.environ, 'DS_AGENT_TEST_FIXTURE_READY_FILE': str(ready)},
+                                 env={**os.environ, 'LOFIBOT_TEST_FIXTURE_READY_FILE': str(ready)},
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
         owned.append((child, ready, fixture))

@@ -11,7 +11,7 @@ export interface UiCommandOptions {
   /** Loopback host to accept; the server always binds 127.0.0.1. */
   host?: string
   port?: number
-  /** Explicit token; otherwise --token, then DS_AGENT_UI_TOKEN. */
+  /** Explicit token; otherwise --token, then LOFIBOT_UI_TOKEN. */
   token?: string
 }
 
@@ -38,18 +38,18 @@ function errorMessage(error: unknown): string {
 }
 
 function resolveToken(explicit: string | undefined): string {
-  const token = (explicit ?? flag('token') ?? process.env.DS_AGENT_UI_TOKEN ?? '').trim()
+  const token = (explicit ?? flag('token') ?? process.env.LOFIBOT_UI_TOKEN ?? '').trim()
   if (token.length < MIN_TOKEN_LENGTH) {
     throw new Error(
-      `ds-agent ui requires a token of at least ${MIN_TOKEN_LENGTH} characters; `
-      + 'set DS_AGENT_UI_TOKEN (preferred, not visible in process listings) or pass --token',
+      `lofibot ui requires a token of at least ${MIN_TOKEN_LENGTH} characters; `
+      + 'set LOFIBOT_UI_TOKEN (preferred, not visible in process listings) or pass --token',
     )
   }
   return token
 }
 
 /**
- * `ds-agent ui` — read-only loopback dashboard over persisted state.
+ * `lofibot ui` — read-only loopback dashboard over persisted state.
  *
  * Opens exactly one Store, starts the loopback-only HTTP server, and closes the
  * Store on SIGINT/SIGTERM. Metrics are re-read from the store home on every
@@ -61,7 +61,7 @@ function resolveToken(explicit: string | undefined): string {
 export async function runUi(home: string, options: UiCommandOptions = {}): Promise<void> {
   const host = options.host ?? '127.0.0.1'
   if (!isLoopbackHost(host)) {
-    throw new Error(`ds-agent ui only binds loopback addresses; refusing host ${host}`)
+    throw new Error(`lofibot ui only binds loopback addresses; refusing host ${host}`)
   }
   const token = resolveToken(options.token)
   const port = resolvePort(options.port)
@@ -70,7 +70,7 @@ export async function runUi(home: string, options: UiCommandOptions = {}): Promi
   try {
     store = Store.openReadOnly(home)
   } catch (error) {
-    throw new Error(`ds-agent ui: cannot open store at ${home}: ${errorMessage(error)}`)
+    throw new Error(`lofibot ui: cannot open store at ${home}: ${errorMessage(error)}`)
   }
 
   let handle: UiServerHandle
@@ -78,10 +78,10 @@ export async function runUi(home: string, options: UiCommandOptions = {}): Promi
     handle = await startUiServer({ home, store, host, port, token })
   } catch (error) {
     if (store.isOpen) store.close()
-    throw new Error(`ds-agent ui: cannot start server on 127.0.0.1:${port}: ${errorMessage(error)}`)
+    throw new Error(`lofibot ui: cannot start server on 127.0.0.1:${port}: ${errorMessage(error)}`)
   }
 
-  console.log(`ds-agent ui listening on ${handle.url} (read-only)`)
+  console.log(`lofibot ui listening on ${handle.url} (read-only)`)
   console.log(`  home:      ${home}`)
   console.log('  endpoints: /  /api/snapshot  /api/events (SSE every 2s)')
   console.log('  bind:      127.0.0.1 only; Ctrl+C to stop')
@@ -92,12 +92,12 @@ export async function runUi(home: string, options: UiCommandOptions = {}): Promi
       process.off('SIGTERM', stop)
       void handle.close()
         .catch(error => {
-          console.error(`ds-agent ui: shutdown failed: ${errorMessage(error)}`)
+          console.error(`lofibot ui: shutdown failed: ${errorMessage(error)}`)
           process.exitCode = 1
         })
         .finally(() => {
           if (store.isOpen) store.close()
-          console.log(`ds-agent ui stopped${signal ? ` (${signal})` : ''}`)
+          console.log(`lofibot ui stopped${signal ? ` (${signal})` : ''}`)
           resolve()
         })
     }

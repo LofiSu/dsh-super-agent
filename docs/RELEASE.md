@@ -1,6 +1,6 @@
 # Release process
 
-ds-agent releases are **source/tarball releases from GitHub**. There is no
+lofibot releases are **source/tarball releases from GitHub**. There is no
 npm registry publish step, no registry token, and no secret in the release
 workflow. A release is a reviewed version bump, a green offline check, a
 tarball built from the tagged commit, and a GitHub release attached to that
@@ -74,9 +74,9 @@ From a clean checkout of the release commit, with Node 22 and pnpm 10:
 pnpm install --frozen-lockfile
 pnpm lint
 git fetch --no-tags --depth=1 origin main
-DS_AGENT_FORMAT_BASE=origin/main pnpm format:check
+LOFIBOT_FORMAT_BASE=origin/main pnpm format:check
 pnpm typecheck
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run
 pnpm build
 npx tsx scripts/release-check.ts
 ```
@@ -84,7 +84,7 @@ npx tsx scripts/release-check.ts
 `scripts/release-check.ts` fails with an actionable message when:
 
 - `package.json` has no semver `version`;
-- `bin.ds-agent` is not `./dist/cli/main.js`;
+- `bin.lofibot` is not `./dist/cli/main.js`;
 - `files` does not include `dist`;
 - `dist/cli/main.js` or the runtime rules asset is missing (run `pnpm build`);
 - `npm pack --dry-run --json` fails, ships no `dist/`, or omits the entry
@@ -96,14 +96,14 @@ historical `dist/channels/rules.json` layout.
 ## 4. Build and inspect the tarball
 
 ```bash
-rm -f ds-agent-*.tgz
+rm -f lofibot-*.tgz
 npm pack --json | tee release-pack.json
-tar -tzf ds-agent-*.tgz | sort
+tar -tzf lofibot-*.tgz | sort
 ```
 
 Confirm the tarball contains `package.json`, `dist/cli/main.js`, the rules
 asset, `README.md`, `README.zh-CN.md`, `LICENSE`, and the docs listed in
-`package.json` `files`. Confirm it contains no `.ds-agent/`, no test files,
+`package.json` `files`. Confirm it contains no `.lofibot/`, no test files,
 no secrets, and no machine-specific path.
 
 ## 5. Tag and publish the GitHub release
@@ -112,11 +112,11 @@ Use an annotated tag on the exact commit that passed the gate:
 
 ```bash
 VERSION="$(node -p "require('./package.json').version")"
-git tag -a "v${VERSION}" -m "ds-agent v${VERSION}"
+git tag -a "v${VERSION}" -m "lofibot v${VERSION}"
 git push origin "v${VERSION}"
 
-gh release create "v${VERSION}" ./ds-agent-"${VERSION}".tgz \
-  --title "ds-agent v${VERSION}" \
+gh release create "v${VERSION}" ./lofibot-"${VERSION}".tgz \
+  --title "lofibot v${VERSION}" \
   --notes-file CHANGELOG.md
 ```
 
@@ -131,14 +131,14 @@ Test the tarball, not the working tree, in a temporary prefix and state home:
 ```bash
 PREFIX="$(mktemp -d)"
 STATE="$(mktemp -d)"
-npm install --prefix "$PREFIX" ./ds-agent-*.tgz
+npm install --prefix "$PREFIX" ./lofibot-*.tgz
 
-"$PREFIX/node_modules/.bin/ds-agent" --help
-DS_AGENT_HOME="$STATE" "$PREFIX/node_modules/.bin/ds-agent" init
-DS_AGENT_HOME="$STATE" "$PREFIX/node_modules/.bin/ds-agent" status
+"$PREFIX/node_modules/.bin/lofibot" --help
+LOFIBOT_HOME="$STATE" "$PREFIX/node_modules/.bin/lofibot" init
+LOFIBOT_HOME="$STATE" "$PREFIX/node_modules/.bin/lofibot" status
 
 # If the backup/restore CLI integration is present in this release:
-DS_AGENT_HOME="$STATE" "$PREFIX/node_modules/.bin/ds-agent" \
+LOFIBOT_HOME="$STATE" "$PREFIX/node_modules/.bin/lofibot" \
   backup --out "$STATE/smoke-backup.db"
 ```
 

@@ -1,7 +1,7 @@
 # Plan audit and living roadmap
 
 > Status: living document · First audit: 2026-11-02 against `8f8e104` ·
-> Revised: 2026-11-03 against `8fa3a79` · **Current baseline:** `origin/main` `840386e` (2026-11-27, Asia/Shanghai) · Repo: `LofiSu/dsh-super-agent`
+> Revised: 2026-11-03 against `8fa3a79` · **Current baseline:** `origin/main` `840386e` (2026-11-27, Asia/Shanghai) · Repo: `LofiSu/LofiBot`
 >
 > Sources for **current** claims in the snapshot below: `origin/main` at `840386e` and `docs/DEVELOPMENT_STATUS.md`.
 > Sources for the 2026-11-03 historical matrices: `origin/main` at `8fa3a79` (`PLAN.md`,
@@ -42,9 +42,9 @@
 Use `docs/DEVELOPMENT_STATUS.md` for the maintainer checkpoint. Summary before the matrices below:
 
 - **On `main` (offline/CI; real accounts mostly not accepted):** Muse-style prompts (#171); three-answer approvals + fill-only vault (#173, CLI-only); Google Workspace connectors + index + event wake (#174, default off); browser errand adapter (#172, default off); writable Peanut workspace (#175); execution receipts (#182); controlled evolution v1 (#168, not full RSI); idle self-wake (#170); deployment probes (#167); T48 harness (#166); remote mesh placement (#165); recovery/sandbox health (#164, #163); read-only local UI with paused tickets and SSE updates (#185, #189); CLI/GitHub/Feishu/iMessage/A2A, including Feishu 1:1 conversation-first (#188), short direct messages (#180), and stale-ingress filtering (#184).
-- **Pending integration:** [#183](https://github.com/LofiSu/dsh-super-agent/pull/183) (RSI proposal ingest and scheduler); [#187](https://github.com/LofiSu/dsh-super-agent/pull/187) (owner GitHub issue polling, opt-in @ dispatch, and implementer); [#177](https://github.com/LofiSu/dsh-super-agent/pull/177) (overlapping issue poll and RSI work with a stale base and merge conflicts; blocked pending replacement of the production scheduler wiring).
+- **Pending integration:** [#183](https://github.com/LofiSu/LofiBot/pull/183) (RSI proposal ingest and scheduler); [#187](https://github.com/LofiSu/LofiBot/pull/187) (owner GitHub issue polling, opt-in @ dispatch, and implementer); [#177](https://github.com/LofiSu/LofiBot/pull/177) (overlapping issue poll and RSI work with a stale base and merge conflicts; blocked pending replacement of the production scheduler wiring).
 - **Still missing / blocked:** full RSI loop; standalone conversational desktop; default GitHub @ issue poll; formal release; real-channel acceptance.
-- **CI at `840386e`:** `typecheck and test` was in progress at review time. See [Actions run 45975345608](https://github.com/LofiSu/dsh-super-agent/actions/runs/45975345608).
+- **CI at `840386e`:** `typecheck and test` was in progress at review time. See [Actions run 45975345608](https://github.com/LofiSu/LofiBot/actions/runs/45975345608).
 
 > **Section 2 onward:** Module/domain matrices and verification logs were last fully re-checked against **`fa974ca` / `8fa3a79` (2026-11-03)**. Prefer this snapshot and `DEVELOPMENT_STATUS.md` over undated current-main claims in those sections.
 
@@ -99,15 +99,15 @@ not evidence (see `docs/CODE_REVIEW_METHOD.md`).
 | Module | Status | Evidence | Gap |
 |--------|--------|----------|-----|
 | **M0 shared** | done | `src/shared/types.ts`, `ports.ts`, `events.ts`, `boundary.ts`; `test/ports.test.ts`; `npx tsc --noEmit` passes; `PLAN.md` §4.1 current-contract table | No contract gap after #56/#58: PLAN §4 is marked a historical sketch, §4.1 matches `Role`/`Strength`/`Assignment.state` and the real `Harness` methods, and §10 matches the tree. `node:sqlite` still requires Node ≥22. |
-| **M1 harness** | done | `src/harness/loop.ts` (Router-before-Worker sequence, async jobs, batch window, bounded mesh queue), `session.ts`, `model.ts`, `tools.ts`, `daemon.ts`, `machines.ts`, `team.ts`, `mesh.ts`; `test/job.test.ts`, `team-harness.test.ts`, `daemon-machines.test.ts`, `hardening.test.ts`, `live-modules.test.ts` | Worker-mesh capacity is enforced in-process (`P1-3`): a full mesh parks the Worker in a bounded FIFO (`DS_AGENT_MESH_QUEUE`, default 100), a full queue rejects without throwing, Assignment-ended ticket-open paths free their slot, and `drain` clears the queue. Placement remains logical (no cross-host transport). `ds-agent serve` wraps the in-process `Daemon` timer over persisted state (no inbound channel loop) with SIGINT/SIGTERM drain and exit 0; an in-flight turn is still not reconstructed after restart (P1-6). |
-| **M2 store** | done | `src/store/sqlite.ts` (`node:sqlite` at `:3`, `ds-agent.db` at `:16`), `schema.ts`, `spill.ts`, document/spill upsert; `test/spill.test.ts`, `long-term-memory.test.ts`, `live-modules.test.ts` (reopen) | No migration/version table; `node:sqlite` is experimental and needs Node ≥22. The §10 file-tree contradiction was resolved by #56: the plan now describes the real `sqlite.ts`/`schema.ts`/`spill.ts` tree. |
+| **M1 harness** | done | `src/harness/loop.ts` (Router-before-Worker sequence, async jobs, batch window, bounded mesh queue), `session.ts`, `model.ts`, `tools.ts`, `daemon.ts`, `machines.ts`, `team.ts`, `mesh.ts`; `test/job.test.ts`, `team-harness.test.ts`, `daemon-machines.test.ts`, `hardening.test.ts`, `live-modules.test.ts` | Worker-mesh capacity is enforced in-process (`P1-3`): a full mesh parks the Worker in a bounded FIFO (`LOFIBOT_MESH_QUEUE`, default 100), a full queue rejects without throwing, Assignment-ended ticket-open paths free their slot, and `drain` clears the queue. Placement remains logical (no cross-host transport). `lofibot serve` wraps the in-process `Daemon` timer over persisted state (no inbound channel loop) with SIGINT/SIGTERM drain and exit 0; an in-flight turn is still not reconstructed after restart (P1-6). |
+| **M2 store** | done | `src/store/sqlite.ts` (`node:sqlite` at `:3`, `lofibot.db` at `:16`), `schema.ts`, `spill.ts`, document/spill upsert; `test/spill.test.ts`, `long-term-memory.test.ts`, `live-modules.test.ts` (reopen) | No migration/version table; `node:sqlite` is experimental and needs Node ≥22. The §10 file-tree contradiction was resolved by #56: the plan now describes the real `sqlite.ts`/`schema.ts`/`spill.ts` tree. |
 | **M3 engine** | done | `src/core/engine.ts`, `intake.ts`, `policy.ts`, `assessment.ts`, `tickets.ts`, `assignments.ts`, `replies.ts`, `subscribe.ts`, `collab.ts`, `lifecycle.ts`; `test/domain-alignment.test.ts`, `subscription.test.ts`, `speculate.test.ts`, `mid-task-collab.test.ts`, `hardening.test.ts`, `live-modules.test.ts` | P1-2 is resolved by #39: the deterministic `gateTriggers` handles commands and the configured auto-accept classes, and deferred triggers go to `assessWithMainAgent`, which originates `accept`/`ignore`/`stop`/`unavailable` (with `title`/`scope`/`strength`) before any Ticket exists. The gate remains rule/policy based by design; it is not a model verdict. |
-| **M4 ingress** | done | `src/ingress/filter.ts`, `policy.ts`, `shards.ts`, `thread.ts`, `batch.ts`; `test/filter.test.ts`, `slow-path-policy.test.ts`, `slow-path-model.test.ts`, `channel-slow-path.test.ts`, `router-shards.test.ts`, `runtime-integration.test.ts` | Fast Path is source + T16 admission (actor allowlist, group/chat allowlist read from `trigger.channel.address.group`, drop-self deny) + mention + keyword + noise; `test/filter.test.ts` covers each rule and the runtime env wiring. The shipped Feishu adapter maps `message.chat_id` to `address.group`, so `DS_AGENT_GROUP_ALLOWLIST` works with it; other adapters must populate `address.group` to opt in (#70). Admission is not authentication: a channel adapter must still verify its peer, and `meta` is never read. Fast Path is deterministic; Slow Path adds an opt-in model policy (#128, `ingress/policy.ts`) that first yields to the fast path and falls back to `ruleClassify` on timeout/error/invalid output. The default is rules-only; sync `ingest` and A2A inbound never call the model. #135 wired `Runtime.ingestAsync` into the iMessage/Feishu loops. `test/slow-path-policy.test.ts`, `slow-path-model.test.ts`, and `channel-slow-path.test.ts` pin the behavior. P2-2 is resolved: precedence is priority-desc then registration order, `default` is fallback-only, and the first matching shard owns the reply and terminal decision. Ownership is resolved from the trigger named by the call, and `Evals.decide` is idempotent per trigger, so only one terminal Router decision is recorded. Shards are routing metadata, not multi-process placement. |
+| **M4 ingress** | done | `src/ingress/filter.ts`, `policy.ts`, `shards.ts`, `thread.ts`, `batch.ts`; `test/filter.test.ts`, `slow-path-policy.test.ts`, `slow-path-model.test.ts`, `channel-slow-path.test.ts`, `router-shards.test.ts`, `runtime-integration.test.ts` | Fast Path is source + T16 admission (actor allowlist, group/chat allowlist read from `trigger.channel.address.group`, drop-self deny) + mention + keyword + noise; `test/filter.test.ts` covers each rule and the runtime env wiring. The shipped Feishu adapter maps `message.chat_id` to `address.group`, so `LOFIBOT_GROUP_ALLOWLIST` works with it; other adapters must populate `address.group` to opt in (#70). Admission is not authentication: a channel adapter must still verify its peer, and `meta` is never read. Fast Path is deterministic; Slow Path adds an opt-in model policy (#128, `ingress/policy.ts`) that first yields to the fast path and falls back to `ruleClassify` on timeout/error/invalid output. The default is rules-only; sync `ingest` and A2A inbound never call the model. #135 wired `Runtime.ingestAsync` into the iMessage/Feishu loops. `test/slow-path-policy.test.ts`, `slow-path-model.test.ts`, and `channel-slow-path.test.ts` pin the behavior. P2-2 is resolved: precedence is priority-desc then registration order, `default` is fallback-only, and the first matching shard owns the reply and terminal decision. Ownership is resolved from the trigger named by the call, and `Evals.decide` is idempotent per trigger, so only one terminal Router decision is recorded. Shards are routing metadata, not multi-process placement. |
 | **M5 subscribe** | done | `src/core/subscribe.ts`, `intake.ts` fan-out; `test/subscription.test.ts`, `hardening.test.ts` (contextOnly, unsubscribe) | `handback` is not exposed as a CLI action. The tests cover unsubscribe but not the full requeue-and-drop lifecycle as an operator flow. |
 | **M6 memory** | partial | `src/memory/recall.ts`, `acl.ts`, `graph.ts`, `long-term.ts`; `src/store/sqlite.ts` (`deleteSpill`); `test/spill.test.ts`, `long-term-memory.test.ts`, `memory-graph.test.ts`, `memory-recall-eval.test.ts`, `live-modules.test.ts` | ADR-010 lexical recall is implemented: `query()` normalizes query/body tokens (NFKC, lower-case, punctuation/whitespace, small in-repo synonym/morphology map, query stop-word removal), treats query words that match entry tags as hits (tag-only retrieval), and expands exactly one hop across shared tags over the retention-bounded set. Requested `tags` remain an exact AND filter. Ranking is `tagHits` desc, `textHits` desc (each query token capped at 5), `hopScore` desc, hot before cold, `createdAt` desc, `id` desc. Retention is two-tier: hot ticket/decision entries default to 1000/90 and prune inside the same transaction; before deletion their summaries fold into cold Thread digests (200/3650), queryable with `tier:'cold'`. ADR-015 adds schema v4 `spills.refs`: typed `kind:id` handles for Trigger/Thread/Ticket/Decision/Session/Channel/Actor, refs on every trigger/ticket and in Router/Worker task lines, and `readObjectFor` re-checking the reader's Thread on every hop. `rememberDecision` stores every accept/ignore/stop/unavailable Decision; Router/assessment inject `recentDecisions` plus `forThreads`, and the Worker injects `forThreads` plus lexical hits. `test/memory-graph.test.ts` covers spill refs, trigger→thread→ticket hops, cross-ticket denial, decision memory, and cold digests. `test/memory-recall-eval.test.ts` keeps the shipped path at original 11/11 macro recall@3, 15/15 same-PR held-out-style queries, four empty negative controls, deterministic ids, and a 1000-entry fixture bounded to one body read per entry. Security: `query()` throws without a reader `ticketId`, every hit grants that ticket the exact spill, redaction runs before storage, no lookup-by-id API, and a handle is never a capability. Gap: semantic/embedding recall is implemented behind `EmbeddingPort` with the default-on offline `HashedEmbedding` (#152), and cold-tier month-scale behavior is bounded, not measured across real calendar months; measurement protocol: `docs/T48_MONTH_SCALE_PROTOCOL.md`. |
 | **M7 speculate** | done | `src/speculate/silent.ts`, `gate.ts`; `test/speculate.test.ts`, `live-modules.test.ts`, `hardening.test.ts` | The gate is a clause-local keyword heuristic, documented as a stand-in (`docs/HARDENING_2026-11-01.md:25`). It is not a model verdict; a real value judgment remains open. |
 | **M8 channels** | done | `src/channels/norms.ts`, `cli.ts`, `feishu.ts`, `github-source.ts`, `outbox-adapter.ts`, `a2a.ts`, `a2a-transport.ts`; `test/channels-feishu.test.ts`, `channels-github-source.test.ts`, `outbox.test.ts`, `lifecycle-a2a.test.ts`, `a2a-transport.test.ts`; real demos in `src/cli/demos/*` | Real-channel acceptance is operator-only: `test/demos-real-channels.test.ts` is skipped offline (3 tests), and `pnpm demo` needs `gh auth` plus a live model. There is no email adapter; email is out of scope (see P2-8). |
-| **M9 env** | partial | `src/env/local-env.ts`, `sanitize.ts`, `vault.ts`, `seccomp.ts` (`sandboxEnabledFromEnv` returns true); `test/sanitize.test.ts`, `vault.test.ts`, `hardening.test.ts`, `local-env-timeout.test.ts`, `sandbox-read-isolation.test.ts`, `live-modules.test.ts`, `credential-sentinel.test.ts` | #44 made the sandbox default-on and fail-closed: a missing `sandbox-exec`/`bwrap` throws. Host vault/seccomp policy is still external. Credential non-leakage now has a single sentinel test (#53) covering SQLite tables, session JSONL, tool results, replies/outbox, and captured model request bodies, plus Worker port/tool rejection. #55 corrected the user-facing pages and historical reviews; this audit also fixed the remaining "optional OS sandbox" line in the `docs/MODULES.md` T51 section. C15/P1-10 are resolved. #117 added opt-in strict read confinement (`DS_AGENT_SANDBOX_READ_ISOLATION=1|true|strict`); the default still allows broad host reads, and the host vault/seccomp/container policy remains external. |
+| **M9 env** | partial | `src/env/local-env.ts`, `sanitize.ts`, `vault.ts`, `seccomp.ts` (`sandboxEnabledFromEnv` returns true); `test/sanitize.test.ts`, `vault.test.ts`, `hardening.test.ts`, `local-env-timeout.test.ts`, `sandbox-read-isolation.test.ts`, `live-modules.test.ts`, `credential-sentinel.test.ts` | #44 made the sandbox default-on and fail-closed: a missing `sandbox-exec`/`bwrap` throws. Host vault/seccomp policy is still external. Credential non-leakage now has a single sentinel test (#53) covering SQLite tables, session JSONL, tool results, replies/outbox, and captured model request bodies, plus Worker port/tool rejection. #55 corrected the user-facing pages and historical reviews; this audit also fixed the remaining "optional OS sandbox" line in the `docs/MODULES.md` T51 section. C15/P1-10 are resolved. #117 added opt-in strict read confinement (`LOFIBOT_SANDBOX_READ_ISOLATION=1|true|strict`); the default still allows broad host reads, and the host vault/seccomp/container policy remains external. |
 | **M10 watchdog** | partial | `src/watchdog/watchdog.ts`, `rules.ts`, `rules.json`, `health.ts`; `test/health.test.ts`, `daemon-machines.test.ts`, `live-modules.test.ts`, `hardening.test.ts` | Goal-drift detection is marker-based ("a running report that says it left the scope"), not a general NL comparison. `PLAN.md` T43–T44 ask for NL rules; `README.md:100` already calls this "thin". |
 | **M11 CLI / demo** | done (live demo external) | `src/cli/main.ts` (init/tasks/status/health/channels check/serve/chat/emit/metrics/memory/a2a/pause/intervene/resume/collab/team/teams/ui/backup/restore), `src/cli/demos/run.ts`, `src/cli/bakeoff.ts`; `test/cli-memory-a2a.test.ts`, `cli-serve.test.ts`, `cli-channels.test.ts`, `cli-command-wiring.test.ts`, `mid-task-collab.test.ts`, `live-demo.test.ts`, `live-e2e.test.ts` | `pnpm demo` (real GitHub issues/comments) is not in the automatic PR gate; it runs through the manual `acceptance.yml` dispatch and needs an operator with `gh auth`. `package.json` now declares `bin`, `files`, and a `build` (`tsc -p tsconfig.build.json` + asset copy), and `scripts/release-check.ts` validates the dist/bin/assets and `npm pack --dry-run`. `serve` runs the daemon timer over persisted state with optional combined `--imessage`/`--feishu` loops, clean signal drain, and restart replay (schema v3). Live real-channel acceptance remains operator-gated. |
 
@@ -116,12 +116,12 @@ not evidence (see `docs/CODE_REVIEW_METHOD.md`).
 | Domain | Status | Evidence | Gap |
 |--------|--------|----------|-----|
 | **评测与指标** (T45) | done | `src/metrics/metrics.ts`, `curve.ts`, `bakeoff.ts`, `batching-bench.ts`; `src/cli/bakeoff.ts`; `test/metrics.test.ts`, `metrics-curve.test.ts`, `batching-bench.test.ts`, `runtime-integration.test.ts` | Counters, `curveSamples`, `model.call`, `compareBakeoff`, and `pnpm bench:bakeoff` exist. A live bake-off is a manual measurement (needs a model key); it is not a CI gate. The live reference run is reproduced: `pnpm test` 384 passed / 3 skipped on 2026-11-03 (P1-9). |
-| **扩展** — Router shards (T46) | done | `src/ingress/shards.ts`; `Disposition.shards` in `src/shared/types.ts:85-91`; `Runtime.create` registers `DS_AGENT_SHARDS` (`src/runtime.ts:151-166`); `Harness.launch` runs one Router session per shard (`src/harness/loop.ts:74-77,145-160`); `test/router-shards.test.ts`, `runtime-integration.test.ts` | P2-2 is resolved on `feat/shard-arbitration`: matches sort by `priority` desc then registration order, `default` is fallback-only, and every matching shard runs its Router session. The first shard is the single reply owner and the only session allowed to emit a terminal decision; later shards share the Ticket/Thread and are rejected by the tool guard. Ownership comes from the trigger named by the call (mismatched trigger/ticket pairs are rejected), and `Evals.decide` dedupes terminal decisions per trigger. Shards remain routing metadata, not multi-process placement. |
+| **扩展** — Router shards (T46) | done | `src/ingress/shards.ts`; `Disposition.shards` in `src/shared/types.ts:85-91`; `Runtime.create` registers `LOFIBOT_SHARDS` (`src/runtime.ts:151-166`); `Harness.launch` runs one Router session per shard (`src/harness/loop.ts:74-77,145-160`); `test/router-shards.test.ts`, `runtime-integration.test.ts` | P2-2 is resolved on `feat/shard-arbitration`: matches sort by `priority` desc then registration order, `default` is fallback-only, and every matching shard runs its Router session. The first shard is the single reply owner and the only session allowed to emit a terminal decision; later shards share the Ticket/Thread and are rejected by the tool guard. Ownership comes from the trigger named by the call (mismatched trigger/ticket pairs are rejected), and `Evals.decide` dedupes terminal decisions per trigger. Shards remain routing metadata, not multi-process placement. |
 | **扩展** — Worker mesh (T47) | done (registry) / partial (runtime wiring) | `src/harness/mesh.ts`; `src/harness/remote-node.ts` (`RemoteMeshRegistry`, `MeshInbox`, `createRemoteMeshHandler`); `Assignment.node` in `src/shared/types.ts:102-120`; placement via `Engine.assignmentPlaced`; queue in `src/harness/loop.ts`; `test/worker-mesh.test.ts`, `remote-node.test.ts`, `runtime-integration.test.ts` | Placement is logical and single-process, and the Engine remains the only writer of `Assignment.node`. Capacity is enforced in-process with a bounded FIFO. #130 added authenticated cross-host registration/heartbeat/dispatch over A2A HTTP: ≥32-byte secrets, no URL userinfo, bounded nodes/addresses, future-heartbeat rejection, stale release, and loopback registration denied unless explicitly opted in. No Runtime/CLI listener is mounted; exposure remains an operator decision, and remote dispatch is not yet connected to the local placement queue. |
 | **长期记忆** (T48) | partial | `src/memory/long-term.ts`, `graph.ts`; write on terminal ticket and every Decision in `src/runtime.ts`; recall injection in `src/runtime.ts`; `test/long-term-memory.test.ts`, `memory-graph.test.ts`, `memory-recall-eval.test.ts`, `runtime-integration.test.ts` | One redacted entry per finished ticket and one per Router Decision, five results maximum. Hot retention defaults to 1000 entries / 90 days; pruned hot summaries fold into cold Thread digests (200 / 3650) that `query({tier:'cold'})` can retrieve. ADR-010 recall is unchanged: NFKC, case, punctuation, stop words, small in-repo synonym/morphology map, tag-only recall, exactly one tag hop, exact AND requested tags; ranking adds hot-before-cold before recency. ADR-015 adds typed refs (`trigger:`, `thread:`, `ticket:`, `decision:`, `session:`, `channel:`, `actor:`) to `spills.refs`, `refs=` in Router/Worker lines, `readObjectFor` per-hop ACL, and `rememberDecision`/`recentDecisions`/`forThreads` for Router global memory. Security: `query()` requires a reader ticket id, every hit is granted to that ticket, redaction precedes storage, no lookup-by-id API, and a handle never implies a grant. Remaining gaps: semantic/embedding recall is implemented behind `EmbeddingPort` with the default-on offline `HashedEmbedding` (#152); cold-tier month-scale behavior is bounded, not measured across real calendar months; measurement protocol: `docs/T48_MONTH_SCALE_PROTOCOL.md`. |
-| **产品层** (T49) | done (local) / external (remote panel) | `src/core/lifecycle.ts` (`LifecycleBus`, `subscribe`, `snapshot`); persisted lifecycle events in `src/store/sqlite.ts`; `src/ui/server.ts` (`buildSnapshot`, `startUiServer`, required token auth, sanitized lifecycle payloads, SSE), `src/ui/render.ts`, `src/cli/ui.ts` (`runUi`), `src/cli/main.ts` (`ds-agent ui`); `test/lifecycle-a2a.test.ts`, `lifecycle-persistence.test.ts`, `cli-ui.test.ts`, `cli-command-wiring.test.ts`; `docs/UI.md` | The read-only loopback UI is wired: server-rendered HTML plus `/api/snapshot` and SSE `/api/events`, one `buildSnapshot()` over visible tickets/threads/visible-only outbox metadata/health/per-request metrics/sanitized lifecycle, loopback-only bind, required bearer-token or HttpOnly-cookie auth (constant-time digest compare, only `GET /health` exempt), Host/method guards, CSP, escaped output, no message bodies, speculative tickets hidden from every surface, and bounded SSE backpressure. It opens one Store and starts no model or daemon. A remote multi-process panel, TLS, and per-user accounts remain external. |
+| **产品层** (T49) | done (local) / external (remote panel) | `src/core/lifecycle.ts` (`LifecycleBus`, `subscribe`, `snapshot`); persisted lifecycle events in `src/store/sqlite.ts`; `src/ui/server.ts` (`buildSnapshot`, `startUiServer`, required token auth, sanitized lifecycle payloads, SSE), `src/ui/render.ts`, `src/cli/ui.ts` (`runUi`), `src/cli/main.ts` (`lofibot ui`); `test/lifecycle-a2a.test.ts`, `lifecycle-persistence.test.ts`, `cli-ui.test.ts`, `cli-command-wiring.test.ts`; `docs/UI.md` | The read-only loopback UI is wired: server-rendered HTML plus `/api/snapshot` and SSE `/api/events`, one `buildSnapshot()` over visible tickets/threads/visible-only outbox metadata/health/per-request metrics/sanitized lifecycle, loopback-only bind, required bearer-token or HttpOnly-cookie auth (constant-time digest compare, only `GET /health` exempt), Host/method guards, CSP, escaped output, no message bodies, speculative tickets hidden from every surface, and bounded SSE backpressure. It opens one Store and starts no model or daemon. A remote multi-process panel, TLS, and per-user accounts remain external. |
 | **互操作** (T50) | done (transport) / operator-gated (listener) | `src/channels/a2a.ts`, `src/channels/a2a-transport.ts`, `src/channels/a2a-auth.ts`, `src/channels/a2a-http.ts`; `Runtime.sendA2A` and local recipient in `src/runtime.ts`; `test/lifecycle-a2a.test.ts`, `a2a-transport.test.ts`, `a2a-http-auth.test.ts`, `runtime-integration.test.ts` | Validation, 64 KiB UTF-8 body cap, identity normalization, persistence, `delivered\|unroutable\|failed`, and a filtered non-human `a2a` Trigger exist. #123 added HMAC-SHA256 HTTP with peer+timestamp+nonce+body binding, ±60 s skew, ≥32-byte secrets, replay cache, request/response caps, deadlines, and TLS/loopback guards. The adapter starts no listener; mounting it and sharing secrets is an operator decision. The replay cache is process-local, so shared secrets require a shared durable cache or unique per-node secrets. |
-| **安全与隐私** (T51) | external boundary + partial | `src/env/sanitize.ts` (allowlist, secret redaction), `vault.ts`, `seccomp.ts`; `test/sanitize.test.ts`, `vault.test.ts`, `hardening.test.ts`, `local-env-timeout.test.ts`, `sandbox-read-isolation.test.ts`, `credential-sentinel.test.ts` | In-repo: env allowlist, spill redaction, `[redacted]` output, FileVault names only, default-on fail-closed OS sandbox (#44), opt-in strict read confinement (#117, `DS_AGENT_SANDBOX_READ_ISOLATION`), spill ACL, untrusted `meta` rejection, and a single sentinel test across SQLite/journal/tool results/model requests plus Worker port/tool rejection (#53). External: host-level vault/seccomp, the default sandbox's broad host reads (strict confinement is opt-in), and provider `Authorization` header/vault values not covered by the offline sentinel. Sandbox docs corrected by #55. |
+| **安全与隐私** (T51) | external boundary + partial | `src/env/sanitize.ts` (allowlist, secret redaction), `vault.ts`, `seccomp.ts`; `test/sanitize.test.ts`, `vault.test.ts`, `hardening.test.ts`, `local-env-timeout.test.ts`, `sandbox-read-isolation.test.ts`, `credential-sentinel.test.ts` | In-repo: env allowlist, spill redaction, `[redacted]` output, FileVault names only, default-on fail-closed OS sandbox (#44), opt-in strict read confinement (#117, `LOFIBOT_SANDBOX_READ_ISOLATION`), spill ACL, untrusted `meta` rejection, and a single sentinel test across SQLite/journal/tool results/model requests plus Worker port/tool rejection (#53). External: host-level vault/seccomp, the default sandbox's broad host reads (strict confinement is opt-in), and provider `Authorization` header/vault values not covered by the offline sentinel. Sandbox docs corrected by #55. |
 
 ## 4. Definition of done (the whole project)
 
@@ -146,17 +146,17 @@ The project can be called complete only when **all** of these are true.
 
 ### 4.2 Tests
 
-1. Offline PR gate: `pnpm typecheck` + `DS_AGENT_ALLOW_MOCK_FIXTURE=1 pnpm test`
+1. Offline PR gate: `pnpm typecheck` + `LOFIBOT_ALLOW_MOCK_FIXTURE=1 pnpm test`
    green, with no live key, on every PR. New domain tests must run, not skip.
 2. Live reference run: `pnpm test` green on a documented model/gateway, with the
    date, model id, pass/skip counts, and transcript path recorded.
    **Satisfied on 2026-11-03 (P1-9):** local Magpie gateway
    `http://127.0.0.1:3425/v1`, `workbuddy/deepseek-v4.1-flash`; `pnpm test`
    384 passed / 3 skipped / 55 files (622.33 s). Transcript:
-   `/tmp/ds-agent-live-e2e-logs/full-2026-11-03.log`. The 3 skips are the real-channel demo tests.
+   `/tmp/lofibot-live-e2e-logs/full-2026-11-03.log`. The 3 skips are the real-channel demo tests.
 3. Real-channel acceptance: `pnpm demo` (real GitHub issues + comments) and
    `pnpm demo:feishu` run on a release candidate, with artifacts under
-   `/tmp/ds-agent-live-e2e-logs/`. A green offline suite is not a substitute.
+   `/tmp/lofibot-live-e2e-logs/`. A green offline suite is not a substitute.
 4. Security probes are automated: a sentinel credential value must not appear in
    any session event, prompt, tool result, spill, or journal; a Worker call to
    `reply`/`decide`/`receive` must throw; a speculative ticket must be absent
@@ -181,7 +181,7 @@ The project can be called complete only when **all** of these are true.
 ### 4.4 CI
 
 1. The PR job runs typecheck + offline tests and is a required check.
-2. An opt-in live job runs when `DEEPSEEK_API_KEY`/`DS_AGENT_API_KEY` is present;
+2. An opt-in live job runs when `DEEPSEEK_API_KEY`/`LOFIBOT_API_KEY` is present;
    it must fail, not silently skip, when the key exists and the model is broken.
 3. A `workflow_dispatch` real-channel job (or a documented release checklist
    with evidence) runs `pnpm demo` with a scoped `gh` token and uploads logs.
@@ -193,7 +193,7 @@ The project can be called complete only when **all** of these are true.
 These must be documented as external, with an interface and a security note:
 
 - T49 remote/multi-process panel, per-user accounts, and TLS termination; the
-  local read-only UI itself is now in this repo (`src/ui/*`, `ds-agent ui`).
+  local read-only UI itself is now in this repo (`src/ui/*`, `lofibot ui`).
 - T51 host-level vault/seccomp and true host isolation.
 - A2A listener mounting and peer-secret distribution. The wire transport and
   HMAC authentication are now in-repo (`src/channels/a2a-auth.ts`,
@@ -211,19 +211,19 @@ can see what changed.
 |---|-------|------------------------|-----------------|--------|
 | C1 | Extension domains are off by default; enable with `DS_AGENT_PHASE2=1` / `RuntimeOptions.phase2`; registries live on `runtime.phase2`. | `PLAN.md:883,888-892,1056`; `README.md:37,53,302-305`; `README.zh-CN.md:37,53`; `docs/install.md:62`; `docs/zh/install.md:63` | Services are constructed unconditionally (`src/runtime.ts:151-170`); `RuntimeOptions` has no `phase2` field (`src/runtime.ts:36-61`). `PLAN.md:883,1056` now state the switch is gone; README/install were cleaned by #41/#51. | resolved (#40, #41, #51) |
 | C2 | `src/phase2` contains the extension helpers. | `README.md:302` | `src/phase2/` is deleted. Replacements: `src/ingress/shards.ts`, `src/harness/mesh.ts`, `src/memory/long-term.ts`, `src/core/lifecycle.ts`, `src/channels/a2a.ts`. | resolved (#40, #41) |
-| C3 | Router sharding is opt-in and "Runtime wires only when `DS_AGENT_PHASE2=1`"; T09 is a future gap. | `PLAN.md:228,1044`; `README.md:53` | Shards are wired on every run: `Runtime.create` registers `DS_AGENT_SHARDS` (`src/runtime.ts:151-166`), `ingest` stores `Disposition.shards` (`src/runtime.ts:362`), and `Harness.launch` runs one Router session per shard (`src/harness/loop.ts:74-77,145-160`). | resolved (#40, #41) |
+| C3 | Router sharding is opt-in and "Runtime wires only when `DS_AGENT_PHASE2=1`"; T09 is a future gap. | `PLAN.md:228,1044`; `README.md:53` | Shards are wired on every run: `Runtime.create` registers `LOFIBOT_SHARDS` (`src/runtime.ts:151-166`), `ingest` stores `Disposition.shards` (`src/runtime.ts:362`), and `Harness.launch` runs one Router session per shard (`src/harness/loop.ts:74-77,145-160`). | resolved (#40, #41) |
 | C4 | `ProductShellBus` exists as an opt-in shell. | `PLAN.md:268`; `README.md:58,116`; `README.zh-CN.md:58,112` | No `ProductShellBus`. The in-repo read model is `LifecycleBus` (`src/core/lifecycle.ts:11`), always constructed (`src/runtime.ts:169`). The panel itself is still external. | resolved (#40, #41) |
 | C5 | Worker mesh, long-term memory, and A2A are opt-in and "not consulted by admission or the harness loop". | `README.md:114-118,302`; `PLAN.md:889-892` | `pickNode` is called in `Harness.launch` (`src/harness/loop.ts:84`); `SpillBackedLongTermMemory.remember/query` is called on ticket end and launch (`src/runtime.ts:201,274`); `A2ARouter` is registered as a local recipient (`src/runtime.ts:319`). | resolved (#40, #41) |
 | C6 | The full dual-layer vs one-Session bake-off is still open. | `README.md:107` | `compareBakeoff` (`src/metrics/bakeoff.ts`) and `pnpm bench:bakeoff` (`src/cli/bakeoff.ts`) exist; `test/metrics-curve.test.ts` and `test/runtime-integration.test.ts:194-217` cover the code path. What remains is the live measurement. | remaining (wording) |
 | C7 | T45 "计数已做；端到端曲线未做". | `PLAN.md:1053` | `curveSamples` persist in `metrics.json` and are summarized by `summarizeCurve` (`src/metrics/curve.ts`); `test/metrics-curve.test.ts` covers persistence, legacy files, and percentiles. | resolved (#40) |
 | C8 | Slow Path "can call a model". | `README.md:64`; `README.zh-CN.md:64` | #128 added the opt-in `SemanticPolicy`/`PolicyClassifier` path (`src/ingress/policy.ts`) with rule fallback, and #135 wired `Runtime.ingestAsync` into the real channel loops. The default remains deterministic `ruleClassify`; sync `ingest` and A2A inbound never call the model. | resolved (#60; model policy #128/#135) |
-| C9 | Tests default to `MockModel`. | `PLAN.md:50` | The default suite refuses `MockModel`: `test/fixtures.ts:11-24` throws unless `DS_AGENT_ALLOW_MOCK_FIXTURE=1`; `README.md:235` documents the live requirement. #58 corrected PLAN to "default live, Mock only for fixture-gated offline CI". | resolved (#58) |
+| C9 | Tests default to `MockModel`. | `PLAN.md:50` | The default suite refuses `MockModel`: `test/fixtures.ts:11-24` throws unless `LOFIBOT_ALLOW_MOCK_FIXTURE=1`; `README.md:235` documents the live requirement. #58 corrected PLAN to "default live, Mock only for fixture-gated offline CI". | resolved (#58) |
 | C10 | Runtime is Node ≥20. | `PLAN.md:48` | `package.json:8-10` requires Node ≥22; `src/store/sqlite.ts:3` uses `node:sqlite`. #58 corrected PLAN §1.4 to Node ≥ 22. | resolved (#58) |
 | C11 | Real Feishu/GitHub sources are out of scope before M11. | `PLAN.md:39-40` | M8 ships `src/channels/feishu.ts` (webhook parser + polling source) and `src/channels/github-source.ts`; `README.md:275-298` makes real channels the acceptance path. | remaining (stale boundary table) |
 | C12 | PLAN §4 freezes `SessionRole`, `Assignment.status`, and a `Harness.injectJobResult` API that the code does not have. | `PLAN.md:280,342,538` | `src/shared/types.ts:1` defines `Role`; `:5` adds `maybe` to `Strength`; `:104` uses `Assignment.state`; no `injectJobResult`. #56 marks §4 as a historical sketch and adds the §4.1 current-contract table. | resolved (#56, #58) |
 | C13 | `docs/MODULES.md` says `src/cli/demo.ts` drives the real-channel acceptance scenarios. | `docs/MODULES.md:140-141` | `pnpm demo` points at `src/cli/demos/run.ts`; `src/cli/demo.ts` is the offline fixture baseline. Fixed by #46. | resolved (#46) |
-| C14 | PLAN says the DB is `better-sqlite3` or `node:sqlite` in `ds-agent.sqlite`. | `PLAN.md:49` | `src/store/sqlite.ts:3,16` uses `node:sqlite` and `ds-agent.db`. #58 corrected PLAN §1.4. | resolved (#58) |
-| C15 | The OS sandbox is opt-in via `DS_AGENT_SANDBOX=1`, and bash falls back to unsandboxed execution when the wrapper is missing. | `README.md:119`; `README.zh-CN.md:115`; `docs/MODULES.md:126`; `docs/safety.md:29,31`; `docs/zh/safety.md:30,32`; `docs/HARDENING_2026-11-01.md:39`; `docs/LIVE_CODE_REVIEW_2026-11-01.md:130,185` | #44 made sandboxing default-on and fail-closed: `sandboxEnabledFromEnv` returns true and `wrapBashCommand` throws if `sandbox-exec`/`bwrap` is missing. Explicit `enabled: false` is only a test/embedding opt-out. #55 corrected every doc listed here. | resolved (#55) |
+| C14 | PLAN says the DB is `better-sqlite3` or `node:sqlite` in `lofibot.sqlite`. | `PLAN.md:49` | `src/store/sqlite.ts:3,16` uses `node:sqlite` and `lofibot.db`. #58 corrected PLAN §1.4. | resolved (#58) |
+| C15 | The OS sandbox is opt-in via `LOFIBOT_SANDBOX=1`, and bash falls back to unsandboxed execution when the wrapper is missing. | `README.md:119`; `README.zh-CN.md:115`; `docs/MODULES.md:126`; `docs/safety.md:29,31`; `docs/zh/safety.md:30,32`; `docs/HARDENING_2026-11-01.md:39`; `docs/LIVE_CODE_REVIEW_2026-11-01.md:130,185` | #44 made sandboxing default-on and fail-closed: `sandboxEnabledFromEnv` returns true and `wrapBashCommand` throws if `sandbox-exec`/`bwrap` is missing. Explicit `enabled: false` is only a test/embedding opt-out. #55 corrected every doc listed here. | resolved (#55) |
 
 Doc hygiene, not false claims:
 
@@ -267,19 +267,19 @@ At audit time, `PLAN.md:280` froze `SessionRole`; `PLAN.md:342` froze
 `Assignment.status`; `PLAN.md:538` froze `Harness.injectJobResult`;
 `src/shared/types.ts:1` defines `Role`, `:5` adds `maybe`, `:104` uses
 `Assignment.state`, and no `injectJobResult` exists. `PLAN.md:49` also named
-`better-sqlite3`/`ds-agent.sqlite`, while the code uses `node:sqlite` and
-`ds-agent.db`. `PLAN.md` §10 listed files that do not exist.
+`better-sqlite3`/`lofibot.sqlite`, while the code uses `node:sqlite` and
+`lofibot.db`. `PLAN.md` §10 listed files that do not exist.
 Acceptance: PLAN §4 either matches `src/shared/types.ts`/`ports.ts` or is
 renamed "illustrative"; §10 matches the real tree; `npx tsc --noEmit` stays
 green; a short contract test or doc check catches future drift.
 PR #56 marks §4 as a historical sketch with a current-contract table and
-corrects §10; PR #58 corrects §1.4 (`node:sqlite`, `ds-agent.db`, Node ≥ 22,
+corrects §10; PR #58 corrects §1.4 (`node:sqlite`, `lofibot.db`, Node ≥ 22,
 live-model default) and the §1 MockModel/demo row.
 
 **P0-5. Prove credential non-leakage on every path.**
 Status: resolved by #53, with documented coverage limits.
 Evidence: `test/credential-sentinel.test.ts` injects a unique sentinel via
-`DS_AGENT_API_KEY`, drives a ticket through `Runtime` with a capturing model,
+`LOFIBOT_API_KEY`, drives a ticket through `Runtime` with a capturing model,
 and asserts absence from every SQLite table found via `sqlite_master` (messages,
 documents, spills, events, replies, outbox, sessions, jobs, artifacts), the
 session JSONL, spill bodies, persisted tool results, the runtime log, and every
@@ -294,7 +294,7 @@ Acceptance met; keep the limits visible.
 **P1-1. Automate or formally checklist the real-channel acceptance.**
 Status: resolved by #61. `.github/workflows/acceptance.yml` is a
 manual `workflow_dispatch` job that takes a ref, model base/id, and target repo;
-requires `DS_AGENT_API_KEY`/`DEEPSEEK_API_KEY` and accepts `DS_AGENT_GH_TOKEN`
+requires `LOFIBOT_API_KEY`/`DEEPSEEK_API_KEY` and accepts `LOFIBOT_GH_TOKEN`
 (falling back to the workflow's `GITHUB_TOKEN`); installs
 `bubblewrap`; runs the live `pnpm test` suite and `pnpm demo`; and uploads the
 logs as artifacts. `test/demos-real-channels.test.ts` still skips its 3 tests
@@ -320,7 +320,7 @@ is not a model verdict.
 **P1-3. Enforce mesh capacity.**
 Status: resolved (enforced in-process with a bounded queue). `Harness.launch`
 picks capacity after the Router sequence; when every node is full it parks the
-ticket in a FIFO bounded by `DS_AGENT_MESH_QUEUE` (default 100). A full queue
+ticket in a FIFO bounded by `LOFIBOT_MESH_QUEUE` (default 100). A full queue
 logs `mesh.queue-full`, increments `mesh.queue_rejected`, and resolves without
 throwing. Slot release is idempotent and also fires when a Worker turn ends its
 Assignment while leaving the Ticket open (`blocked`/`failed`/`waiting`).
@@ -361,7 +361,7 @@ not supported, including by bypassing ingress via `runtime.ingest`. Do not expos
 the local endpoint unauthenticated.
 
 **P1-6. Standalone daemon / `serve` and in-flight resume.**
-Status: partially resolved (serve landed). `ds-agent serve` creates one Runtime,
+Status: partially resolved (serve landed). `lofibot serve` creates one Runtime,
 starts the in-process `Daemon` timer over persisted SQLite state, logs a ready
 line, and stays alive until SIGINT or SIGTERM. It starts no inbound channel loop,
 so triggers written by a separate `emit`/`chat` process are not picked up. The
@@ -383,7 +383,7 @@ product decision.
 **P1-7. Decide the packaging story.**
 Status: resolved as a source-only decision. `package.json` deliberately has no
 `bin`, no `build`; `tsconfig` is `noEmit`. The repo is consumed from source with
-`pnpm`/`tsx` (`pnpm ds-agent`), not installed from npm. `docs/install.md`,
+`pnpm`/`tsx` (`pnpm lofibot`), not installed from npm. `docs/install.md`,
 `docs/zh/install.md`, and the README now say so, and PLAN §10 no longer promises
 a `dist/cli.js` binary. Publishing an npm package would be a new product
 decision, not a missing implementation of M0–M11.
@@ -447,14 +447,14 @@ Status: resolved by #67. `AdmissionRules` runs on the fast path before
 mention/keyword, so an @-mention cannot bypass a deny rule. The group id comes
 from `trigger.channel.address.group`, never `meta`; a missing group is denied
 while the list is active. The shipped Feishu adapter sets `address.group` to
-`message.chat_id`, so `DS_AGENT_GROUP_ALLOWLIST=<chat id>` works with it; other
+`message.chat_id`, so `LOFIBOT_GROUP_ALLOWLIST=<chat id>` works with it; other
 adapters must populate `address.group` to opt into group admission. A filtered
 trigger cannot be resurrected: handback refuses it; assessment and Eval skip and
 clear any filtered id left in `Thread.pending`; `commitAssessed` returns
 undefined and `decide` throws for a filtered id. No Ticket is created without a
 fresh admission decision. These are admission filters, not authentication.
 Configure with `RuntimeOptions.admission` or the comma-separated
-`DS_AGENT_ACTOR_ALLOWLIST` / `DS_AGENT_GROUP_ALLOWLIST` / `DS_AGENT_DROP_SELF`
+`LOFIBOT_ACTOR_ALLOWLIST` / `LOFIBOT_GROUP_ALLOWLIST` / `LOFIBOT_DROP_SELF`
 variables; explicit options win, values are trimmed and empty entries dropped
 for both sources, and unset or empty lists leave admission unchanged.
 Acceptance: `test/filter.test.ts` covers each rule plus runtime env wiring,
@@ -466,7 +466,7 @@ classifier and stating that no model-backed policy is wired. `test/slow-path-pol
 pins the classifier for both Mock and `HttpOpenAI`; README and PLAN now agree.
 Acceptance: the slow-path policy test passes (#72).
 **P2-5. Test coverage and lint:** resolved by #71. `pnpm test:coverage` runs the offline fixture
-suite (`CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1`) with the V8 provider and
+suite (`CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1`) with the V8 provider and
 text-summary + json-summary reporters. It excludes the live-model and
 real-channel demo test files; the report counts `src/**/*.ts` except
 `src/cli/demos/**`. No failure threshold is configured. Measured on the PR head
@@ -484,7 +484,7 @@ prose is not); no tracked `repro-h9*`, `dist/`, or `node_modules/` paths; and no
 that writes to stdout, is exempt; the check uses the TypeScript AST, so comments
 and strings are ignored). The checker prints `file:line` and exits nonzero.
 `pnpm format:check` runs `git diff --check HEAD` (staged and unstaged) and,
-when `DS_AGENT_FORMAT_BASE` names a base, `git diff --check` against that base.
+when `LOFIBOT_FORMAT_BASE` names a base, `git diff --check` against that base.
 CI runs `pnpm lint`, `pnpm format:check`, and
 `pnpm test:coverage` in the required `typecheck and test` job. Acceptance:
 thresholds documented, not enforced.
@@ -515,14 +515,14 @@ the work is already public.
 | P0-5 | Credential sentinel test across store/journal/prompt/tool |  | `test/credential-sentinel` | #53 | resolved | Sentinel absent from all SQLite tables, session JSONL, tool results, and captured model requests; Worker port/tool calls throw |
 | P1-1 | Real-channel acceptance job/checklist |  | `ci/real-channel-acceptance` | #61 | resolved (manual dispatch) | `workflow_dispatch` runs live `pnpm test` + `pnpm demo`, fails on missing credentials, uploads logs |
 | P1-2 | Router assessment / domain alignment |  | `fix/domain-alignment-article` | #39 | resolved | Main Agent originates `accept`/`ignore`/`stop`/`unavailable`; domain-alignment test green |
-| P1-3 | Mesh capacity enforcement |  | `agent/P1-3-mesh-backpressure`, `agent/mesh-release-order` | #79, #84 | resolved (in-process) | Capacity is enforced in-process with a bounded FIFO (`DS_AGENT_MESH_QUEUE`, default 100); a full queue rejects without throwing; release and pump run after the terminal ticket state is persisted, and queued entries are revalidated before start (#84); `drain` resolves queued work. Cross-host transport stays external |
+| P1-3 | Mesh capacity enforcement |  | `agent/P1-3-mesh-backpressure`, `agent/mesh-release-order` | #79, #84 | resolved (in-process) | Capacity is enforced in-process with a bounded FIFO (`LOFIBOT_MESH_QUEUE`, default 100); a full queue rejects without throwing; release and pump run after the terminal ticket state is persisted, and queued entries are revalidated before start (#84); `drain` resolves queued work. Cross-host transport stays external |
 | P1-4 | Lifecycle replayability |  | `feat/lifecycle-history-cap` | #57 | resolved (current-process replay only) | Bounded history (default 1000) + test; no persistence claim |
 | P1-5 | A2A transport interface + auth note |  | `a2a-transport` | #65 | resolved (contract + local double) | In-process contract + local double now exist: `A2ATransport` + `LocalA2ATransport` in `src/channels/a2a-transport.ts`, tests in `test/a2a-transport.test.ts`. Remaining external boundary: network transport + peer authentication must be supplied by an adapter |
-| P1-6 | `ds-agent serve` + in-flight resume |  | `daemon-serve` | #66 | partially resolved (serve; no restart replay) | `serve` runs the daemon timer over persisted state (no inbound channel loop), drains on SIGINT/SIGTERM, exits 0; second signal forces 1. In-flight turn is still not reconstructed after restart |
+| P1-6 | `lofibot serve` + in-flight resume |  | `daemon-serve` | #66 | partially resolved (serve; no restart replay) | `serve` runs the daemon timer over persisted state (no inbound channel loop), drains on SIGINT/SIGTERM, exits 0; second signal forces 1. In-flight turn is still not reconstructed after restart |
 | P1-7 | Packaging decision |  |  |  | resolved (source-only) | No `bin`/`build`; install docs say source-only via `pnpm` |
 | P1-8 | Fail-closed filesystem sandbox |  | `fix/env-fail-closed-sandbox` | #44 | resolved | Missing wrapper throws; CI installs `bubblewrap` |
 | P1-9 | Reproduce live reference run |  | `test/live-suite-determinism` |  | resolved | Local Magpie `workbuddy/deepseek-v4.1-flash`, 2026-11-03: `pnpm test:live` 22/22 (195.34 s); full `pnpm test` 384 passed / 3 skipped / 55 files (622.33 s); 3 skips are real-channel demos |
-| P1-10 | Correct sandbox docs to default-on/fail-closed |  | `docs/fail-closed-sandbox` | #55 | resolved | User docs no longer describe `DS_AGENT_SANDBOX=1` opt-in; reads not overclaimed |
+| P1-10 | Correct sandbox docs to default-on/fail-closed |  | `docs/fail-closed-sandbox` | #55 | resolved | User docs no longer describe `LOFIBOT_SANDBOX=1` opt-in; reads not overclaimed |
 | P2-1 | LTM retention/ranking |  | `feat/ltm-retention`, `feat/ltm-ranking-dedupe` | #54, #68 | resolved | Retention 1000/90 + spill cleanup (#54); dedupe (same-ticket normalized text, tag union, no extra row/spill) and tagHits/textHits/createdAt/id ranking tested with an injected clock; formula in `docs/MODULES.md` M6 |
 | P2-2 | Shard arbitration | LofiSu | `feat/shard-arbitration` | #69 | resolved | Precedence documented + tests: priority-desc/registration order, default fallback-only, first shard owns reply + terminal decision; owner resolved from the supplied trigger; idempotent decisions; one ticket/decision per trigger |
 | P2-3 | Fast-path allowlists |  | `feat/ingress-allowlists`, `feat/ingress-adapter-wiring` | #67, #70 | resolved | `AdmissionRules` actor/group/drop-self before mention/keyword; group from channel address (Feishu maps `chat_id`); filtered triggers cannot be handed back, assessed, evaluated, or decided into a Ticket; tests cover each rule, env, and resurrection |
@@ -531,7 +531,7 @@ the work is already public.
 | P2-6 | Confirm `repro-h9*.ts` removed |  | `docs/p2-closeout` | #73 | resolved | The tracked file list has no `repro-h9*` paths; worktree `git status --porcelain` is empty after the branch commit (build output ignored) |
 | P2-7 | Status banners on review snapshots |  | `docs/p2-closeout` | #73 | resolved | **Historical snapshot** banner at the top of `docs/REVIEW.md` (2026-10-31) and `docs/LIVE_CODE_REVIEW_2026-11-01.md` (2026-11-01), both pointing at this roadmap |
 | P2-8 | Email channel decision |  | `docs/p2-closeout` | #73 | resolved | Email is out of scope: no email channel/source and no `formatEmail`; PLAN T34 and the §4.1 table say so, and the code agrees (fast path drops `source: 'email'`) |
-| T49 | Read-only local UI (loopback, token-gated) | LofiSu | `agent/local-ui` | #129/#136 | done | `startUiServer` + `runUi` + `ds-agent ui` + required token (`/health` only exempt) + no outbox bodies + speculative filtering + per-request metrics + bounded SSE + `test/cli-ui.test.ts` + `test/cli-command-wiring.test.ts` + `docs/UI.md` |
+| T49 | Read-only local UI (loopback, token-gated) | LofiSu | `agent/local-ui` | #129/#136 | done | `startUiServer` + `runUi` + `lofibot ui` + required token (`/health` only exempt) + no outbox bodies + speculative filtering + per-request metrics + bounded SSE + `test/cli-ui.test.ts` + `test/cli-command-wiring.test.ts` + `docs/UI.md` |
 | R-1 | This audit | planning-review agent | `docs/roadmap` | #43 | resolved | File merged; board updated when gaps move |
 
 ## 8. Verification log
@@ -543,14 +543,14 @@ Run on the frozen tree at `45c6619` plus its uncommitted refactor, Node
 
 ```text
 npx tsc --noEmit                                      pass
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run  195 passed, 15 skipped, 34 files, 2.32 s
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run  195 passed, 15 skipped, 34 files, 2.32 s
 ```
 
 ### Current tree (`feat/ingress-adapter-wiring`, rebased on `e3116bc`, re-checked 2026-11-02)
 
 ```text
 npx tsc --noEmit                                      pass
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run  278 passed, 15 skipped, 41 files, 2.26 s
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run  278 passed, 15 skipped, 41 files, 2.26 s
 ```
 
 ### Final tree (`main`, `8fa3a79`, 2026-11-03)
@@ -559,7 +559,7 @@ CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run  278 passed, 15 skipped, 41
 pnpm typecheck                                         exit 0
 pnpm lint                                              lint ok (227 tracked files)
 pnpm format:check                                      exit 0
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run   452 passed, 15 skipped (467)
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run   452 passed, 15 skipped (467)
                                                       58 files: 55 with passing tests,
                                                       3 fully skipped
 pnpm test:coverage                                     451 passed, 54 files
@@ -584,8 +584,8 @@ pnpm test                                             384 passed, 3 skipped, 55 
 
 The 3 skips in the live run are `demos-real-channels.test.ts`; the 15 offline
 skips in the gate above are the live and real-channel suites. Transcripts:
-`/tmp/ds-agent-live-e2e-logs/full-2026-11-03.log` (full) and
-`/tmp/ds-agent-live-e2e-logs/full-2026-11-03-pre-fix.log` (pre-fix failure
+`/tmp/lofibot-live-e2e-logs/full-2026-11-03.log` (full) and
+`/tmp/lofibot-live-e2e-logs/full-2026-11-03-pre-fix.log` (pre-fix failure
 evidence).
 
 ### P2-2 branch (`feat/shard-arbitration`)
@@ -594,13 +594,13 @@ evidence).
 npx tsc --noEmit                                      pass
 npx vitest run test/router-shards.test.ts             7 passed, 1 file
 npx vitest run test/runtime-integration.test.ts       13 passed, 1 file
-CI=true DS_AGENT_ALLOW_MOCK_FIXTURE=1 npx vitest run  273 passed, 15 skipped, 41 files
+CI=true LOFIBOT_ALLOW_MOCK_FIXTURE=1 npx vitest run  273 passed, 15 skipped, 41 files
 ```
 
 The 15 skipped tests are the live/real-channel suites:
 `demos-real-channels.test.ts` (3), `live-demo.test.ts` (3), `live-e2e.test.ts`
 (7), `team-live.test.ts` (2). `live-modules.test.ts` runs under
-`DS_AGENT_ALLOW_MOCK_FIXTURE=1` and passed. The earlier CI run `41381516075` on
+`LOFIBOT_ALLOW_MOCK_FIXTURE=1` and passed. The earlier CI run `41381516075` on
 the pre-rewrite #44 tree reported 196 passed / 15 skipped / 35 files; #39, #53,
 #54, #57, #60, and the docs PRs account for the additional 17 offline tests.
 
