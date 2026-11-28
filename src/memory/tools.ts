@@ -17,7 +17,7 @@ export const memorySpec: ToolSpec = {
     required: ['command'],
     additionalProperties: false,
     properties: {
-      command: { enum: ['view', 'create', 'str_replace', 'insert', 'delete', 'rename'] },
+      command: { type: 'string', enum: ['view', 'create', 'str_replace', 'insert', 'delete', 'rename'] },
       path: { type: 'string' },
       view_range: { type: 'array', items: { type: 'integer' }, minItems: 2, maxItems: 2 },
       file_text: { type: 'string' },
