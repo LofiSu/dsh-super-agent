@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Model } from '../harness/model.ts'
+import type { Role } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
 import type { MemorySession, SessionMemory } from './tools.ts'
 import type { Note } from './notes.ts'
@@ -8,6 +9,8 @@ import { readPendingMemoryEvidence } from './transcript.ts'
 const STATE_KIND = 'memory_dream_progress'
 const LEASE_KIND = 'memory_dream_lease'
 const SCOPE_KIND = 'memory_dream_scope'
+const SCAN_KIND = 'memory_dream_scan'
+const SESSION_SCAN_LIMIT = 32
 const IDLE_MS = 30_000
 const INTERVAL_MS = 60_000
 const LEASE_MS = 180_000
@@ -28,6 +31,7 @@ interface Work {
   session: MemorySession
   scope: string
   lease: Lease
+  model: Model
   previous: string | undefined
   notes: Note[]
   heartbeat: string
@@ -47,7 +51,7 @@ export class AutoDream {
   constructor(
     private readonly store: Store,
     private readonly memory: SessionMemory,
-    private readonly model: Model,
+    private readonly modelFor: (role: Role) => Model | undefined,
     private readonly redact: (text: string) => string,
     private readonly log: (line: string) => void,
   ) {}
@@ -122,13 +126,17 @@ export class AutoDream {
   private claim(now: number, idleMs: number): Work | undefined {
     return this.store.atomic(() => {
       const pending: Omit<Work, 'lease' | 'previous' | 'notes'>[] = []
-      for (const row of this.store.listSessions()) {
-        if (row.status !== 'idle' || Date.parse(row.heartbeat) > now - idleMs) continue
-        const session = { sessionId: row.id, role: row.role, ticketId: row.ticketId }
+      const cursor = this.store.getDoc<number>(SCAN_KIND, 'sessions') ?? 0
+      const rows = this.store.listIdleMemorySessions(cursor, new Date(now - idleMs).toISOString(), SESSION_SCAN_LIMIT)
+      const nextCursor = rows.length === SESSION_SCAN_LIMIT ? rows.at(-1)!.cursor : 0
+      if (nextCursor !== cursor) this.store.putDoc(SCAN_KIND, 'sessions', nextCursor)
+      for (const row of rows) {
+        const session = { sessionId: row.id, role: row.role, ticketId: row.ticketId ?? undefined }
         const progress = this.progress(row.id)
         if ((progress.retryAt ?? 0) > now) continue
         const scope = this.memory.consolidationScope(session)
-        if (!scope) continue
+        const model = this.modelFor(session.role)
+        if (!scope || !model) continue
         const held = this.store.getDoc<Lease>(LEASE_KIND, scope)
         if (held && held.expires > now) continue
         const scopeThrough = this.store.getDoc<number>(SCOPE_KIND, scope) ?? 0
@@ -141,7 +149,7 @@ export class AutoDream {
           }
           continue
         }
-        pending.push({ session, scope, heartbeat: row.heartbeat, scopeThrough, ...batch })
+        pending.push({ session, scope, heartbeat: row.heartbeat, model, scopeThrough, ...batch })
       }
       pending.sort((a, b) => a.entries[0]!.id - b.entries[0]!.id)
       const work = pending[0]
@@ -163,7 +171,7 @@ export class AutoDream {
   }
 
   private async consolidate(work: Work, signal: AbortSignal): Promise<{ page?: string; edits: Note[] }> {
-    const response = await this.model.complete({
+    const response = await work.model.complete({
       role: work.session.role,
       tools: [],
       signal,
@@ -215,7 +223,7 @@ export class AutoDream {
 
   private commit(work: Work, plan: { page?: string; edits: Note[] }): void {
     this.store.atomic(() => {
-      const session = this.store.listSessions().find(row => row.id === work.session.sessionId)
+      const session = this.store.getSessionHeartbeat(work.session.sessionId)
       if (!this.owns(work) || session?.status !== 'idle' || session.heartbeat !== work.heartbeat
         || (this.store.getDoc<number>(SCOPE_KIND, work.scope) ?? 0) !== work.scopeThrough
         || this.memory.consolidationScope(work.session) !== work.scope

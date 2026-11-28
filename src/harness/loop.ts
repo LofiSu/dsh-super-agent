@@ -9,11 +9,20 @@ import { systemPrompt, type PromptFiles } from './prompts.ts'
 import type { LocalAgentInfo } from '../env/local-agents.ts'
 import { directChatRouterShard, directChatThread, routerSessionId, workerSessionId, type JournalEntry, type SessionJournal } from './session.ts'
 import { isConversationTicket } from '../core/conversation.ts'
-import { isProactiveTicket } from './proactive.ts'
-import { isConnectorWakeTicket } from '../connectors/wake.ts'
+import { isProactiveTicket, PROACTIVE_TRIGGER_PREFIX } from './proactive.ts'
+import { CONNECTOR_TRIGGER_PREFIX, isConnectorWakeTicket } from '../connectors/wake.ts'
 import { TeamRegistry } from './team.ts'
 import { ToolRegistry } from './tools.ts'
 import type { Store } from '../store/sqlite.ts'
+
+function scheduledTrigger(id: string | undefined): boolean {
+  return id !== undefined && (id.startsWith(PROACTIVE_TRIGGER_PREFIX)
+    || id.startsWith(CONNECTOR_TRIGGER_PREFIX) || id.startsWith('trg_routine_'))
+}
+
+function humanEvidence(trigger: Trigger | undefined): string | undefined {
+  return trigger?.human && !scheduledTrigger(trigger.id) ? trigger.text : undefined
+}
 
 export interface HarnessOptions {
   model: Model
@@ -263,7 +272,7 @@ export class Harness {
       'router',
       undefined,
       `${this.withRouterHistory(shard, prompt)}\nshard=${shard}`,
-      trigger.human ? trigger.text : undefined,
+      humanEvidence(trigger),
     )))
   }
 
@@ -573,7 +582,7 @@ export class Harness {
       async () => {
         if (!this.opts.store.isOpen) return
         const trigger = this.opts.store.getDoc<Trigger>('trigger', ticket.originTriggerId)
-        return this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node), trigger?.human ? trigger.text : undefined)
+        return this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node), humanEvidence(trigger))
       },
     ).finally(() => {
       this.activeWorkers.delete(ticket.id)
@@ -627,7 +636,7 @@ export class Harness {
     if (refs) lines.push(refs)
     const sessionId = workerSessionId(ticketId)
     return this.track(this.enqueue(sessionId, () => this.run(
-      sessionId, 'worker', ticketId, lines.join('\n'), trigger.human ? trigger.text : undefined,
+      sessionId, 'worker', ticketId, lines.join('\n'), humanEvidence(trigger),
     )))
   }
 
@@ -728,7 +737,7 @@ export class Harness {
       const evidence = [...guidance]
       if (role === 'worker') {
         for (const input of pending) {
-          if (input.human === true && input.text) evidence.push(input.text)
+          if (input.human === true && input.text && !scheduledTrigger(input.triggerId)) evidence.push(input.text)
         }
       }
       return this.run(session, role, role === 'worker' ? ticket.id : undefined, build(guidance), evidence.join('\n') || undefined)

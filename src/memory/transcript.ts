@@ -106,7 +106,9 @@ export function readPendingMemoryEvidence(
     through: rows.at(-1)?.id ?? after,
     entries: rows.flatMap(row => {
       const text = evidenceText(row.body, 'user')
-      return text?.trim() ? [{ id: row.id, text: redact(text).slice(0, MAX_ENTRY_CHARS) }] : []
+      return text?.trim() && !/^(?:PROACTIVE_IDLE|CONNECTOR_EVENT)\r?\n/.test(text)
+        ? [{ id: row.id, text: redact(text).slice(0, MAX_ENTRY_CHARS) }]
+        : []
     }),
   }
 }

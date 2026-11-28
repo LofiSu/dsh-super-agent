@@ -6,6 +6,7 @@ import { Daemon } from '../src/harness/daemon.ts'
 import { HttpOpenAI, type Model } from '../src/harness/model.ts'
 import { AutoDream } from '../src/memory/auto-dream.ts'
 import { SessionMemory } from '../src/memory/tools.ts'
+import type { Ticket } from '../src/shared/types.ts'
 import { Runtime } from '../src/runtime.ts'
 import { Store } from '../src/store/sqlite.ts'
 
@@ -53,7 +54,7 @@ it('publishes on a daemon pulse, indexes the result, and resumes corrections aft
     expect(body.evidence[0]!.text).not.toContain('private-token')
     return { text: JSON.stringify({ page: body.evidence[0]!.text, evidence_ids: [body.evidence[0]!.id] }) }
   })
-  const background = new AutoDream(first.store, first.memory, stub(complete), redact, () => {})
+  const background = new AutoDream(first.store, first.memory, () => stub(complete), redact, () => {})
   let pulse: Promise<void> | undefined
   const daemon = new Daemon({ tick: () => {}, intervalMs: 1_000 }, () => {},
     undefined, undefined, undefined, undefined, undefined, { tick: time => { pulse = background.tick(time) } })
@@ -68,7 +69,7 @@ it('publishes on a daemon pulse, indexes the result, and resumes corrections aft
 
   const restarted = fixture(first.home)
   append(restarted.store, 'Correction: use pnpm.')
-  const next = new AutoDream(restarted.store, restarted.memory, stub(complete), redact, () => {})
+  const next = new AutoDream(restarted.store, restarted.memory, () => stub(complete), redact, () => {})
   await next.tick(now + 120_000)
   expect(complete).toHaveBeenCalledTimes(2)
   const page = restarted.memory.execute(session, { command: 'view', path: '/memories/wiki/runtime.md' })
@@ -81,15 +82,15 @@ it('retries invalid provenance and fences publication after shutdown', async () 
   const { store, memory } = fixture()
   append(store, 'Use pnpm.')
   const invalid = vi.fn(async () => ({ text: '{"page":"invalid","evidence_ids":[999]}' }))
-  await new AutoDream(store, memory, stub(invalid), redact, () => {}).tick(now)
+  await new AutoDream(store, memory, () => stub(invalid), redact, () => {}).tick(now)
   expect(memory.index(session)).toBeUndefined()
   const recover = vi.fn<Model['complete']>(async () => ({ text: '{"page":"Use pnpm.","evidence_ids":[1]}' }))
-  const retry = new AutoDream(store, memory, stub(recover), redact, () => {})
+  const retry = new AutoDream(store, memory, () => stub(recover), redact, () => {})
   await retry.tick(now + 60_000)
   expect(recover).not.toHaveBeenCalled()
 
   let settle: ((value: { text: string }) => void) | undefined
-  const delayed = new AutoDream(store, memory, stub(() => new Promise(resolve => { settle = resolve })), redact, () => {})
+  const delayed = new AutoDream(store, memory, () => stub(() => new Promise(resolve => { settle = resolve })), redact, () => {})
   const work = delayed.tick(now + 300_000)
   delayed.stop()
   settle?.({ text: '{"page":"Use pnpm.","evidence_ids":[1]}' })
@@ -137,7 +138,7 @@ it('cannot let older evidence overwrite a correction in a shared Worker scope', 
   const complete = vi.fn<Model['complete']>(async () => ({
     text: '{"page":"Use pnpm.","evidence_ids":[2]}',
   }))
-  const background = new AutoDream(store, memory, stub(complete), redact, () => {})
+  const background = new AutoDream(store, memory, () => stub(complete), redact, () => {})
   await background.tick(now)
   worker('old', 'idle')
   await background.tick(now + 60_000)
@@ -145,6 +146,13 @@ it('cannot let older evidence overwrite a correction in a shared Worker scope', 
   expect(memory.execute({ sessionId: recentId, role: 'worker', ticketId: 'recent' }, {
     command: 'view', path: '/memories/wiki/runtime.md',
   })).toContain('Use pnpm.')
+  const ticket = store.getDoc<Ticket>('ticket', 'recent')!
+  expect(memory.recallForDestination(ticket, { source: 'cli', thread: 'local' })).toContain('Use pnpm.')
+  expect(memory.recallForDestination(ticket, { source: 'im', thread: 'local' })).toBeUndefined()
+  expect(memory.recallForDestination({ ...ticket, threadKeys: ['cli:local', 'im:other'] }, {
+    source: 'cli', thread: 'local',
+  })).toBeUndefined()
+
 })
 
 it('runs a bounded exit pass and rewrites supplied notes in the same publication', async () => {
@@ -177,9 +185,58 @@ it('does not log an upstream error that echoes private transcript text', async (
   const { store, memory } = fixture()
   append(store, 'A private remark absent from configured secrets.')
   const logs: string[] = []
-  const background = new AutoDream(store, memory, stub(async () => {
+  const background = new AutoDream(store, memory, () => stub(async () => {
     throw new Error('A private remark absent from configured secrets.')
   }), redact, message => logs.push(message))
   await background.tick(now)
   expect(logs).toEqual(['[memory] background consolidation failed; will retry'])
+})
+
+
+it('ignores scheduler envelopes previously stored as apparent human evidence', async () => {
+  const { store, memory } = fixture()
+  append(store, 'PROACTIVE_IDLE\nticketId=ticket_1\nrelatedMemory=generated reminder')
+  append(store, 'Use pnpm.')
+  const complete = vi.fn<Model['complete']>(async request => {
+    const input = JSON.parse(request.messages[1]!.content) as { evidence: { id: number; text: string }[] }
+    expect(input.evidence).toEqual([{ id: 2, text: 'Use pnpm.' }])
+    return { text: '{"page":"Use pnpm.","evidence_ids":[2]}' }
+  })
+  await new AutoDream(store, memory, () => stub(complete), redact, () => {}).tick(now)
+  expect(memory.index(session)).toContain('/memories/wiki/runtime.md')
+})
+
+
+it('uses the same Worker model as foreground work', async () => {
+  const seed = fixture()
+  const at = new Date(0).toISOString()
+  const workerId = 'worker_ticket_role'
+  seed.store.putDoc('ticket', 'ticket_role', {
+    id: 'ticket_role', threadKeys: ['cli:local'], memoryThreadKeys: ['cli:local'], speculative: false,
+    assignments: [], ended: { at, outcome: 'ready', by: 'executor' },
+  })
+  seed.store.upsertSession({
+    id: workerId, role: 'worker', ticketId: 'ticket_role', status: 'idle', createdAt: at, heartbeat: at,
+  })
+  seed.store.appendMessage(workerId, 'user', JSON.stringify({
+    role: 'user', kind: 'message', evidenceText: 'Use pnpm.',
+  }))
+  seed.store.close()
+  const main = new HttpOpenAI('http://127.0.0.1:1/v1', 'default-fixture', 'default')
+  const worker = new HttpOpenAI('http://127.0.0.1:2/v1', 'worker-fixture', 'worker')
+  const primary = vi.spyOn(main, 'complete')
+  const effective = vi.spyOn(worker, 'complete').mockResolvedValue({
+    text: '{"page":"Use pnpm.","evidence_ids":[1]}',
+  })
+  const runtime = Runtime.create({ home: seed.home, model: main, models: { worker }, env: {} })
+  try {
+    runtime.start({ assessPending: false })
+    await vi.waitFor(() => expect(new SessionMemory(runtime.store, redact).index({
+      sessionId: workerId, role: 'worker', ticketId: 'ticket_role',
+    })).toContain('/memories/wiki/runtime.md'))
+    expect(effective).toHaveBeenCalledTimes(1)
+    expect(primary).not.toHaveBeenCalled()
+  } finally {
+    await runtime.finish()
+  }
 })

@@ -108,7 +108,7 @@ import { recordRemoteResult, remoteResultSeen } from './harness/remote-results.t
 import type { RemoteEligibleReason, RemoteMeshAssignmentResultEvent } from './harness/remote-node.ts'
 import type { WorkerReport } from './shared/ports.ts'
 import { Logger } from './shared/log.ts'
-import { threadKey, type Assignment, type Disposition, type ObjectRef, type ReceiveResult, type Thread, type Ticket, type Trigger, type TriggerTrust } from './shared/types.ts'
+import { threadKey, type Assignment, type Disposition, type ObjectRef, type ReceiveResult, type Role, type Thread, type Ticket, type Trigger, type TriggerTrust } from './shared/types.ts'
 import { Store } from './store/sqlite.ts'
 import { Watchdog } from './watchdog/watchdog.ts'
 import { settleSpeculation } from './speculate/silent.ts'
@@ -858,8 +858,8 @@ export class Runtime {
       store,
       config: proactiveConfig,
       env: baseEnv,
-      memoryFor: ticket => {
-        const context = memory.recallForTicket(ticket)
+      memoryFor: (ticket, channel) => {
+        const context = memory.recallForDestination(ticket, channel)
         return context ? [context] : []
       },
       fire: trigger => fireRoutine(trigger),
@@ -1863,8 +1863,13 @@ export class Runtime {
         workspaceDir: path.join(opts.home, 'mcp'),
         baseEnv,
       })
-    const autoDream = model instanceof HttpOpenAI && baseEnv.DS_AGENT_AUTO_DREAM !== '0'
-      ? new AutoDream(store, memory, model, redact, line => log.info(line))
+    const memoryModelFor = (role: Role): Model | undefined => {
+      const effective = models[role] ?? model
+      return effective instanceof HttpOpenAI ? effective : undefined
+    }
+    const autoDream = baseEnv.DS_AGENT_AUTO_DREAM !== '0'
+      && (memoryModelFor('router') || memoryModelFor('worker'))
+      ? new AutoDream(store, memory, memoryModelFor, redact, line => log.info(line))
       : undefined
     const tools = new ToolRegistry({
       store,

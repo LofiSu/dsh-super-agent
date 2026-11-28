@@ -117,7 +117,7 @@ Router 的存储域沿用直聊线程分片的会话 ID。共享 Router 会话�
 
 Claude Code 的公开文档描述了自动记录笔记和启动时载入索引。公开文档没有给出本地 Auto Dream 的触发阈值。Managed Agents 的 Dreams 是由应用提交的异步整理任务。Anthropic 的 Cookbook 演示了定时自动提交的方式。[Claude Code Memory](https://code.claude.com/docs/en/memory) · [Dreams API](https://platform.claude.com/docs/en/managed-agents/dreams) · [官方定时示例](https://platform.claude.com/cookbook/managed-agents-cma-dreaming-with-a-dynamic-workflow)
 
-ds-agent 的常驻运行时使用已有 Daemon 心跳。配置可用模型时默认启用，设置 `DS_AGENT_AUTO_DREAM=0` 可关闭。直聊 Router 与符合授权条件的 Worker 会话闲置至少 30 秒后可以整理。每进程每分钟最多发起一次，每次向前处理最多八条用户日志。SQLite 记录处理游标和作用域租约，失败保留原游标并延迟重试。提交前重新检查授权范围、会话状态和已有页面版本。停机中止请求并屏蔽迟到的结果。
+ds-agent 的常驻运行时使用已有 Daemon 心跳。配置可用模型时默认启用，设置 `DS_AGENT_AUTO_DREAM=0` 可关闭。直聊 Router 与符合授权条件的 Worker 会话闲置至少 30 秒后可以整理。每进程每分钟最多发起一次，每次向前处理最多八条用户日志。后台按角色沿用前台配置的模型。SQLite 记录处理游标和作用域租约，失败保留原游标并延迟重试。同一记忆域的证据行 ID 单调前进，迟到的旧会话不能覆盖新的纠正。提交前重新检查授权范围、会话状态和已有页面版本。停机中止请求并屏蔽迟到的结果。
 
 整理还可以用新证据修订本轮读取的短 Markdown 笔记。派生主题摘要写入同一记忆域下的 `/memories/wiki/runtime.md`。后续会话从短索引自动获得该页入口，手写的 `MEMORY.md` 仍可与入口一起注入。手动 `memory dream` 继续支持即时维护。短时 CLI 在退出前尝试一次最多 5 秒的整理，未完成的证据留给后续进程。
 

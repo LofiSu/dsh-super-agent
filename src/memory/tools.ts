@@ -1,7 +1,7 @@
 import type { ToolSpec } from '../harness/model.ts'
-import { directChatRouterShard, routerSessionId, workerSessionId } from '../harness/session.ts'
+import { workerSessionId } from '../harness/session.ts'
 import { UserError } from '../shared/errors.ts'
-import type { Role, Ticket } from '../shared/types.ts'
+import { threadKey, type ChannelRef, type Role, type Ticket } from '../shared/types.ts'
 import type { Store } from '../store/sqlite.ts'
 import { MemoryNotes, type Note } from './notes.ts'
 import { readMemoryTranscript } from './transcript.ts'
@@ -102,15 +102,13 @@ export class SessionMemory {
     return this.noteScope(session, ticket)
   }
 
-  /** Same curated memory used by proactive evaluation, with the Ticket's normal scope. */
-  recallForTicket(ticket: Ticket): string | undefined {
-    if (ticket.speculative || ticket.ended?.silent) return undefined
-    const shard = directChatRouterShard(ticket)
-    const session: MemorySession = shard
-      ? { sessionId: routerSessionId(shard), role: 'router' }
-      : { sessionId: workerSessionId(ticket.id), role: 'worker', ticketId: ticket.id }
-    const scope = this.consolidationScope(session)
-    return scope ? this.readConsolidated(scope)?.slice(0, 2_000) : undefined
+  /** Proactive context is visible in an outgoing thread; require a matching singleton. */
+  recallForDestination(ticket: Ticket, channel: ChannelRef): string | undefined {
+    const key = threadKey({ source: channel.source, id: channel.thread })
+    if (ticket.speculative || ticket.ended?.silent
+      || ticket.threadKeys.some(thread => thread !== key) || !ticket.threadKeys.includes(key)
+      || ticket.memoryThreadKeys?.some(thread => thread !== key)) return undefined
+    return this.recallForThread(key)
   }
 
   /** Deferred assessment is authorized for exactly one thread. */

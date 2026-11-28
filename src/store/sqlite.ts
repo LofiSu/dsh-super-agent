@@ -912,6 +912,30 @@ export class Store {
     }))
   }
 
+  listIdleMemorySessions(after: number, idleBefore: string, limit: number): (SessionRow & { cursor: number })[] {
+    const rows = this.db.prepare(`
+      SELECT rowid AS cursor, id, role, ticket_id AS ticketId, status, heartbeat, created_at AS createdAt
+      FROM sessions
+      WHERE rowid > ? AND status = 'idle' AND heartbeat <= ?
+        AND (role = 'worker' OR (role = 'router' AND id GLOB 'router:thread:*'))
+      ORDER BY rowid LIMIT ?
+    `).all(after, idleBefore, limit)
+    return rows.map(row => ({
+      cursor: Number(row.cursor),
+      id: String(row.id),
+      role: row.role as SessionRow['role'],
+      ticketId: row.ticketId ? String(row.ticketId) : undefined,
+      status: 'idle',
+      heartbeat: String(row.heartbeat),
+      createdAt: String(row.createdAt),
+    }))
+  }
+
+  getSessionHeartbeat(sessionId: string): { status: string; heartbeat: string } | undefined {
+    return this.db.prepare('SELECT status, heartbeat FROM sessions WHERE id = ?')
+      .get(sessionId) as { status: string; heartbeat: string } | undefined
+  }
+
   appendMessage(sessionId: string, role: string, body: string): void {
     this.assertWritable()
     this.db.prepare(
