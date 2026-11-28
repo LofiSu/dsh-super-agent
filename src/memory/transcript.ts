@@ -104,10 +104,20 @@ function evidencePage(
           ...(row.sessionId ? { ref: { sessionId: row.sessionId, id: row.id } } : {}),
         }
         if (text.length > entry.text.length) entry.truncated = true
-        const entryChars = JSON.stringify(entry).length + 1
-        if (chars + entryChars > MAX_PAGE_CHARS) break
-        chars += entryChars
-        entries.push(entry)
+        let entryChars = JSON.stringify(entry).length + 1
+        if (entryChars > MAX_PAGE_CHARS && chars === 0) {
+          // The new reference also consumes the response budget. A single large
+          // row must fit or advance the cursor even when text needs escaping.
+          const overhead = JSON.stringify({ ...entry, text: '', truncated: true }).length + 1
+          entry.text = entry.text.slice(0, Math.max(0, Math.floor((MAX_PAGE_CHARS - overhead) / 6)))
+          entry.truncated = true
+          entryChars = JSON.stringify(entry).length + 1
+        }
+        if (chars + entryChars > MAX_PAGE_CHARS && chars !== 0) break
+        if (entryChars <= MAX_PAGE_CHARS) {
+          chars += entryChars
+          entries.push(entry)
+        }
       }
     }
     consumed += 1

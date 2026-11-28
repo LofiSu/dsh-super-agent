@@ -190,3 +190,23 @@ it('looks up and searches redacted original evidence across authorized sibling s
     store.close()
   }
 })
+
+
+it('includes qualified references in the serialized transcript page budget', () => {
+  const store = new Store(testHome())
+  try {
+    const sessionId = 'router:thread:' + '\u0001'.repeat(300)
+    const at = '2026-01-01T00:00:00Z'
+    store.upsertSession({ id: sessionId, role: 'router', status: 'idle', heartbeat: at, createdAt: at })
+    append(store, sessionId, 'user', '', { evidenceText: '\u0001'.repeat(1_200) })
+    const memory = new SessionMemory(store, redact)
+    const ref = { sessionId, id: 1 }
+    const result = memory.transcript(sessionId, { scope: 'memory' })
+    expect(result.entries).toEqual([expect.objectContaining({ ref, truncated: true })])
+    expect(result.entries[0]?.text.length).toBeGreaterThan(0)
+    expect(JSON.stringify(result).length).toBeLessThan(8_100)
+    expect(memory.transcript(sessionId, { ref })).toEqual(result)
+  } finally {
+    store.close()
+  }
+})
