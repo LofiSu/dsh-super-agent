@@ -32,6 +32,8 @@ export interface HarnessOptions {
   store: Store
   /** Host bookkeeping when a worker session starts. The harness does not hold the Engine. */
   assignmentStarted(ticketId: string, assignmentId: string, sessionId: string): void
+  /** Mark the current mandate as active when a local Worker turn begins. */
+  assignmentMandateActivated?(ticketId: string): void
   /** Host bookkeeping for logical mesh placement. The Engine owns the ticket write. */
   assignmentPlaced(ticketId: string, assignmentId: string, node: string): void
   journal: SessionJournal
@@ -168,8 +170,8 @@ export class Harness {
   private readonly routersReady = new Set<string>()
   /** FIFO of Workers waiting for mesh capacity. Owned by the scheduler, not the registry. */
   private readonly queued: { ticketId: string; resolve: () => void }[] = []
-  /** Tickets whose Worker turn promise has not settled yet. */
-  private readonly activeWorkers = new Set<string>()
+  /** Number of booked or running local Worker turns for each ticket. */
+  private readonly activeWorkers = new Map<string, number>()
   private readonly queueLimit: number
   private draining = false
 
@@ -375,8 +377,17 @@ export class Harness {
       this.opts.log(`[harness] worker skipped ticketId=${ticketId} paused reason=${paused}`)
       return
     }
-    if (!latest.assignments.at(-1)) {
+    const assignment = latest.assignments.at(-1)
+    if (!assignment) {
       this.opts.log(`[harness] worker skipped ticketId=${ticketId} no-assignment`)
+      return
+    }
+    if (assignment.state === 'ended') {
+      this.opts.log(`[harness] worker skipped ticketId=${ticketId} assignment-ended assignmentId=${assignment.id}`)
+      return
+    }
+    if (this.remoteAssignmentInProgress(assignment)) {
+      this.opts.log(`[harness] worker skipped ticketId=${ticketId} remote-assignment-running assignmentId=${assignment.id} node=${assignment.node}`)
       return
     }
     // No mesh configured: keep the original no-placement behavior.
@@ -407,7 +418,7 @@ export class Harness {
     try {
       work = this.startWorkerTurn(ticket, node)
     } catch (error) {
-      this.activeWorkers.delete(ticket.id)
+      this.settleWorkerTurn(ticket.id)
       if (node) this.opts.releaseNode?.(ticket.id)
       this.opts.log(`[harness] worker failed ticketId=${ticket.id} error=${String(error)}`)
       if (node) this.pump()
@@ -470,6 +481,15 @@ export class Harness {
     }
   }
 
+  private remoteAssignmentInProgress(assignment: Assignment | undefined): boolean {
+    return Boolean(this.opts.pickNode)
+      && assignment !== undefined
+      && assignment.state === 'running'
+      && assignment.node !== undefined
+      && this.opts.isRemoteNode?.(assignment.node) === true
+      && !(assignment.report && TERMINAL_REPORT_KINDS.has(assignment.report.kind))
+  }
+
   /**
    * Read the committed snapshot for a queued launch. A terminal Assignment
    * (`ended`) is as fatal as an ended or paused Ticket: a report may have ended
@@ -485,6 +505,7 @@ export class Harness {
     const assignment = ticket.assignments.at(-1)
     if (!assignment) return { skip: 'no-assignment' }
     if (assignment.state === 'ended') return { skip: 'assignment-ended' }
+    if (this.remoteAssignmentInProgress(assignment)) return { skip: 'remote-assignment-running' }
     if (assignment.report?.kind === 'failed' || assignment.report?.kind === 'blocked') {
       return { skip: `assignment-${assignment.report.kind}` }
     }
@@ -511,7 +532,7 @@ export class Harness {
     } catch (error) {
       // startWorkerTurn marks the ticket active before Engine callbacks run.
       // If one throws, neither the active marker nor the mesh reservation may leak.
-      this.activeWorkers.delete(entry.ticketId)
+      this.settleWorkerTurn(entry.ticketId)
       this.opts.releaseNode?.(entry.ticketId)
       this.opts.log(`[harness] queued worker failed ticketId=${entry.ticketId} error=${String(error)}`)
       entry.resolve()
@@ -533,6 +554,16 @@ export class Harness {
       },
     )
     this.track(work)
+  }
+
+  private bookWorkerTurn(ticketId: string): void {
+    this.activeWorkers.set(ticketId, (this.activeWorkers.get(ticketId) ?? 0) + 1)
+  }
+
+  private settleWorkerTurn(ticketId: string): void {
+    const remaining = (this.activeWorkers.get(ticketId) ?? 0) - 1
+    if (remaining > 0) this.activeWorkers.set(ticketId, remaining)
+    else this.activeWorkers.delete(ticketId)
   }
 
   /**
@@ -562,18 +593,26 @@ export class Harness {
       this.opts.log(`[harness] worker skipped ticketId=${ticket.id} no-assignment`)
       return Promise.resolve()
     }
+    if (assignment.state === 'ended') {
+      this.opts.log(`[harness] worker skipped ticketId=${ticket.id} assignment-ended assignmentId=${assignment.id}`)
+      return Promise.resolve()
+    }
+    if (this.remoteAssignmentInProgress(assignment)) {
+      this.opts.log(`[harness] worker skipped ticketId=${ticket.id} remote-assignment-running assignmentId=${assignment.id} node=${assignment.node}`)
+      if (node) this.opts.releaseNode?.(ticket.id)
+      return Promise.resolve()
+    }
+    this.bookWorkerTurn(ticket.id)
     if (node && this.opts.isRemoteNode?.(node)) {
-      this.activeWorkers.add(ticket.id)
       this.opts.log(`[mesh] remote dispatch ticketId=${ticket.id} node=${node}`)
       this.opts.assignmentStarted(ticket.id, assignment.id, sessionId)
       this.opts.assignmentPlaced(ticket.id, assignment.id, node)
       const work = (this.opts.dispatchRemote?.(ticket, node) ?? Promise.resolve())
       return work.finally(() => {
-        this.activeWorkers.delete(ticket.id)
+        this.settleWorkerTurn(ticket.id)
         this.pump()
       })
     }
-    this.activeWorkers.add(ticket.id)
     this.opts.log(`[harness] ExecutorSession start session=${sessionId} ticketId=${ticket.id} role=worker`)
     this.opts.assignmentStarted(ticket.id, assignment.id, sessionId)
     if (node) this.opts.assignmentPlaced(ticket.id, assignment.id, node)
@@ -585,29 +624,46 @@ export class Harness {
         return this.run(sessionId, 'worker', ticket.id, this.workerTask(ticket, node), humanEvidence(trigger))
       },
     ).finally(() => {
-      this.activeWorkers.delete(ticket.id)
+      this.settleWorkerTurn(ticket.id)
       this.pump()
     })
   }
 
+  /** Worker turn already booked for this ticket (launch or active turn). */
+  launchInFlight(ticketId: string): boolean {
+    return this.running.has(ticketId)
+  }
+
+  /** In-process Worker session has not settled yet. */
+  workerActive(ticketId: string): boolean {
+    return this.activeWorkers.has(ticketId)
+  }
+
+  private latestTicket(ticket: Ticket): Ticket {
+    if (!this.opts.store.isOpen) return ticket
+    return this.opts.store.getDoc<Ticket>('ticket', ticket.id) ?? ticket
+  }
+
   private workerTask(ticket: Ticket, node?: string): string {
-    const mode = ticket.speculative ? 'speculative' : 'normal'
+    const live = this.latestTicket(ticket)
+    const mode = live.speculative ? 'speculative' : 'normal'
     const task = [
       'TASK',
-      `ticketId=${ticket.id}`,
-      `title=${ticket.title}`,
+      `ticketId=${live.id}`,
+      `title=${live.title}`,
       `mode=${mode}`,
-      `thread=${ticket.threadKeys[0] ?? ''}`,
-      `brief=${ticket.brief}`,
+      `thread=${live.threadKeys[0] ?? ''}`,
+      `brief=${live.brief}`,
+      `scope=${live.mandate.scope}`,
     ]
-    if (ticket.spillId) task.push(`spillId=${ticket.spillId}`)
+    if (live.spillId) task.push(`spillId=${live.spillId}`)
     if (node) task.push(`node=${node}`)
-    const refs = formatRefs(ticket.refs)
+    const refs = formatRefs(live.refs)
     if (refs) task.push(refs)
     // Restart recovery (P1-6): the relaunch turn must tell the Worker that a
     // previous process died. Only RECOVERED context inputs are injected here;
     // ordinary context inputs stay read-only background for resume/report paths.
-    for (const input of ticket.inputs) {
+    for (const input of live.inputs) {
       if (input.kind === 'context' && input.text?.startsWith('RECOVERED:')) {
         task.push(`recovered=${input.text}`)
       }
@@ -626,18 +682,41 @@ export class Harness {
       })
       return Promise.resolve()
     }
-    const ticket = this.opts.store.getDoc<Ticket>('ticket', ticketId)
-    const mode = ticket?.speculative ? 'speculative' : 'normal'
-    const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
-    // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
-    const owned = spillId ?? ticket?.spillId ?? ''
-    if (owned) lines.push(`spillId=${owned}`)
-    const refs = formatRefs(trigger.refs)
-    if (refs) lines.push(refs)
     const sessionId = workerSessionId(ticketId)
-    return this.track(this.enqueue(sessionId, () => this.run(
-      sessionId, 'worker', ticketId, lines.join('\n'), humanEvidence(trigger),
-    )))
+    this.bookWorkerTurn(ticketId)
+    return this.track(this.enqueue(sessionId, async () => {
+      const ticket = this.opts.store.isOpen
+        ? this.opts.store.getDoc<Ticket>('ticket', ticketId)
+        : undefined
+      if (!ticket || ticket.ended) {
+        const reason = !this.opts.store.isOpen ? 'store-closed' : ticket ? 'ended' : 'missing'
+        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${reason}`)
+        return
+      }
+      this.opts.assignmentMandateActivated?.(ticketId)
+      const live = this.opts.store.isOpen
+        ? this.opts.store.getDoc<Ticket>('ticket', ticketId)
+        : undefined
+      if (!live || live.ended) {
+        const reason = !this.opts.store.isOpen ? 'store-closed' : live ? 'ended' : 'missing'
+        this.opts.log(`[harness] follow-up skipped ticketId=${ticketId} reason=${reason}`)
+        return
+      }
+      const mode = live.speculative ? 'speculative' : 'normal'
+      const lines = ['FOLLOWUP', `ticketId=${ticketId}`, `mode=${mode}`, `text=${trigger.text}`]
+      if (live.mandate.scope) lines.push(`scope=${live.mandate.scope}`)
+      // Engine-owned spill only: the ingress sidecar, or the spill already on the ticket.
+      const owned = spillId ?? live.spillId ?? ''
+      if (owned) lines.push(`spillId=${owned}`)
+      const refs = formatRefs(trigger.refs)
+      if (refs) lines.push(refs)
+      return this.run(
+        sessionId, 'worker', ticketId, lines.join('\n'), humanEvidence(trigger),
+      )
+    }).finally(() => {
+      this.settleWorkerTurn(ticketId)
+      if (!this.activeWorkers.has(ticketId)) this.pump()
+    }))
   }
 
   /**
@@ -679,6 +758,7 @@ export class Harness {
       && this.opts.isRemoteNode?.(candidate.node) === true
       && !(candidate.report && TERMINAL_REPORT_KINDS.has(candidate.report.kind))
     const resumeRemoteInProgress = remoteInProgress(assignment)
+    const localResume = !resumeThroughMesh && !resumeRemoteInProgress
     const sessionId = workerSessionId(ticket.id)
     const since = ticket.collab?.resumes.at(-1)?.pausedAt
     const pending = since
@@ -686,6 +766,7 @@ export class Harness {
       : []
     const mode = ticket.speculative ? 'speculative' : 'normal'
     this.running.add(ticket.id)
+    if (localResume) this.bookWorkerTurn(ticket.id)
     const shards = this.opts.singleSession
       ? []
       : this.opts.routerSessions?.(ticket) ?? ['default']
@@ -700,13 +781,15 @@ export class Harness {
     }
 
     const workerPrompt = (guidance: string[]): string => {
+      const live = this.latestTicket(ticket)
       const lines = [
         'RESUME',
-        `ticketId=${ticket.id}`,
-        `title=${ticket.title}`,
+        `ticketId=${live.id}`,
+        `title=${live.title}`,
         `mode=${mode}`,
-        `thread=${ticket.threadKeys[0] ?? ''}`,
-        `brief=${ticket.brief}`,
+        `thread=${live.threadKeys[0] ?? ''}`,
+        `brief=${live.brief}`,
+        `scope=${live.mandate.scope}`,
       ]
       if (since) lines.push(`pausedAt=${since}`)
       for (const text of guidance) lines.push(`guidance=${text}`)
@@ -787,11 +870,34 @@ export class Harness {
           )
           return
         }
-        return this.enqueue(sessionId, () => guarded(sessionId, 'worker', workerPrompt))
+        return this.enqueue(sessionId, async () => {
+          const current = this.opts.store.isOpen
+            ? this.opts.store.getDoc<Ticket>('ticket', ticket.id)
+            : undefined
+          if (!current || current.ended || current.collab?.paused) return
+          const currentAssignment = current.assignments.at(-1)
+          if (!currentAssignment || remoteInProgress(currentAssignment)) return
+          if (
+            Boolean(this.opts.pickNode)
+            && currentAssignment.state === 'pending'
+            && currentAssignment.node === undefined
+          ) return
+          const held = this.pauseReason(ticket.id)
+          if (held) {
+            this.opts.log(`[collab] resume held session=${sessionId} ticketId=${ticket.id} reason=${held}`)
+            return
+          }
+          this.opts.assignmentMandateActivated?.(ticket.id)
+          return guarded(sessionId, 'worker', workerPrompt)
+        })
       })
       .then(() => undefined)
       .finally(() => {
         this.running.delete(ticket.id)
+        if (localResume) {
+          this.settleWorkerTurn(ticket.id)
+          if (!this.activeWorkers.has(ticket.id)) this.pump()
+        }
       })
     return this.track(work)
   }

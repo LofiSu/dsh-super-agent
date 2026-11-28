@@ -43,13 +43,26 @@ export class Assignments {
     this.gate = gate ?? resolveDeliverGate(stateHome)
   }
 
+  activateMandate(ticketId: string): void {
+    const ticket = this.must(ticketId)
+    const assignment = ticket.assignments.at(-1)
+    if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    assignment.mandateScopeAtStart = ticket.mandate.scope
+    this.host.repo.putDoc('ticket', ticket.id, ticket)
+  }
+
   start(ticketId: string, assignmentId: string, sessionId: string): void {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId) ?? ticket.assignments.at(-1)
     if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    if (assignment.state === 'ended') {
+      this.host.log(`[engine] Assignments.start skipped ended assignment ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return
+    }
     assignment.state = 'running'
     assignment.workerSessionId = sessionId
     assignment.startedAt = this.host.now()
+    assignment.mandateScopeAtStart = ticket.mandate.scope
     this.host.repo.putDoc('ticket', ticket.id, ticket)
     this.host.log(`[engine] Assignments.start ticketId=${ticket.id} assignmentId=${assignment.id} session=${sessionId}`)
     this.host.repo.addEvent('assignment.started', { ticketId: ticket.id, assignmentId: assignment.id, sessionId })
@@ -63,6 +76,10 @@ export class Assignments {
     const ticket = this.must(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId) ?? ticket.assignments.at(-1)
     if (!assignment) throw new UserError(`ticket ${ticketId} has no assignment`)
+    if (assignment.state === 'ended') {
+      this.host.log(`[engine] Assignments.placed skipped ended assignment ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return
+    }
     assignment.node = node
     assignment.remotePeerId = remotePeerId
     this.host.repo.putDoc('ticket', ticket.id, ticket)
@@ -170,6 +187,16 @@ export class Assignments {
       this.host.log(`deliver=true ticketId=${ticket.id}`)
     }
 
+    const terminalForSupersededMandate = (report.kind === 'ready' || report.kind === 'dropped')
+      && assignment.mandateScopeAtStart !== undefined
+      && assignment.mandateScopeAtStart !== ticket.mandate.scope
+    if (terminalForSupersededMandate) {
+      if (report.kind === 'dropped') assignment.report.verdict = 'hold'
+      this.host.repo.putDoc('ticket', ticket.id, ticket)
+      this.host.log(`[engine] Assignments.report kept ticket open for revised mandate ticketId=${ticket.id} assignmentId=${assignment.id}`)
+      return { surfaced: false, verdict: 'hold' }
+    }
+
     let assignmentEnded = false
     let ticketEnded = false
     if (report.kind === 'ready' || report.kind === 'dropped') {
@@ -188,6 +215,29 @@ export class Assignments {
     this.notifyEnded(ticket, assignmentEnded, ticketEnded)
     const surfaced = wasSpeculative ? verdict === 'deliver' : report.deliver === true
     return { surfaced, verdict }
+  }
+
+  /**
+   * End a remote turn that reported ready or dropped under a superseded mandate
+   * and queue a fresh Assignment for the current scope. The held report remains
+   * on the predecessor as an audit record and cannot be overwritten by its old timer.
+   */
+  replaceSupersededTerminal(ticketId: string, assignmentId: string): Assignment | undefined {
+    const ticket = this.must(ticketId)
+    const assignment = ticket.assignments.at(-1)
+    if (ticket.ended
+      || assignment?.id !== assignmentId
+      || assignment.state !== 'running'
+      || (assignment.report?.kind !== 'ready' && assignment.report?.kind !== 'dropped')
+      || assignment.mandateScopeAtStart === undefined
+      || assignment.mandateScopeAtStart === ticket.mandate.scope) {
+      return undefined
+    }
+    this.endAssignment(ticket, assignment, `superseded-${assignment.report.kind}`)
+    this.host.repo.putDoc('ticket', ticket.id, ticket)
+    const replacement = this.retry(ticketId, 'revised-mandate')
+    this.notifyEnded(ticket, true, false)
+    return replacement
   }
 
   /** Start a new Assignment for an open Ticket after failure or a blocked turn. */

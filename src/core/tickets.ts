@@ -109,6 +109,31 @@ export class Tickets {
     return decision
   }
 
+  /**
+   * Tighten authorized work when the Router re-dispatches the same trigger.
+   * Only supplied fields change; an omitted title keeps the current label.
+   */
+  reviseMandate(
+    ticketId: string,
+    input: { title?: string; scope?: string },
+  ): { changed: boolean; ticket: Ticket } {
+    const ticket = this.host.repo.getDoc<Ticket>('ticket', ticketId)
+    if (!ticket) throw new UserError(`unknown ticket ${ticketId}`)
+    const nextTitle = input.title !== undefined
+      ? (input.title.trim() || ticket.title).slice(0, 120)
+      : ticket.title
+    const nextScope = input.scope !== undefined
+      ? (input.scope.trim() || nextTitle).slice(0, 500)
+      : ticket.mandate.scope
+    const changed = nextTitle !== ticket.title || nextScope !== ticket.mandate.scope
+    if (!changed) return { changed: false, ticket }
+    ticket.title = nextTitle
+    ticket.mandate = { ...ticket.mandate, scope: nextScope }
+    this.host.repo.putDoc('ticket', ticketId, ticket)
+    this.host.log(`[engine] Tickets.reviseMandate ticketId=${ticketId} title=${ticket.title}`)
+    return { changed: true, ticket }
+  }
+
   /** Observers must never abort the Engine transaction that triggered them. */
   private notifyTicket(kind: 'created' | 'ended', ticket: Ticket): void {
     const hook = kind === 'created' ? this.host.onTicketCreated : this.host.onTicketEnded

@@ -77,6 +77,10 @@ export class Engine {
     this.host.repo.atomic(() => this.assignments.start(ticketId, assignmentId, sessionId))
   }
 
+  assignmentMandateActivated(ticketId: string): void {
+    this.host.repo.atomic(() => this.assignments.activateMandate(ticketId))
+  }
+
   /** Persist the Harness's logical mesh placement; the Engine owns the write. */
   assignmentPlaced(ticketId: string, assignmentId: string, node: string, remotePeerId?: string): void {
     this.host.repo.atomic(() => this.assignments.placed(ticketId, assignmentId, node, remotePeerId))
@@ -84,6 +88,13 @@ export class Engine {
 
   report(ticketId: string, report: WorkerReport): ReportResult {
     return this.host.repo.atomic(() => this.assignments.report(ticketId, report))
+  }
+
+  /** Replace a remote terminal report held open by a revised mandate. */
+  replaceSupersededTerminal(ticketId: string, assignmentId: string): boolean {
+    return this.host.repo.atomic(() =>
+      this.assignments.replaceSupersededTerminal(ticketId, assignmentId) !== undefined,
+    )
   }
 
   /** Start a new Assignment on the same Ticket after a failed or blocked turn. */
