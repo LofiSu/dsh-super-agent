@@ -370,6 +370,95 @@ describe('Runtime remote progress result', () => {
       .toBe('cancelled under old scope')
   })
 
+  it.each(['blocked', 'waiting'] as const)(
+    'replaces a remote %s assignment after a superseded mandate',
+    async kind => {
+      const runtime = progressRuntime()
+      const { ticketId, assignmentId } = placedTicket(runtime, `superseded_${kind}`)
+      armWait(runtime, ticketId, assignmentId)
+
+      const revised = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+      revised.mandate.scope = 'scope-B'
+      runtime.store.putDoc('ticket', ticketId, revised)
+      runtime.placement.dispatch = async () => ({
+        envelope: { from: HOST, to: PEER_A, body: {} },
+        status: 'delivered',
+        delivered: 1,
+        persisted: true,
+      })
+
+      runtime.applyRemoteAssignmentResult({
+        peerId: PEER_A,
+        ticketId,
+        assignmentId,
+        report: { kind, text: `old scope ${kind}`, deliver: false },
+        deliveryKey: `deliv-superseded-${kind}-${ticketId}`,
+        envelope: { from: PEER_A, to: HOST, body: {} },
+      })
+
+      await waitFor(() => {
+        const ticket = runtime.store.getDoc<Ticket>('ticket', ticketId)
+        return ticket?.assignments.at(-1)?.id !== assignmentId
+      }, 300, `${kind} superseded replacement assignment`)
+
+      const afterReplacement = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+      const predecessor = afterReplacement.assignments.find(item => item.id === assignmentId)!
+      const replacement = afterReplacement.assignments.at(-1)!
+      expect(afterReplacement.ended).toBeUndefined()
+      expect(predecessor.state).toBe('ended')
+      expect(predecessor.report?.kind).toBe(kind)
+      expect(predecessor.report?.text).toBe(`old scope ${kind}`)
+      expect(replacement.state).toBe('running')
+      expect(replacement.mandateScopeAtStart).toBe('scope-B')
+      expect(replacement.node).toBe(NODE_A)
+      expect(replacement.remotePeerId).toBe(PEER_A)
+      expect(runtime.placement.remoteHasTicket(ticketId)).toBe(true)
+      expect(runtime.log.text()).not.toContain('ExecutorSession start session=worker_')
+      await waitFor(
+        () => runtime.log.text().includes(`remote result wait armed ticketId=${ticketId} assignmentId=${replacement.id}`),
+        300,
+        `${kind} replacement result wait`,
+      )
+
+      runtime.applyRemoteAssignmentResult({
+        peerId: PEER_A,
+        ticketId,
+        assignmentId: replacement.id,
+        report: { kind: 'ready', text: 'finished under revised scope', deliver: true },
+        deliveryKey: `deliv-superseded-${kind}-replacement-${ticketId}`,
+        envelope: { from: PEER_A, to: HOST, body: {} },
+      })
+      expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended?.outcome).toBe('ready')
+      const completed = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+      expect(completed.assignments.find(item => item.id === assignmentId)?.report?.kind).toBe(kind)
+      expect(completed.assignments.find(item => item.id === assignmentId)?.report?.text).toBe(`old scope ${kind}`)
+    },
+  )
+
+  it.each(['blocked', 'waiting'] as const)(
+    'does not replace an unchanged remote mandate after %s',
+    kind => {
+      const runtime = progressRuntime()
+      const { ticketId, assignmentId } = placedTicket(runtime, `unchanged_${kind}`)
+
+      runtime.applyRemoteAssignmentResult({
+        peerId: PEER_A,
+        ticketId,
+        assignmentId,
+        report: { kind, text: `needs human: ${kind}`, deliver: false },
+        deliveryKey: `deliv-unchanged-${kind}-${ticketId}`,
+        envelope: { from: PEER_A, to: HOST, body: {} },
+      })
+
+      const ticket = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+      expect(ticket.ended).toBeUndefined()
+      expect(ticket.assignments).toHaveLength(1)
+      expect(ticket.assignments[0]?.id).toBe(assignmentId)
+      expect(ticket.assignments[0]?.state).toBe('ended')
+      expect(ticket.assignments[0]?.report?.kind).toBe(kind)
+    },
+  )
+
   it('still ends an unchanged remote mandate after dropped', () => {
     const runtime = progressRuntime()
     const { ticketId, assignmentId } = placedTicket(runtime, 'unchanged_dropped')

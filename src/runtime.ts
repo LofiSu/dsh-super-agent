@@ -1535,7 +1535,9 @@ export class Runtime {
       && predecessor?.state === 'ended'
       && (predecessor.report?.kind === 'ready'
         || predecessor.report?.kind === 'dropped'
-        || predecessor.report?.kind === 'failed')
+        || predecessor.report?.kind === 'failed'
+        || predecessor.report?.kind === 'blocked'
+        || predecessor.report?.kind === 'waiting')
       && predecessor.mandateScopeAtStart !== undefined
       && predecessor.mandateScopeAtStart !== current?.mandate.scope
       && predecessor.node !== undefined
@@ -2513,12 +2515,12 @@ export class Runtime {
       )
       return
     }
-    const supersededFailure = report.kind === 'failed'
+    const supersededFailure = (report.kind === 'failed' || report.kind === 'blocked' || report.kind === 'waiting')
       && settled !== undefined
       && !settled.ended
       && settledAssignment?.id === event.assignmentId
       && settledAssignment.state === 'ended'
-      && settledAssignment.report?.kind === 'failed'
+      && settledAssignment.report?.kind === report.kind
       && settledAssignment.mandateScopeAtStart !== undefined
       && settledAssignment.mandateScopeAtStart !== settled.mandate.scope
       && settledAssignment.node !== undefined
@@ -2526,13 +2528,16 @@ export class Runtime {
     if (supersededFailure) {
       // Queue the replacement in this synchronous turn, before the assignment
       // end hook's release microtask inspects the Ticket and settles its slot.
-      // The failed report stays on the predecessor as an audit record.
+      // The predecessor report stays in place as an audit record.
       this.remoteResultWait?.clear(event.ticketId)
-      this.engine.retryTicket(event.ticketId, 'revised-mandate-after-remote-failure')
+      const reason = report.kind === 'failed'
+        ? 'revised-mandate-after-remote-failure'
+        : `revised-mandate-after-remote-${report.kind}`
+      this.engine.retryTicket(event.ticketId, reason)
       const replacement = this.store.getDoc<Ticket>('ticket', event.ticketId)
       if (replacement && !replacement.ended) void this.harness.launch(replacement)
       this.log.info(
-        `[mesh] superseded failed replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
+        `[mesh] superseded ${report.kind} replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
       )
       return
     }
