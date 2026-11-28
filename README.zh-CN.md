@@ -119,6 +119,8 @@ DS_AGENT_UI_TOKEN="$(openssl rand -hex 16)" pnpm ds-agent ui
 
 面板只读、只绑定 loopback，token 至少 16 个字符。详见 [docs/UI.md](docs/UI.md)。
 
+要在原生窗口中和 Agent 聊天，请参阅 [Rune 桌面客户端](desktop/README.md)。它接入现有 Agent runtime，也支持离线生成界面截图。
+
 ### 测试与真实 Demo
 
 `pnpm test` 与 `pnpm demo` 都使用真实模型，这两条路径禁止 MockModel。如果没有设置 `DS_AGENT_API_*`，`test` 脚本会填入本机 Magpie 默认值（`http://127.0.0.1:3425/v1`、密钥 `magpie`、模型 `workbuddy/deepseek-v4.1-flash`），因此需要该网关在运行。不需要模型 Key 的离线 fixture 套件是：

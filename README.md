@@ -119,6 +119,8 @@ DS_AGENT_UI_TOKEN="$(openssl rand -hex 16)" pnpm ds-agent ui
 
 The dashboard is read-only, binds to loopback, and requires a token of at least 16 characters. See [docs/UI.md](docs/UI.md).
 
+For a native chat window, see the [Rune desktop client](desktop/README.md). It connects to the same Agent runtime and can render an offline preview without opening a window.
+
 ### Tests and the live demo
 
 `pnpm test` and `pnpm demo` use a live model; MockModel is forbidden on those paths. If `DS_AGENT_API_*` is unset, the `test` script fills a local Magpie default (`http://127.0.0.1:3425/v1`, key `magpie`, model `workbuddy/deepseek-v4.1-flash`), so it needs that gateway running. For a no-key fixture run, use:

@@ -66,6 +66,30 @@ function row(overrides: Partial<OutboxRow> = {}): OutboxRow {
 }
 
 describe('durable outbox', () => {
+  it('preserves desktop reply formatting and keeps the CLI reply limit', () => {
+    const store = tempStore()
+    try {
+      const host: Host = {
+        repo: store,
+        now: () => new Date().toISOString(),
+        log: () => undefined,
+        metrics: { increment: () => undefined } as unknown as Host['metrics'],
+        scope: { admit: () => ({ listened: true, reason: 'test' }) },
+      }
+      const text = 'Here is the code.\n\n```text\n' + '  indentation stays\n'.repeat(110) + '```'
+      const replies = new Replies(host)
+      replies.answer(ticket({ channels: [{ source: 'cli', thread: 'desktop', address: { desktop: '1' } }] }), text)
+      replies.answer(ticket({ channels: [{ source: 'cli', thread: 'local' }] }), text)
+      const [desktop, cli] = store.listReplies()
+      expect(desktop?.text).toBe(text)
+      expect(cli?.text).toMatch(/…$/)
+      expect(cli?.text).not.toContain('\n')
+      expect(store.listOutbox()).toHaveLength(0)
+    } finally {
+      store.close()
+    }
+  })
+
   it('Replies enqueues instead of claiming delivery', () => {
     const store = tempStore()
     const host: Host = {
