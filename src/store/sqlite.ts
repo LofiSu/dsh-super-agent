@@ -912,6 +912,11 @@ export class Store {
     }))
   }
 
+  getSessionIdentity(id: string): Pick<SessionRow, 'role' | 'ticketId'> | undefined {
+    const row = this.db.prepare('SELECT role, ticket_id FROM sessions WHERE id = ?').get(id)
+    return row && { role: row.role as SessionRow['role'], ticketId: row.ticket_id ? String(row.ticket_id) : undefined }
+  }
+
   listIdleMemorySessions(after: number, idleBefore: string, limit: number): (SessionRow & { cursor: number })[] {
     const rows = this.db.prepare(`
       SELECT rowid AS cursor, id, role, ticket_id AS ticketId, status, heartbeat, created_at AS createdAt
@@ -967,6 +972,49 @@ export class Store {
       WHERE session_id = ? AND id < ? AND role IN ('user', 'assistant')
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, before, limit) as { id: number; role: string; body: string | null; createdAt: string }[]
+  }
+
+  getTranscriptEvidence(sessionId: string, id: number): { id: number; role: string; body: string | null; createdAt: string } | undefined {
+    return this.db.prepare(`
+      SELECT id, role, created_at AS createdAt,
+        CASE WHEN length(CAST(body AS BLOB)) <= 65536 THEN body END AS body
+      FROM messages WHERE session_id = ? AND id = ? AND role IN ('user', 'assistant')
+    `).get(sessionId, id) as { id: number; role: string; body: string | null; createdAt: string } | undefined
+  }
+
+  /** Recheck both participants against the same snapshot of current ticket membership. */
+  listSharedTranscriptPage(
+    caller: string,
+    threadKeys: string[],
+    before: number,
+    limit: number,
+    ref?: { sessionId: string; id: number },
+  ): { sessionId: string; id: number; role: string; body: string | null; createdAt: string }[] {
+    const keys = JSON.stringify(threadKeys)
+    const filter = ref ? 'AND message.session_id = ? AND message.id = ?' : 'AND message.id < ?'
+    const bounds = ref ? [ref.sessionId, ref.id] : [before]
+    return this.db.prepare(`
+      WITH eligible AS (
+        SELECT session.id
+        FROM sessions AS session
+        JOIN documents AS ticket ON ticket.kind = 'ticket' AND ticket.id = session.ticket_id
+        WHERE session.role = 'worker' AND session.id = 'worker_' || session.ticket_id
+          AND COALESCE(json_extract(ticket.payload, '$.speculative'), 0) = 0
+          AND COALESCE(json_extract(ticket.payload, '$.ended.silent'), 0) = 0
+          AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.threadKeys')) = json_array_length(?)
+          AND (SELECT COUNT(DISTINCT value) FROM json_each(ticket.payload, '$.memoryThreadKeys')) = json_array_length(?)
+          AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.threadKeys') EXCEPT SELECT value FROM json_each(?))
+          AND NOT EXISTS (SELECT value FROM json_each(ticket.payload, '$.memoryThreadKeys') EXCEPT SELECT value FROM json_each(?))
+      )
+      SELECT message.session_id AS sessionId, message.id, message.role, message.created_at AS createdAt,
+        CASE WHEN length(CAST(message.body AS BLOB)) <= 65536 THEN message.body END AS body
+      FROM messages AS message
+      JOIN eligible AS author ON author.id = message.session_id
+      WHERE message.role = 'user' AND EXISTS (SELECT 1 FROM eligible WHERE id = ?) ${filter}
+      ORDER BY message.id DESC LIMIT ?
+    `).all(keys, keys, keys, keys, caller, ...bounds, limit) as {
+      sessionId: string; id: number; role: string; body: string | null; createdAt: string;
+    }[]
   }
 
   /** Oldest unprocessed sibling row in an exact shared Worker scope. */
