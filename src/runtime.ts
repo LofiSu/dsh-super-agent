@@ -1009,6 +1009,28 @@ export class Runtime {
         placement.release(ticketId)
         return
       }
+      const timedOut = store.getDoc<Ticket>('ticket', ticketId)
+      const timedOutAssignment = timedOut?.assignments.find(item => item.id === assignmentId)
+      const supersededFailure = timedOut !== undefined
+        && !timedOut.ended
+        && timedOutAssignment?.state === 'ended'
+        && timedOutAssignment.report?.kind === 'failed'
+        && timedOutAssignment.mandateScopeAtStart !== undefined
+        && timedOutAssignment.mandateScopeAtStart !== timedOut.mandate.scope
+        && timedOutAssignment.node !== undefined
+        && placement.isRemote(timedOutAssignment.node)
+      if (supersededFailure) {
+        // A timeout is a failed remote result too. Queue its replacement before
+        // the end hook's release microtask inspects the Ticket.
+        late.remoteResultWait?.clear(ticketId)
+        engine.retryTicket(ticketId, 'revised-mandate-after-remote-failure')
+        const replacement = store.getDoc<Ticket>('ticket', ticketId)
+        if (replacement && !replacement.ended) void late.harness?.launch(replacement)
+        log.info(
+          `[mesh] superseded failed replaced assignment ticketId=${ticketId} assignmentId=${assignmentId}`,
+        )
+        return
+      }
       // `report` may hold instead of ending, for example while the Ticket is
       // paused: the failed verdict is persisted on the Assignment and only
       // applied on resume. The timer deleted itself before firing, so without
@@ -1505,13 +1527,13 @@ export class Runtime {
      * Extra pumps are harmless: `Harness.release` skips a ticket whose Worker
      * turn is still active, and `pump` reserves a slot before starting a turn.
      */
-    const isPendingSupersededReady = (
+    const isPendingSupersededRemoteReplacement = (
       current: Ticket | undefined,
       latest: Assignment | undefined,
       predecessor: Assignment | undefined,
     ): boolean => latest?.state === 'pending'
       && predecessor?.state === 'ended'
-      && predecessor.report?.kind === 'ready'
+      && (predecessor.report?.kind === 'ready' || predecessor.report?.kind === 'failed')
       && predecessor.mandateScopeAtStart !== undefined
       && predecessor.mandateScopeAtStart !== current?.mandate.scope
       && predecessor.node !== undefined
@@ -1531,8 +1553,8 @@ export class Runtime {
           // Assignment is still the live running one (the Worker failed before
           // it started). A newer open Assignment alone is therefore not proof
           // of a replacement: require a prior ended Assignment it superseded.
-          // The one pending exception is a superseded-ready remote replacement:
-          // its held ready and changed scope identify it while Router turns run.
+          // The pending exception is a superseded remote replacement: its
+          // terminal report and changed scope identify it while Router runs.
           const ended = ticket?.assignments.slice(0, -1).reverse().find(item => item.state === 'ended')
           const liveReplacement = ticket !== undefined
             && !ticket.ended
@@ -1541,7 +1563,7 @@ export class Runtime {
             && (latest.state === 'running'
               || latest.node !== undefined
               || latest.startedAt !== undefined
-              || isPendingSupersededReady(ticket, latest, ended))
+              || isPendingSupersededRemoteReplacement(ticket, latest, ended))
             && ended !== undefined
             && placement.remoteHasTicket(ticketId)
           if (liveReplacement && ended) {
@@ -1666,7 +1688,7 @@ export class Runtime {
               && (currentLatest.state === 'running'
                 || currentLatest.node !== undefined
                 || currentLatest.startedAt !== undefined
-                || isPendingSupersededReady(current, currentLatest, superseded))
+                || isPendingSupersededRemoteReplacement(current, currentLatest, superseded))
               && superseded !== undefined
               && placement.remoteHasTicket(ticketId)
             if (liveReplacement && superseded && currentLatest && current) {
@@ -2486,6 +2508,29 @@ export class Runtime {
       if (replacement && !replacement.ended) void this.harness.launch(replacement)
       this.log.info(
         `[mesh] superseded ready replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
+      )
+      return
+    }
+    const supersededFailure = report.kind === 'failed'
+      && settled !== undefined
+      && !settled.ended
+      && settledAssignment?.id === event.assignmentId
+      && settledAssignment.state === 'ended'
+      && settledAssignment.report?.kind === 'failed'
+      && settledAssignment.mandateScopeAtStart !== undefined
+      && settledAssignment.mandateScopeAtStart !== settled.mandate.scope
+      && settledAssignment.node !== undefined
+      && this.placement.isRemote(settledAssignment.node)
+    if (supersededFailure) {
+      // Queue the replacement in this synchronous turn, before the assignment
+      // end hook's release microtask inspects the Ticket and settles its slot.
+      // The failed report stays on the predecessor as an audit record.
+      this.remoteResultWait?.clear(event.ticketId)
+      this.engine.retryTicket(event.ticketId, 'revised-mandate-after-remote-failure')
+      const replacement = this.store.getDoc<Ticket>('ticket', event.ticketId)
+      if (replacement && !replacement.ended) void this.harness.launch(replacement)
+      this.log.info(
+        `[mesh] superseded failed replaced assignment ticketId=${event.ticketId} assignmentId=${event.assignmentId}`,
       )
       return
     }
