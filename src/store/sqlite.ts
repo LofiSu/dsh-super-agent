@@ -912,14 +912,18 @@ export class Store {
     }))
   }
 
-  listIdleMemorySessions(after: number, idleBefore: string, limit: number): (SessionRow & { cursor: number })[] {
+  listIdleMemorySessions(after: number, idleBefore: string, limit: number, thread?: string): (SessionRow & { cursor: number })[] {
     const rows = this.db.prepare(`
       SELECT rowid AS cursor, id, role, ticket_id AS ticketId, status, heartbeat, created_at AS createdAt
       FROM sessions
       WHERE rowid > ? AND status = 'idle' AND heartbeat <= ?
         AND (role = 'worker' OR (role = 'router' AND id GLOB 'router:thread:*'))
+        AND (? IS NULL OR id = 'router:thread:' || ? OR (role = 'worker' AND EXISTS (
+          SELECT 1 FROM documents AS ticket, json_each(ticket.payload, '$.memoryThreadKeys') AS thread
+          WHERE ticket.kind = 'ticket' AND ticket.id = sessions.ticket_id AND thread.value = ?
+        )))
       ORDER BY rowid LIMIT ?
-    `).all(after, idleBefore, limit)
+    `).all(after, idleBefore, thread ?? null, thread ?? null, thread ?? null, limit)
     return rows.map(row => ({
       cursor: Number(row.cursor),
       id: String(row.id),

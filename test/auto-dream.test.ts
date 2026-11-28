@@ -181,6 +181,69 @@ it('runs a bounded exit pass and rewrites supplied notes in the same publication
   expect(reopened.memory.execute(session, { command: 'view', path: '/memories/setup.md' })).toContain('Use pnpm.')
 })
 
+it('dreams for the foreground thread on idle pulses and after shutdown', async () => {
+  const seed = fixture()
+  const thread = 'cli:desktop-local'
+  const workerId = idleWorker(seed.store, 'desktop', thread)
+  const worker = { sessionId: workerId, role: 'worker' as const, ticketId: 'desktop' }
+  append(seed.store, 'Foreign private preference.')
+  userRow(seed.store, workerId, 'Use pnpm.')
+  seed.store.close()
+  const model = new HttpOpenAI('http://127.0.0.1:1/v1', 'fixture', 'fixture')
+  const complete = vi.spyOn(model, 'complete').mockImplementation(async request => {
+    const input = JSON.parse(request.messages[1]!.content) as {
+      evidence: { id: number; text: string }[]
+    }
+    expect(input.evidence.map(row => row.text)).toEqual([expect.stringContaining('pnpm')])
+    return { text: JSON.stringify({ page: input.evidence[0]!.text, evidence_ids: [input.evidence[0]!.id] }) }
+  })
+  const rt = Runtime.create({ home: seed.home, model, env: {}, watchdogIntervalMs: 10 })
+  const memory = new SessionMemory(rt.store, redact)
+  const serveStore = new Store(seed.home)
+  stores.push(serveStore)
+  try {
+    rt.startForegroundChat(thread)
+    await vi.waitFor(() => expect(memory.index(worker)).toContain('/memories/wiki/runtime.md'))
+    expect(memory.index(session)).toBeUndefined()
+
+    userRow(rt.store, workerId, 'Always use pnpm.')
+    await rt.finish()
+    const reopened = new SessionMemory(serveStore, redact)
+    const nextWorkerId = idleWorker(serveStore, 'next-desktop', thread)
+    const nextWorker = { sessionId: nextWorkerId, role: 'worker' as const, ticketId: 'next-desktop' }
+    expect(reopened.execute(nextWorker, { command: 'view', path: '/memories/wiki/runtime.md' })).toContain('Always use pnpm.')
+    expect(reopened.index(session)).toBeUndefined()
+    expect(complete).toHaveBeenCalledTimes(2)
+  } finally {
+    if (rt.store.isOpen) await rt.finish()
+  }
+})
+
+it('shares a scope lease between the foreground bridge and the serving scheduler', async () => {
+  const first = fixture()
+  const thread = 'cli:desktop-local'
+  const workerId = idleWorker(first.store, 'desktop-lease', thread)
+  userRow(first.store, workerId, 'Keep the workspace on pnpm.')
+  const second = fixture(first.home)
+  let release: () => void = () => {}
+  const hold = new Promise<void>(resolve => { release = resolve })
+  const foreground = vi.fn<Model['complete']>(async () => {
+    await hold
+    return { text: '{"page":"Use pnpm.","evidence_ids":[1]}' }
+  })
+  const serving = vi.fn<Model['complete']>(async () => ({ text: '' }))
+  const work = new AutoDream(first.store, first.memory, () => stub(foreground), redact, () => {}).tick(now, thread)
+  try {
+    expect(foreground).toHaveBeenCalledTimes(1)
+    await new AutoDream(second.store, second.memory, () => stub(serving), redact, () => {}).tick(now)
+    expect(serving).not.toHaveBeenCalled()
+  } finally {
+    release()
+    await work
+  }
+  expect(second.memory.recallForThread(thread)).toContain('Use pnpm.')
+})
+
 it('does not log an upstream error that echoes private transcript text', async () => {
   const { store, memory } = fixture()
   append(store, 'A private remark absent from configured secrets.')
