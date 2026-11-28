@@ -4,10 +4,12 @@ export function dashboardHtml(): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LofiBot Gateway</title>
 <style>
- body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:2rem;color:#111}
- h1{font-size:1.2rem} code{background:#f2f2f2;padding:.1em .3em;border-radius:4px}
- pre{background:#f6f8fa;padding:1rem;border-radius:8px;overflow:auto;max-height:70vh}
- .muted{color:#666}
+ :root { color-scheme: dark; background: #101735; color: #fbf4f8; }
+ body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: clamp(1rem, 4vw, 2rem); }
+ h1 { font-size: 1.3rem; }
+ code { color: #ffa6d2; background: #192750; padding: .1em .3em; border-radius: 4px; }
+ pre { background: #192750; border: 1px solid #384b7d; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 70vh; }
+ .muted { color: #b7c7e8; }
 </style></head>
 <body>
 <h1>LofiBot Gateway</h1>

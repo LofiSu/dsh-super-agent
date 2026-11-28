@@ -1,4 +1,4 @@
-![LofiBot 横幅，配有像素磁带吉祥物](docs/assets/lofibot-banner.png)
+![LofiBot 横幅，绘有钴蓝色、亮黄绿色眼睛的吉祥物](docs/assets/lofibot-banner.png)
 
 # LofiBot
 
@@ -48,6 +48,15 @@ flowchart TD
   Router <--> Store
   Worker <--> Store
   Watchdog -.->|提醒或标记失败| Assign
+
+  classDef input fill:#F9EDF5,stroke:#A73968,color:#17234E
+  classDef route fill:#213C83,stroke:#E94D9A,color:#FFFFFF,stroke-width:2px
+  classDef work fill:#DEEBFF,stroke:#345EB1,color:#17234E
+  classDef support fill:#EBF6A3,stroke:#61751D,color:#222D14
+  class Sources,Routines input
+  class Ingress,Router,Outbox route
+  class Assign,Worker,Tools work
+  class Store,Watchdog support
 ```
 
 Router 负责回复，Worker 向它回报执行结果，由 Outbox 负责投递。定时事件和信道消息共用同一条入口链路。

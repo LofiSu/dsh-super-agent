@@ -1,4 +1,4 @@
-![LofiBot banner with a pixel-art cassette mascot](docs/assets/lofibot-banner.png)
+![LofiBot banner with a cobalt mascot and chartreuse eyes](docs/assets/lofibot-banner.png)
 
 # LofiBot
 
@@ -48,6 +48,15 @@ flowchart TD
   Router <--> Store
   Worker <--> Store
   Watchdog -.->|nudge or fail| Assign
+
+  classDef input fill:#F9EDF5,stroke:#A73968,color:#17234E
+  classDef route fill:#213C83,stroke:#E94D9A,color:#FFFFFF,stroke-width:2px
+  classDef work fill:#DEEBFF,stroke:#345EB1,color:#17234E
+  classDef support fill:#EBF6A3,stroke:#61751D,color:#222D14
+  class Sources,Routines input
+  class Ingress,Router,Outbox route
+  class Assign,Worker,Tools work
+  class Store,Watchdog support
 ```
 
 The Router owns replies. Workers report their results to it, and the Outbox handles delivery. Scheduled triggers and channel messages share the same ingress path.
