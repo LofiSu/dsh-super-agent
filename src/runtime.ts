@@ -1941,6 +1941,12 @@ export class Runtime {
         }
         if (!remoteOwned && localWorkerActive) return
         if (late.harness.launchInFlight(ticketId)) return
+        if (assignment?.state === 'ended' && !ticket.assignments.some(item => item.state !== 'ended')) {
+          engine.retryTicket(ticketId, 'redispatch-after-ended-assignment')
+          const replacement = store.getDoc<Ticket>('ticket', ticketId)
+          if (replacement && !replacement.ended) late.harness.launch(replacement)
+          return
+        }
         late.harness.launch(ticket)
       },
       ...(fillVault

@@ -60,7 +60,7 @@ function dispatchModel(
   reportTasks = true,
   gateResume?: Promise<void>,
   reportResumes = true,
-  taskReportKind: 'ready' | 'dropped' = 'ready',
+  taskReportKind: 'ready' | 'failed' | 'blocked' | 'waiting' | 'dropped' = 'ready',
 ): ScriptedModel {
   const reportedWorkerPrompts = new Set<string>()
   return new ScriptedModel(async request => {
@@ -83,7 +83,9 @@ function dispatchModel(
               ticketId: field(prompt, 'ticketId'),
               text: 'done under the active mandate',
               deliver: true,
-              kind: prompt.startsWith('TASK') ? taskReportKind : 'ready',
+              kind: prompt.startsWith('TASK') && prompts.filter(item => item.startsWith('TASK')).length === 1
+                ? taskReportKind
+                : 'ready',
             },
           }],
         }
@@ -441,6 +443,91 @@ describe('worker mandate scope', () => {
     expect(prompts.filter(prompt => prompt.startsWith('TASK'))).toHaveLength(1)
     expect(prompts.filter(prompt => prompt.startsWith('FOLLOWUP'))).toHaveLength(1)
     expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended?.outcome).toBe('ready')
+  })
+
+  it('re-dispatch after a local failed assignment starts a new assignment with the revised scope', async () => {
+    const prompts: string[] = []
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, undefined, () => scope, redispatch, undefined, true, true, undefined, true, 'failed'))
+    const triggerId = 'trg_redispatch_after_failed'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+    const failedAssignment = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments.at(-1)!
+    expect(failedAssignment).toMatchObject({ state: 'ended', report: { kind: 'failed' } })
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended).toBeUndefined()
+
+    scope = scopeB
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    const replacement = latest.assignments.at(-1)!
+    expect(latest.assignments).toHaveLength(2)
+    expect(replacement.id).not.toBe(failedAssignment.id)
+    expect(failedAssignment).toMatchObject({ state: 'ended', report: { kind: 'failed' } })
+    expect(prompts.some(prompt => prompt.startsWith('TASK') && prompt.includes(`scope=${scopeB}`))).toBe(true)
+    expect(latest.ended?.outcome).toBe('ready')
+  })
+
+  it('re-dispatch after a local blocked assignment starts a new assignment with the revised scope', async () => {
+    const prompts: string[] = []
+    let scope = scopeA
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, undefined, () => scope, redispatch, undefined, true, true, undefined, true, 'blocked'))
+    const triggerId = 'trg_redispatch_after_blocked'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+    const blockedAssignment = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments.at(-1)!
+    expect(blockedAssignment).toMatchObject({ state: 'ended', report: { kind: 'blocked' } })
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended).toBeUndefined()
+
+    scope = scopeB
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    const replacement = latest.assignments.at(-1)!
+    expect(latest.assignments).toHaveLength(2)
+    expect(replacement.id).not.toBe(blockedAssignment.id)
+    expect(blockedAssignment).toMatchObject({ state: 'ended', report: { kind: 'blocked' } })
+    expect(prompts.some(prompt => prompt.startsWith('TASK') && prompt.includes(`scope=${scopeB}`))).toBe(true)
+    expect(latest.ended?.outcome).toBe('ready')
+  })
+
+  it('unchanged explicit re-dispatch after a local failed assignment starts a new assignment', async () => {
+    const prompts: string[] = []
+    const redispatch = { value: false }
+    const runtime = start(dispatchModel(prompts, undefined, () => scopeA, redispatch, undefined, true, true, undefined, true, 'failed'))
+    const triggerId = 'trg_unchanged_after_failed'
+    runtime.ingest(directTrigger(triggerId))
+    await vi.waitFor(() => expect(prompts.some(prompt => prompt.startsWith('TASK'))).toBe(true))
+    await runtime.jobsSettled()
+
+    const envelope = runtime.store.listDocs<Ticket>('ticket').find(isConversationTicket)!
+    const ticketId = runtime.store.listDocs<Ticket>('ticket').find(ticket => !isConversationTicket(ticket))!.id
+    const failedAssignment = runtime.store.getDoc<Ticket>('ticket', ticketId)!.assignments.at(-1)!
+    expect(failedAssignment).toMatchObject({ state: 'ended', report: { kind: 'failed' } })
+    expect(runtime.store.getDoc<Ticket>('ticket', ticketId)?.ended).toBeUndefined()
+
+    await dispatchAgain(runtime, triggerId, envelope.id, redispatch)
+    await runtime.jobsSettled()
+
+    const latest = runtime.store.getDoc<Ticket>('ticket', ticketId)!
+    const replacement = latest.assignments.at(-1)!
+    expect(latest.assignments).toHaveLength(2)
+    expect(replacement.id).not.toBe(failedAssignment.id)
+    expect(prompts.some(prompt => prompt.startsWith('TASK') && prompt.includes(`scope=${scopeA}`))).toBe(true)
+    expect(runtime.log.text()).toContain(`Assignments.start ticketId=${ticketId} assignmentId=${replacement.id}`)
+    expect(runtime.log.text().match(new RegExp(`ExecutorSession turn session=worker_${ticketId}`, 'g'))).toHaveLength(2)
   })
 
   it('unchanged scope re-dispatch does not enqueue an extra worker turn', async () => {
